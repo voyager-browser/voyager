@@ -1,5 +1,18 @@
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Protocol, Session } from 'electron'
+import { app, type Protocol, type Session } from 'electron'
+
+function resolveRendererPath(relativePath: string): string {
+  const candidates = [
+    join(__dirname, '../renderer', relativePath),
+    join(app.getAppPath(), 'out/renderer', relativePath),
+    join(process.cwd(), 'out/renderer', relativePath)
+  ]
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate
+  }
+  return candidates[0]
+}
 
 function handleVoyagerRequest(
   request: { url: string },
@@ -9,32 +22,32 @@ function handleVoyagerRequest(
   // part of the file path.
   const url = request.url.replace('voyager://', '').split(/[?#]/, 1)[0]
   if (url === 'start' || url === 'start/') {
-    callback({ path: join(__dirname, '../renderer/', 'start.html') })
+    callback({ path: resolveRendererPath('start.html') })
     return
   }
   if (url.startsWith('start/')) {
     const relative = url.substring('start/'.length)
-    callback({ path: join(__dirname, '../renderer/', relative) })
+    callback({ path: resolveRendererPath(relative) })
     return
   }
   if (url === 'settings' || url === 'settings/') {
-    callback({ path: join(__dirname, '../renderer/', 'settings.html') })
+    callback({ path: resolveRendererPath('settings.html') })
     return
   }
   if (url.startsWith('settings/')) {
     const relative = url.substring('settings/'.length)
-    callback({ path: join(__dirname, '../renderer/', relative) })
+    callback({ path: resolveRendererPath(relative) })
     return
   }
   if (url.startsWith('assets/')) {
-    callback({ path: join(__dirname, '../renderer/assets/', url.substring('assets/'.length)) })
+    callback({ path: resolveRendererPath(join('assets', url.substring('assets/'.length))) })
     return
   }
   if (url === '' || url === '/') {
-    callback({ path: join(__dirname, '../renderer/', 'index.html') })
+    callback({ path: resolveRendererPath('index.html') })
     return
   }
-  callback({ path: join(__dirname, '../renderer/', url) })
+  callback({ path: resolveRendererPath(url) })
 }
 
 /** Serve the bundled voyager:// renderer pages and assets for a session. */
