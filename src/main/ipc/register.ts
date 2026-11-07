@@ -125,7 +125,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   nativeTheme.themeSource = savedMode
 
   configurePermissionPromptRouter((webContents) => {
-    const window = context.getWindow(event as SenderEvent)
+    const window = context.getWindow(event as any)
     if (!window) return null
     return {
       tabId: webContents ? window.tabIdForWebContents(webContents) : null,
@@ -143,9 +143,10 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IpcChannels.DefaultBrowserGet, () => isDefaultBrowser())
   ipcMain.handle(IpcChannels.DefaultBrowserSet, () => setDefaultBrowser())
 
-  ipcMain.handle(IpcChannels.SettingsOpen, (_event, target?: SettingsTarget) =>
-    openSettingsWindow(target)
-  )
+  ipcMain.handle(IpcChannels.SettingsOpen, (event, target?: SettingsTarget) => {
+    void event
+    return openSettingsWindow(target)
+  })
 
   ipcMain.handle(IpcChannels.SettingsGet, () => userPreferences())
 
@@ -203,7 +204,8 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(IpcChannels.ThemeGet, (): ThemeState => currentThemeState())
 
-  ipcMain.handle(IpcChannels.ThemeSet, (_event, mode: ThemeMode): ThemeState => {
+  ipcMain.handle(IpcChannels.ThemeSet, (event, mode: ThemeMode): ThemeState => {
+    void event
     const state = applyThemeMode(mode)
     context.send(IpcChannels.ThemeChanged, state)
     return state
@@ -218,48 +220,48 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(
     IpcChannels.TabsGetState,
-    () => context.getWindow(event as SenderEvent)?.tabs.snapshot() ?? null
+    () => context.getWindow(event as any)?.tabs.snapshot() ?? null
   )
 
-  ipcMain.handle(IpcChannels.TabsCreate, (_event, request: NewTabRequest) =>
-    context.getWindow(event as SenderEvent)?.tabs.create(request)
+  ipcMain.handle(IpcChannels.TabsCreate, (event, request: NewTabRequest) =>
+    context.getWindow(event as any)?.tabs.create(request)
   )
 
-  ipcMain.handle(IpcChannels.TabsClose, (_event, id: string) =>
-    context.getWindow(event as SenderEvent)?.tabs.close(id)
+  ipcMain.handle(IpcChannels.TabsClose, (event, id: string) =>
+    context.getWindow(event as any)?.tabs.close(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsActivate, (_event, id: string) =>
-    context.getWindow(event as SenderEvent)?.tabs.activate(id)
+  ipcMain.handle(IpcChannels.TabsActivate, (event, id: string) =>
+    context.getWindow(event as any)?.tabs.activate(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsReorder, (_event, ids: string[]) =>
-    context.getWindow(event as SenderEvent)?.tabs.reorder(ids)
+  ipcMain.handle(IpcChannels.TabsReorder, (event, ids: string[]) =>
+    context.getWindow(event as any)?.tabs.reorder(ids)
   )
 
-  ipcMain.handle(IpcChannels.TabsPinToggle, (_event, id: string) =>
-    context.getWindow(event as SenderEvent)?.tabs.pinToggle(id)
+  ipcMain.handle(IpcChannels.TabsPinToggle, (event, id: string) =>
+    context.getWindow(event as any)?.tabs.pinToggle(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsDuplicate, (_event, id: string) =>
-    context.getWindow(event as SenderEvent)?.tabs.duplicate(id)
+  ipcMain.handle(IpcChannels.TabsDuplicate, (event, id: string) =>
+    context.getWindow(event as any)?.tabs.duplicate(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsMuteToggle, (_event, id: string) =>
-    context.getWindow(event as SenderEvent)?.tabs.muteToggle(id)
+  ipcMain.handle(IpcChannels.TabsMuteToggle, (event, id: string) =>
+    context.getWindow(event as any)?.tabs.muteToggle(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsCloseOthers, (_event, id: string) =>
-    context.getWindow(event as SenderEvent)?.tabs.closeOthers(id)
+  ipcMain.handle(IpcChannels.TabsCloseOthers, (event, id: string) =>
+    context.getWindow(event as any)?.tabs.closeOthers(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsCloseToRight, (_event, id: string) =>
-    context.getWindow(event as SenderEvent)?.tabs.closeToRight(id)
+  ipcMain.handle(IpcChannels.TabsCloseToRight, (event, id: string) =>
+    context.getWindow(event as any)?.tabs.closeToRight(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsCopyUrl, (_event, id: string) => {
+  ipcMain.handle(IpcChannels.TabsCopyUrl, (event, id: string) => {
     const tab = context
-      .getWindow()
+      .getWindow(event as any)
       ?.tabs.snapshot()
       .tabs.find((tab) => tab.id === id)
     if (tab) clipboard.writeText(tab.url)
@@ -268,46 +270,36 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   /* ---- navigation ------------------------------------------------------ */
 
-  ipcMain.handle(IpcChannels.NavBack, () => context.getWindow(event as SenderEvent)?.tabs.goBack())
-  ipcMain.handle(IpcChannels.NavForward, () =>
-    context.getWindow(event as SenderEvent)?.tabs.goForward()
-  )
-  ipcMain.handle(IpcChannels.NavReload, () =>
-    context.getWindow(event as SenderEvent)?.tabs.reload()
-  )
-  ipcMain.handle(IpcChannels.NavStop, () => context.getWindow(event as SenderEvent)?.tabs.stop())
-  ipcMain.handle(IpcChannels.NavGo, (_event, url: string) =>
-    context.getWindow(event as SenderEvent)?.tabs.navigate(url)
+  ipcMain.handle(IpcChannels.NavBack, () => context.getWindow(event as any)?.tabs.goBack())
+  ipcMain.handle(IpcChannels.NavForward, () => context.getWindow(event as any)?.tabs.goForward())
+  ipcMain.handle(IpcChannels.NavReload, () => context.getWindow(event as any)?.tabs.reload())
+  ipcMain.handle(IpcChannels.NavStop, () => context.getWindow(event as any)?.tabs.stop())
+  ipcMain.handle(IpcChannels.NavGo, (event, url: string) =>
+    context.getWindow(event as any)?.tabs.navigate(url)
   )
   ipcMain.handle(IpcChannels.NavForceReload, () =>
-    context.getWindow(event as SenderEvent)?.tabs.reloadIgnoringCache()
+    context.getWindow(event as any)?.tabs.reloadIgnoringCache()
   )
-  ipcMain.handle(IpcChannels.NavFindInPage, (_event, query: string, forward?: boolean) =>
-    context.getWindow(event as SenderEvent)?.tabs.findInPage(query, forward ?? true)
+  ipcMain.handle(IpcChannels.NavFindInPage, (event, query: string, forward?: boolean) =>
+    context.getWindow(event as any)?.tabs.findInPage(query, forward ?? true)
   )
   ipcMain.handle(IpcChannels.NavStopFindInPage, () =>
-    context.getWindow(event as SenderEvent)?.tabs.stopFindInPage()
+    context.getWindow(event as any)?.tabs.stopFindInPage()
   )
-  ipcMain.handle(IpcChannels.NavZoomIn, () =>
-    context.getWindow(event as SenderEvent)?.tabs.zoomIn()
-  )
-  ipcMain.handle(IpcChannels.NavZoomOut, () =>
-    context.getWindow(event as SenderEvent)?.tabs.zoomOut()
-  )
-  ipcMain.handle(IpcChannels.NavZoomReset, () =>
-    context.getWindow(event as SenderEvent)?.tabs.zoomReset()
-  )
-  ipcMain.handle(IpcChannels.NavPrint, () => context.getWindow(event as SenderEvent)?.tabs.print())
+  ipcMain.handle(IpcChannels.NavZoomIn, () => context.getWindow(event as any)?.tabs.zoomIn())
+  ipcMain.handle(IpcChannels.NavZoomOut, () => context.getWindow(event as any)?.tabs.zoomOut())
+  ipcMain.handle(IpcChannels.NavZoomReset, () => context.getWindow(event as any)?.tabs.zoomReset())
+  ipcMain.handle(IpcChannels.NavPrint, () => context.getWindow(event as any)?.tabs.print())
   ipcMain.handle(IpcChannels.NavPrintToPdf, async () => {
-    const buf = await context.getWindow(event as SenderEvent)?.tabs.printToPdf()
+    const buf = await context.getWindow(event as any)?.tabs.printToPdf()
     return buf ? buf.toString('base64') : null
   })
   ipcMain.handle(IpcChannels.DevToolsToggle, () =>
-    context.getWindow(event as SenderEvent)?.tabs.toggleDevTools()
+    context.getWindow(event as any)?.tabs.toggleDevTools()
   )
 
   ipcMain.handle(IpcChannels.TabsReopenLastClosed, () =>
-    context.getWindow(event as SenderEvent)?.tabs.reopenLastClosed()
+    context.getWindow(event as any)?.tabs.reopenLastClosed()
   )
 
   /* ---- bookmarks ------------------------------------------------------ */
@@ -317,25 +309,26 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(IpcChannels.BookmarksGetState, () => currentBookmarksState())
 
-  ipcMain.handle(IpcChannels.BookmarksAdd, (_event, input: NewBookmarkInput) =>
+  ipcMain.handle(IpcChannels.BookmarksAdd, (event, input: NewBookmarkInput) =>
     addBookmark(input, broadcastBookmarks, (visible) =>
-      context.getWindow(event as SenderEvent)?.setBookmarksBarVisible(visible)
+      context.getWindow(event as any)?.setBookmarksBarVisible(visible)
     )
   )
 
-  ipcMain.handle(IpcChannels.BookmarksRemove, (_event, id: string) =>
+  ipcMain.handle(IpcChannels.BookmarksRemove, (event, id: string) =>
     removeBookmark(id, broadcastBookmarks, (visible) =>
-      context.getWindow(event as SenderEvent)?.setBookmarksBarVisible(visible)
+      context.getWindow(event as any)?.setBookmarksBarVisible(visible)
     )
   )
 
-  ipcMain.handle(IpcChannels.BookmarksUpdate, (_event, id: string, patch: BookmarkPatch) =>
-    updateBookmark(id, patch, broadcastBookmarks)
-  )
+  ipcMain.handle(IpcChannels.BookmarksUpdate, (event, id: string, patch: BookmarkPatch) => {
+    void event
+    return updateBookmark(id, patch, broadcastBookmarks)
+  })
 
-  ipcMain.handle(IpcChannels.BookmarksAddFolder, (_event, input: NewBookmarkFolderInput) =>
+  ipcMain.handle(IpcChannels.BookmarksAddFolder, (event, input: NewBookmarkFolderInput) =>
     addFolder(input, broadcastBookmarks, (visible) =>
-      context.getWindow(event as SenderEvent)?.setBookmarksBarVisible(visible)
+      context.getWindow(event as any)?.setBookmarksBarVisible(visible)
     )
   )
 
@@ -352,11 +345,13 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(IpcChannels.PermissionsGetState, () => currentSitePermissions())
 
-  ipcMain.handle(IpcChannels.PermissionsGetForOrigin, (_event, origin: string) =>
-    typeof origin === 'string' ? sitePermissionsForOrigin(origin) : { decisions: [] }
-  )
+  ipcMain.handle(IpcChannels.PermissionsGetForOrigin, (event, origin: string) => {
+    void event
+    return typeof origin === 'string' ? sitePermissionsForOrigin(origin) : { decisions: [] }
+  })
 
-  ipcMain.handle(IpcChannels.PermissionsRemove, (_event, origin: string, kind?: PermissionKind) => {
+  ipcMain.handle(IpcChannels.PermissionsRemove, (event, origin: string, kind?: PermissionKind) => {
+    void event
     if (typeof origin !== 'string') throw new Error('Invalid permission origin')
     if (kind !== undefined && !isPermissionKind(kind)) {
       throw new Error(`Invalid permission kind: ${String(kind)}`)
@@ -415,65 +410,74 @@ export function registerIpcHandlers(context: IpcContext): void {
     (_event, id: string, patch: BookmarkFolderPatch) => updateFolder(id, patch, broadcastBookmarks)
   )
 
-  ipcMain.handle(IpcChannels.BookmarksRemoveFolder, (_event, id: string) =>
+  ipcMain.handle(IpcChannels.BookmarksRemoveFolder, (event, id: string) =>
     removeFolder(id, broadcastBookmarks, (visible) =>
-      context.getWindow(event as SenderEvent)?.setBookmarksBarVisible(visible)
+      context.getWindow(event as any)?.setBookmarksBarVisible(visible)
     )
   )
 
-  ipcMain.handle(IpcChannels.BookmarksMove, (_event, input: BookmarkMoveInput) =>
-    moveBookmarkNode(input, broadcastBookmarks)
-  )
+  ipcMain.handle(IpcChannels.BookmarksMove, (event, input: BookmarkMoveInput) => {
+    void event
+    return moveBookmarkNode(input, broadcastBookmarks)
+  })
 
-  ipcMain.handle(IpcChannels.BookmarksCopy, (_event, kind: BookmarkNodeKind, id: string) =>
-    copyBookmarkNode(kind, id, broadcastBookmarks)
-  )
+  ipcMain.handle(IpcChannels.BookmarksCopy, (event, kind: BookmarkNodeKind, id: string) => {
+    void event
+    return copyBookmarkNode(kind, id, broadcastBookmarks)
+  })
 
-  ipcMain.handle(IpcChannels.BookmarksCut, (_event, kind: BookmarkNodeKind, id: string) =>
-    cutBookmarkNode(kind, id, broadcastBookmarks)
-  )
+  ipcMain.handle(IpcChannels.BookmarksCut, (event, kind: BookmarkNodeKind, id: string) => {
+    void event
+    return cutBookmarkNode(kind, id, broadcastBookmarks)
+  })
 
-  ipcMain.handle(IpcChannels.BookmarksPaste, (_event, parentId: string | null) =>
-    pasteBookmarkNode(parentId, broadcastBookmarks)
-  )
+  ipcMain.handle(IpcChannels.BookmarksPaste, (event, parentId: string | null) => {
+    void event
+    return pasteBookmarkNode(parentId, broadcastBookmarks)
+  })
 
   ipcMain.handle(IpcChannels.BookmarksConsumeDragUrl, () => consumePendingDragUrl())
 
-  ipcMain.handle(IpcChannels.BookmarksOpenWindow, (_event, url: string) => {
+  ipcMain.handle(IpcChannels.BookmarksOpenWindow, (event, url: string) => {
     void event
     context.openWindow?.(url)
   })
 
-  ipcMain.handle(IpcChannels.BookmarksOpenIncognitoWindow, (_event, url: string) => {
+  ipcMain.handle(IpcChannels.BookmarksOpenIncognitoWindow, (event, url: string) => {
     void event
     context.openIncognitoWindow?.(url)
   })
 
-  ipcMain.handle(IpcChannels.WindowsOpen, (_event, url?: string) => {
+  ipcMain.handle(IpcChannels.WindowsOpen, (event, url?: string) => {
+    void event
     context.openWindow?.(url)
   })
 
-  ipcMain.handle(IpcChannels.WindowsOpenIncognito, (_event, url?: string) => {
+  ipcMain.handle(IpcChannels.WindowsOpenIncognito, (event, url?: string) => {
+    void event
     context.openIncognitoWindow?.(url)
   })
 
-  ipcMain.handle(IpcChannels.WindowsGetState, (_event) => ({
-    incognito: context.getWindow(event as SenderEvent)?.isIncognito ?? false
+  ipcMain.handle(IpcChannels.WindowsGetState, (event) => ({
+    incognito: context.getWindow(event as any)?.isIncognito ?? false
   }))
 
   ipcMain.handle(IpcChannels.BookmarksClear, () =>
     clearBookmarks(broadcastBookmarks, (visible) =>
-      context.getWindow(event as SenderEvent)?.setBookmarksBarVisible(visible)
+      context.getWindow(event as any)?.setBookmarksBarVisible(visible)
     )
   )
 
   ipcMain.handle(IpcChannels.BookmarksToggleBar, () =>
     toggleBookmarksBar(broadcastBookmarks, (visible) =>
-      context.getWindow(event as SenderEvent)?.setBookmarksBarVisible(visible)
+      context.getWindow(event as any)?.setBookmarksBarVisible(visible)
     )
   )
 
-  ipcMain.on(IpcChannels.TabDragStart, (_event, url: string) => setPendingDragUrl(url))
+  ipcMain.on(IpcChannels.TabDragStart, (event, url: string) => {
+    void event
+    setPendingDragUrl(url)
+  })
 
   // Tabs block inside sendSync until the chrome UI answers the prompt.
   ipcMain.on(
@@ -507,7 +511,8 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(IpcChannels.HistoryRemove, (_event, id: string) => {
+  ipcMain.handle(IpcChannels.HistoryRemove, (event, id: string) => {
+    void event
     removeHistory(id)
     return publishHistory((state) => context.send(IpcChannels.HistoryStateChanged, state))
   })
@@ -529,45 +534,53 @@ export function registerIpcHandlers(context: IpcContext): void {
   const publishDownloadsState = (): ReturnType<typeof publishDownloads> =>
     publishDownloads((state) => context.send(IpcChannels.DownloadsStateChanged, state))
 
-  ipcMain.handle(IpcChannels.DownloadsPause, (_event, id: string) => {
+  ipcMain.handle(IpcChannels.DownloadsPause, (event, id: string) => {
+    void event
     pauseDownload(id)
     return publishDownloadsState()
   })
 
-  ipcMain.handle(IpcChannels.DownloadsResume, (_event, id: string) => {
+  ipcMain.handle(IpcChannels.DownloadsResume, (event, id: string) => {
+    void event
     resumeDownload(id)
     return publishDownloadsState()
   })
 
-  ipcMain.handle(IpcChannels.DownloadsCancel, (_event, id: string) => {
+  ipcMain.handle(IpcChannels.DownloadsCancel, (event, id: string) => {
+    void event
     cancelDownload(id)
     return publishDownloadsState()
   })
 
-  ipcMain.handle(IpcChannels.DownloadsRemove, (_event, id: string) => {
+  ipcMain.handle(IpcChannels.DownloadsRemove, (event, id: string) => {
+    void event
     removeDownload(id)
     return publishDownloadsState()
   })
 
-  ipcMain.handle(IpcChannels.DownloadsCopyUrl, (_event, id: string) => {
+  ipcMain.handle(IpcChannels.DownloadsCopyUrl, (event, id: string) => {
+    void event
     const url = downloadUrl(id)
     if (url) clipboard.writeText(url)
     return url
   })
 
-  ipcMain.handle(IpcChannels.DownloadsOpenFolder, (_event, id: string) => openDownloadFolder(id))
+  ipcMain.handle(IpcChannels.DownloadsOpenFolder, (event, id: string) => {
+    void event
+    return openDownloadFolder(id)
+  })
 
   /* ---- chrome overlay -------------------------------------------------- */
 
   // The chrome view is normally clipped to its strip height; while a dropdown,
   // palette or menu is open it expands over the page so overlays are not cut off.
   ipcMain.handle(IpcChannels.UiOpenDownloads, () =>
-    context.getWindow(event as SenderEvent)?.sendToChrome(IpcChannels.UiOpenDownloads)
+    context.getWindow(event as any)?.sendToChrome(IpcChannels.UiOpenDownloads)
   )
-  ipcMain.handle(IpcChannels.UiSetOverlayOpen, (_event, open: boolean) =>
-    context.getWindow(event as SenderEvent)?.setOverlayOpen(open)
+  ipcMain.handle(IpcChannels.UiSetOverlayOpen, (event, open: boolean) =>
+    context.getWindow(event as any)?.setOverlayOpen(open)
   )
-  ipcMain.handle(IpcChannels.UiSetRailExpanded, (_event, expanded: boolean) =>
-    context.getWindow(event as SenderEvent)?.setRailExpanded(expanded)
+  ipcMain.handle(IpcChannels.UiSetRailExpanded, (event, expanded: boolean) =>
+    context.getWindow(event as any)?.setRailExpanded(expanded)
   )
 }
