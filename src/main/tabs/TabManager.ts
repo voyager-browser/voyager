@@ -360,6 +360,11 @@ export class TabManager {
     this.order = [...pinned, ...rest]
   }
 
+  private openExternalUrl(url: string): void {
+    if (!/^https?:\/\//i.test(url)) return
+    this.create({ url })
+  }
+
   private wireEvents(entry: TabEntry): void {
     const wc = entry.view.webContents
 
@@ -383,6 +388,24 @@ export class TabManager {
         event.preventDefault()
         this.create({ url })
       }
+    })
+
+    // Links clicked inside this tab's DevTools should open as Voyager tabs.
+    wc.on('devtools-open-url', (_event, url) => {
+      this.openExternalUrl(url)
+    })
+    wc.on('devtools-opened', () => {
+      const devtools = wc.devToolsWebContents
+      if (!devtools) return
+      devtools.setWindowOpenHandler(({ url }) => {
+        if (/^https?:\/\//i.test(url)) this.create({ url })
+        return { action: 'deny' }
+      })
+      devtools.on('will-navigate', (event, url) => {
+        if (!/^https?:\/\//i.test(url)) return
+        event.preventDefault()
+        this.create({ url })
+      })
     })
 
     // Browser shortcuts keep working while the page itself has focus.
