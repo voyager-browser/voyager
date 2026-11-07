@@ -1,3 +1,4 @@
+import type { WebContents } from 'electron'
 import type { WindowController } from './WindowController'
 
 const controllers = new Set<WindowController>()
@@ -28,4 +29,12 @@ export function activeWindow(): WindowController | null {
 
 export function allWindows(): WindowController[] {
   return [...controllers]
+}
+
+/** Find the window that owns a tab webContents. */
+export function windowForWebContents(webContents: WebContents): WindowController | null {
+  for (const controller of controllers) {
+    if (controller.tabs.tabIdForWebContents(webContents)) return controller
+  }
+  return null
 }

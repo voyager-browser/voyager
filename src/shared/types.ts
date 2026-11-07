@@ -103,6 +103,13 @@ export interface PermissionPromptCancelled {
   id: string
 }
 
+/** A synchronous `window.prompt()` waiting for a value in the chrome UI. */
+export interface PromptRequest {
+  id: string
+  message: string
+  defaultValue: string
+}
+
 /** Optional route passed when opening Settings from a site-info popover. */
 export interface SettingsTarget {
   page?: 'site-permissions'

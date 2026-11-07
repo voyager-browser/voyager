@@ -47,6 +47,10 @@ export const IpcChannels = {
   TabsReopenLastClosed: 'tabs:reopen-last-closed',
 
   TabDragStart: 'tab:drag-start',
+  TabPrompt: 'tab:prompt',
+
+  PromptRespond: 'prompt:respond',
+  UiPromptRequest: 'ui:prompt-request',
 
   BookmarksGetState: 'bookmarks:get-state',
   BookmarksAdd: 'bookmarks:add',
