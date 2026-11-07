@@ -87,8 +87,13 @@ function currentThemeState(): ThemeState {
 }
 
 function applyThemeMode(mode: ThemeMode): ThemeState {
-  nativeTheme.themeSource = mode
   setSettings('themeMode', mode)
+  if (nativeTheme.themeSource !== mode) {
+    nativeTheme.themeSource = mode
+    // Sites often cache theme-dependent assets such as favicons and media
+    // queries, so an explicit mode change refreshes every open page.
+    for (const window of allWindows()) window.tabs.reloadAll()
+  }
   return currentThemeState()
 }
 
@@ -206,14 +211,8 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IpcChannels.ThemeGet, (): ThemeState => currentThemeState())
 
   ipcMain.handle(IpcChannels.ThemeSet, (_event, mode: ThemeMode): ThemeState => {
-    const changed = nativeTheme.themeSource !== mode
     const state = applyThemeMode(mode)
     context.send(IpcChannels.ThemeChanged, state)
-    // Sites often cache theme-dependent assets such as favicons and media
-    // queries, so an explicit mode change refreshes every open page.
-    if (changed) {
-      for (const window of allWindows()) window.tabs.reloadAll()
-    }
     return state
   })
 
