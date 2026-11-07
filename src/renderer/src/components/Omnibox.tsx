@@ -7,7 +7,7 @@ import {
   buildSearchUrl,
   parseSuggestions
 } from '../../../shared/search'
-import { displayUrl } from '../../../shared/url'
+import { displayUrl, isNewTab } from '../../../shared/url'
 import { useActiveTab, useBrowserStore, useScopedSearchEngine } from '../state/browserStore'
 import type { SearchEngineId } from '../../../shared/search'
 import { PageInfoPopover } from './PageInfoPopover'
@@ -65,7 +65,7 @@ export function Omnibox(): React.JSX.Element {
   const prevUrlRef = useRef(activeUrl)
   useEffect(() => {
     if (prevUrlRef.current !== activeUrl) {
-      if (activeUrl !== 'about:blank' && activeUrl !== '') {
+      if (!isNewTab(activeUrl)) {
         setFocused(false)
         inputRef.current?.blur()
         setValue(displayUrl(activeUrl))
@@ -80,7 +80,7 @@ export function Omnibox(): React.JSX.Element {
 
   useEffect(() => {
     const handleFocus = (): void => {
-      setValue(activeUrl === 'about:blank' ? '' : activeUrl)
+      setValue(isNewTab(activeUrl) ? '' : activeUrl)
       setFocused(true)
       setPageInfoOpen(false)
       inputRef.current?.focus()
@@ -94,7 +94,7 @@ export function Omnibox(): React.JSX.Element {
   useEffect(() => {
     if (prevTabIdRef.current !== null && prevTabIdRef.current !== activeTabId) {
       if (focused) {
-        setValue(activeUrl === 'about:blank' ? '' : activeUrl)
+        setValue(isNewTab(activeUrl) ? '' : activeUrl)
         inputRef.current?.select()
       }
     }
@@ -151,7 +151,7 @@ export function Omnibox(): React.JSX.Element {
           value={value}
           placeholder="Search or enter address"
           onFocus={() => {
-            setValue(activeUrl === 'about:blank' ? '' : activeUrl)
+            setValue(isNewTab(activeUrl) ? '' : activeUrl)
             setFocused(true)
             setPageInfoOpen(false)
           }}

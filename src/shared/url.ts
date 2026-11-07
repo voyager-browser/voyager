@@ -53,7 +53,7 @@ export function safeParseUrl(raw: string): URL | null {
  */
 export function displayUrl(raw: string): string {
   const trimmed = raw.trim()
-  if (trimmed === '' || trimmed === 'about:blank') return ''
+  if (isNewTab(trimmed)) return ''
   const parsed = safeParseUrl(trimmed)
   if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
     return trimmed
@@ -86,8 +86,22 @@ export function securityLevelFor(url: string): SecurityLevel {
   return 'neutral'
 }
 
-/** Whether a URL represents an empty / new tab. */
+/** Whether a URL represents the start page or an otherwise empty tab. */
 export function isNewTab(url: string): boolean {
-  return url === DEFAULT_NEW_TAB_URL || url === ''
+  return (
+    url === '' ||
+    url === 'about:blank' ||
+    url === DEFAULT_NEW_TAB_URL ||
+    url.startsWith(`${DEFAULT_NEW_TAB_URL}?`)
+  )
 }
 
+/**
+ * Build the internal start page URL. The search engine travels in the query
+ * string so the page can render without access to privileged IPC APIs.
+ */
+export function startPageUrl(engine: string, incognito: boolean): string {
+  const params = new URLSearchParams({ engine })
+  if (incognito) params.set('incognito', '1')
+  return `${DEFAULT_NEW_TAB_URL}?${params.toString()}`
+}

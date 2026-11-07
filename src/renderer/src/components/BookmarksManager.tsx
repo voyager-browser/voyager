@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ChevronRight, Folder, FolderPlus, Globe, Plus, X } from 'lucide-react'
 import { useOverlaySignal } from '../lib/overlay'
+import { isNewTab } from '../../../shared/url'
 import { useActiveTab, useBrowserStore } from '../state/browserStore'
 import { useBookmarksStore } from '../state/bookmarksStore'
 import { BookmarkDialog } from './BookmarkDialog'
@@ -234,11 +235,7 @@ export function BookmarksManager({
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                disabled={
-                  activeTab === undefined ||
-                  activeTab.url === '' ||
-                  activeTab.url === 'about:blank'
-                }
+                disabled={activeTab === undefined || isNewTab(activeTab.url)}
                 onClick={() => {
                   if (activeTab) {
                     addBookmark(

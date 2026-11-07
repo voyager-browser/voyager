@@ -1,3 +1,4 @@
+import { isNewTab } from '../../src/shared/url'
 import { expect, test } from './fixtures'
 import { primaryKey, waitForRenderedText } from './helpers/voyager'
 
@@ -168,7 +169,7 @@ test('reopens a recently closed tab with the keyboard shortcut', async ({ voyage
   await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/home'))
 
   await voyager.chrome.locator('body').press(`${primaryKey()}+W`)
-  await expect.poll(async () => (await voyager.activeTab()).url).toBe('about:blank')
+  await expect.poll(async () => isNewTab((await voyager.activeTab()).url)).toBe(true)
 
   await voyager.chrome.locator('body').press(`${primaryKey()}+Shift+T`)
   await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/home'))
@@ -179,7 +180,7 @@ test('reopens a recently closed tab from the History menu', async ({ voyager, se
   await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/home'))
 
   await voyager.chrome.locator('body').press(`${primaryKey()}+W`)
-  await expect.poll(async () => (await voyager.activeTab()).url).toBe('about:blank')
+  await expect.poll(async () => isNewTab((await voyager.activeTab()).url)).toBe(true)
 
   const reopened = await voyager.app.evaluate(({ Menu }) => {
     const menu = Menu.getApplicationMenu()

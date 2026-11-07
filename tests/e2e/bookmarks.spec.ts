@@ -1,6 +1,7 @@
 import { expect, test } from './fixtures'
 import type { Page } from '@playwright/test'
 import type { BookmarkMoveInput } from '../../src/shared/types'
+import { isNewTab } from '../../src/shared/url'
 import { primaryKey } from './helpers/voyager'
 
 test('bookmark bar toggles from the keyboard', async ({ voyager }) => {
@@ -72,7 +73,7 @@ test('adds, dedupes, navigates and removes a bookmark', async ({ voyager, server
   expect(items[0].url).toBe(server.url('/home'))
 
   await voyager.chrome.locator('body').press(`${primaryKey()}+T`)
-  await expect.poll(async () => (await voyager.activeTab()).url).toBe('about:blank')
+  await expect.poll(async () => isNewTab((await voyager.activeTab()).url)).toBe(true)
 
   await voyager.navigate(server.url('/second'))
   await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/second'))

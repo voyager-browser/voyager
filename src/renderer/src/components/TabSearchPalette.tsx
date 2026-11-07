@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Search } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { useOverlaySignal } from '../lib/overlay'
+import { isNewTab } from '../../../shared/url'
 import { useBrowserStore } from '../state/browserStore'
 import { useUiStore } from '../state/uiStore'
 
 function prettifyUrl(url: string): string {
-  if (url === 'about:blank' || url === '') return 'New tab'
+  if (isNewTab(url)) return 'New tab'
   try {
     return new URL(url).host + new URL(url).pathname
   } catch {

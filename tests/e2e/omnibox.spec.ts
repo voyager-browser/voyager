@@ -1,5 +1,5 @@
 import { matchShortcut } from '../../src/shared/keyboard'
-import { displayUrl } from '../../src/shared/url'
+import { displayUrl, isNewTab } from '../../src/shared/url'
 import { expect, test } from './fixtures'
 import { interceptSearch, pressPageShortcut, searchRequests } from './helpers/voyager'
 
@@ -10,6 +10,7 @@ test('condenses the scheme, www prefix and site-root slash', () => {
   )
   expect(displayUrl('http://localhost:4321/')).toBe('localhost:4321')
   expect(displayUrl('about:blank')).toBe('')
+  expect(displayUrl('voyager://start?engine=duckduckgo')).toBe('')
 })
 
 test('shows a condensed active URL and clears it for a new tab', async ({ voyager, server }) => {
@@ -18,13 +19,13 @@ test('shows a condensed active URL and clears it for a new tab', async ({ voyage
   await expect(input).toHaveValue(displayUrl(server.url('/home')))
 
   await voyager.chrome.getByRole('button', { name: 'New tab', exact: true }).click()
-  await voyager.waitForTab((tab) => tab.url === 'about:blank')
+  await voyager.waitForTab((tab) => isNewTab(tab.url))
   await expect(input).toHaveValue('')
 })
 
 test('keeps every character typed after opening a new tab', async ({ voyager }) => {
   await voyager.chrome.getByRole('button', { name: 'New tab', exact: true }).click()
-  await voyager.waitForTab((tab) => tab.url === 'about:blank')
+  await voyager.waitForTab((tab) => isNewTab(tab.url))
 
   const input = voyager.chrome.locator('#omnibox-input')
   await expect(input).toBeFocused()

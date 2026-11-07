@@ -5,6 +5,7 @@ import { DEFAULT_NEW_TAB_URL, SETTINGS_URL } from '../../shared/constants'
 import { IpcChannels } from '../../shared/ipc-channels'
 import { matchShortcut, type BrowserAction } from '../../shared/keyboard'
 import type { BrowserState, NewTabRequest, TabState } from '../../shared/types'
+import { isNewTab, startPageUrl } from '../../shared/url'
 import { currentHistoryState, recordVisit, updateHistoryTitle } from '../history/history'
 import { openSettingsWindow } from '../window/settingsWindow'
 import type { WindowController } from '../window/WindowController'
@@ -20,10 +21,6 @@ interface TabEntry {
   muted: boolean
   hasAudio: boolean
   crashed: boolean
-}
-
-function isNewTab(url: string): boolean {
-  return url === DEFAULT_NEW_TAB_URL || url === ''
 }
 
 function isInternalUrl(url: string): boolean {
@@ -120,11 +117,13 @@ export class TabManager {
     this.window.attachTabView(entry.view)
     this.wireEvents(entry)
 
-    void entry.view.webContents.loadURL(request.url ?? DEFAULT_NEW_TAB_URL)
+    const requestedUrl = request.url ?? DEFAULT_NEW_TAB_URL
+    const url = isNewTab(requestedUrl) ? this.startUrl() : requestedUrl
+    void entry.view.webContents.loadURL(url)
 
     if (request.active ?? true) {
       this.activate(entry.id)
-      if (isNewTab(request.url ?? DEFAULT_NEW_TAB_URL)) {
+      if (isNewTab(url)) {
         this.window.focusOmnibox()
       }
     } else {
@@ -228,6 +227,15 @@ export class TabManager {
     }
   }
 
+  /** Rebuild any start-page tabs with the current engine and incognito state. */
+  refreshStartPages(): void {
+    for (const entry of this.entries.values()) {
+      if (isNewTab(entry.url) && !entry.view.webContents.isDestroyed()) {
+        void entry.view.webContents.loadURL(this.startUrl())
+      }
+    }
+  }
+
   stop(): void {
     this.activeWebContents()?.stop()
   }
@@ -239,6 +247,10 @@ export class TabManager {
     }
     const wc = this.activeWebContents()
     if (!wc) return
+    if (isNewTab(url)) {
+      void wc.loadURL(this.startUrl())
+      return
+    }
     if (url.startsWith('javascript:')) {
       let code = url.slice('javascript:'.length)
       try {
@@ -356,6 +368,11 @@ export class TabManager {
     const index = this.order.indexOf(id)
     if (index === -1) return
     for (const otherId of this.order.slice(index + 1)) this.close(otherId)
+  }
+
+  /** Resolve the internal start page for this window's profile. */
+  private startUrl(): string {
+    return startPageUrl(this.window.searchEngine, this.window.isIncognito)
   }
 
   /** Pinned tabs always win the leftmost block, in their relative order. */

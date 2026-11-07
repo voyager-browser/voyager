@@ -1,3 +1,4 @@
+import { isNewTab } from '../../src/shared/url'
 import { expect, test } from './fixtures'
 import { chromeBounds, windowCount } from './helpers/voyager'
 
@@ -9,7 +10,7 @@ test('boots a single empty tab in a frameless Voyager window', async ({ voyager 
   expect(state.tabs).toHaveLength(1)
   expect(state.tabs[0]).toMatchObject({
     title: 'New Tab',
-    url: 'about:blank',
+    url: expect.stringMatching(/^voyager:\/\/start(\?|$)/),
     loading: false,
     canGoBack: false,
     canGoForward: false,
@@ -34,8 +35,18 @@ test('boots a single empty tab in a frameless Voyager window', async ({ voyager 
   await expect(voyager.chrome.getByRole('button', { name: 'Settings' })).toBeEnabled()
   await expect(voyager.chrome.getByRole('button', { name: 'Downloads' })).toBeEnabled()
 
-  expect(voyager.tab.url()).toBe('about:blank')
+  expect(isNewTab(voyager.tab.url())).toBe(true)
   expect(voyager.tab).not.toBe(voyager.chrome)
+})
+
+test('renders the internal start page in a new tab', async ({ voyager }) => {
+  await expect(voyager.tab.locator('#start-search')).toBeVisible()
+  await expect(voyager.tab.locator('#start-search')).toHaveAttribute(
+    'placeholder',
+    'Search with DuckDuckGo'
+  )
+  await expect(voyager.tab.getByRole('heading', { name: 'Voyager' })).toBeVisible()
+  await expect(voyager.tab.getByText('Incognito')).toHaveCount(0)
 })
 
 test('sizes the chrome strip above the active tab content', async ({ voyager }) => {

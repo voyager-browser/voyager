@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Folder } from 'lucide-react'
+import { isNewTab } from '../../../shared/url'
 import { useBookmarksStore } from '../state/bookmarksStore'
 import { useActiveTab, useBrowserStore } from '../state/browserStore'
 import { useUiStore } from '../state/uiStore'
@@ -88,7 +89,7 @@ export function BookmarksBar(): React.JSX.Element | null {
   const rootMenuItems = (): ContextMenuItem[] => [
     {
       label: 'Add Page',
-      disabled: activeTab === undefined || activeTab.url === '' || activeTab.url === 'about:blank',
+      disabled: activeTab === undefined || isNewTab(activeTab.url),
       onSelect: () => {
         if (activeTab) addBookmark(activeTab.title || activeTab.url, activeTab.url, activeTab.favicon)
       }

@@ -1,3 +1,4 @@
+import { isNewTab } from '../../src/shared/url'
 import { expect, test } from './fixtures'
 import { pressPageShortcut, primaryKey } from './helpers/voyager'
 
@@ -9,7 +10,7 @@ test('page-level shortcuts create, close and reopen tabs', async ({ voyager, ser
   const count0 = (await voyager.state()).tabs.length
   await pressPageShortcut(voyager, 't', ['meta'])
   await expect.poll(async () => (await voyager.state()).tabs.length).toBe(count0 + 1)
-  expect(['', 'about:blank']).toContain((await voyager.activeTab()).url)
+  expect(isNewTab((await voyager.activeTab()).url)).toBe(true)
 
   await pressPageShortcut(voyager, 'w', ['meta'])
   await expect.poll(async () => (await voyager.state()).tabs.length).toBe(count0)
@@ -17,9 +18,7 @@ test('page-level shortcuts create, close and reopen tabs', async ({ voyager, ser
 
   await pressPageShortcut(voyager, 't', ['meta', 'shift'])
   await expect.poll(async () => (await voyager.state()).tabs.length).toBe(count0 + 1)
-  await expect
-    .poll(async () => ['', 'about:blank'].includes((await voyager.activeTab()).url))
-    .toBe(true)
+  await expect.poll(async () => isNewTab((await voyager.activeTab()).url)).toBe(true)
 })
 
 test('page-level tab navigation shortcuts', async ({ voyager, server }) => {
@@ -137,12 +136,7 @@ test('chrome-level tab shortcuts on new/close/reload etc.', async ({ voyager, se
   await voyager.navigate(server.url('/home'))
   // Create a new blank tab and focus the omnibox with Cmd+L.
   await voyager.chrome.locator('body').press(`${primaryKey()}+T`)
-  await expect
-    .poll(async () => {
-      const url = (await voyager.activeTab()).url
-      return url === 'about:blank' || url === ''
-    })
-    .toBe(true)
+  await expect.poll(async () => isNewTab((await voyager.activeTab()).url)).toBe(true)
 
   await voyager.chrome.locator('body').press(`${primaryKey()}+L`)
   await expect(voyager.chrome.locator('#omnibox-input')).toBeFocused()
