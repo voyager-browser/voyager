@@ -31,6 +31,7 @@ test('window.prompt renders the message and returns the entered value', async ({
 
   const dialog = voyager.chrome.getByRole('dialog')
   await expect(dialog).toBeVisible()
+  await expect(voyager.chrome.locator('#prompt-title')).toHaveText('127.0.0.1 would like to ask:')
   await expect(voyager.chrome.locator('#prompt-message')).toHaveText('What is your name?')
 
   const input = voyager.chrome.locator('#prompt-input')
@@ -51,6 +52,7 @@ test('cancelling a prompt returns null and a blank message still shows an input'
 
   const dialog = voyager.chrome.getByRole('dialog')
   await expect(dialog).toBeVisible()
+  await expect(voyager.chrome.locator('#prompt-title')).toHaveText('127.0.0.1 would like to ask:')
   await expect(voyager.chrome.locator('#prompt-message')).toHaveCount(0)
   await expect(voyager.chrome.locator('#prompt-input')).toHaveValue('')
 

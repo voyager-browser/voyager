@@ -8,6 +8,7 @@ interface PromptEntry {
   id: string
   window: WindowController
   event: IpcMainEvent
+  domain: string
   message: string
   defaultValue: string
 }
@@ -51,6 +52,7 @@ function showNext(window: WindowController): void {
   window.focusChrome()
   window.sendToChrome(IpcChannels.UiPromptRequest, {
     id: entry.id,
+    domain: entry.domain,
     message: entry.message,
     defaultValue: entry.defaultValue
   } satisfies PromptRequest)
@@ -69,6 +71,16 @@ function settle(entry: PromptEntry, value: string | null): void {
   showNext(entry.window)
 }
 
+function promptDomain(url: string): string {
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname) return parsed.hostname
+  } catch {
+    // Fall through for non-URL or opaque origins.
+  }
+  return 'This page'
+}
+
 /** Queue a synchronous prompt request from a tab renderer. */
 export function requestPrompt(
   window: WindowController,
@@ -81,6 +93,7 @@ export function requestPrompt(
     id: randomUUID(),
     window,
     event,
+    domain: promptDomain(event.sender.getURL()),
     message,
     defaultValue
   }

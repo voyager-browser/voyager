@@ -46,8 +46,7 @@ export function PromptDialog(): React.JSX.Element | null {
       <form
         role="dialog"
         aria-modal="true"
-        aria-labelledby={request.message ? 'prompt-message' : undefined}
-        aria-label={request.message ? undefined : 'JavaScript prompt'}
+        aria-labelledby="prompt-title"
         className="pointer-events-auto w-[420px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl shadow-black/30"
         onSubmit={(event) => {
           event.preventDefault()
@@ -62,6 +61,9 @@ export function PromptDialog(): React.JSX.Element | null {
         }}
       >
         <div className="space-y-3 px-4 py-4">
+          <p id="prompt-title" className="text-[13px] font-semibold text-fg">
+            {request.domain} would like to ask:
+          </p>
           {request.message !== '' && (
             <p id="prompt-message" className="whitespace-pre-wrap break-words text-[13px] text-fg">
               {request.message}
