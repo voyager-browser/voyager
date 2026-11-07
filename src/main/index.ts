@@ -95,7 +95,7 @@ app.whenReady().then(async (): Promise<void> => {
     primeContentBlocking(app.getPath('userData'))
   }
   attachContentBlocking(session.defaultSession)
-  controller = new WindowController()
+  controller = new WindowController({ incognito: getSettings('incognito', false) === true })
   registerWindow(controller)
   createAppMenu(() => activeWindow())
   autoUpdater.checkForUpdatesAndNotify()
