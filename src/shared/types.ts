@@ -106,6 +106,7 @@ export interface PermissionPromptCancelled {
 /** A synchronous `window.prompt()` waiting for a value in the chrome UI. */
 export interface PromptRequest {
   id: string
+  domain: string
   message: string
   defaultValue: string
 }
