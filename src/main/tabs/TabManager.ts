@@ -173,8 +173,9 @@ export class TabManager {
       if (nextId) {
         this.activate(nextId)
       } else {
-        // Never leave the window tab-less; fall back to a fresh tab.
-        this.create()
+        // Closing the last tab closes the window instead of reopening a blank tab.
+        this.window.window.close()
+        return
       }
     }
     this.broadcast()
