@@ -320,7 +320,7 @@ export async function pressPageShortcut(
         return (
           !contents.isDestroyed() &&
           !url.startsWith('file:') &&
-          !url.startsWith('voyager://settings') &&
+          !/^voyager:\/\/settings([#?/]|$)/.test(url) &&
           !url.startsWith('devtools:')
         )
       })

@@ -39,8 +39,7 @@ export function StartPage(): React.JSX.Element {
         <header className="mb-8 flex flex-col items-center gap-3">
           <img
             src={voyagerIcon}
-            alt=""
-            aria-hidden="true"
+            alt="Voyager icon"
             className="h-16 w-16 rounded-2xl shadow-lg shadow-black/20"
             draggable={false}
           />
