@@ -10,7 +10,7 @@ test('boots a single empty tab in a frameless Voyager window', async ({ voyager 
   expect(state.tabs).toHaveLength(1)
   expect(state.tabs[0]).toMatchObject({
     title: 'New Tab',
-    url: expect.stringMatching(/^voyager:\/\/start(\?|$)/),
+    url: expect.stringMatching(/^voyager:\/\/start\/?(\?|$)/),
     loading: false,
     canGoBack: false,
     canGoForward: false,

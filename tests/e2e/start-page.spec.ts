@@ -11,7 +11,9 @@ test('start page searches with the configured engine', async ({ voyager, server 
   await input.fill('voyager browser')
   await input.press('Enter')
 
-  await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/search'))
+  await expect
+    .poll(async () => (await voyager.activeTab()).url)
+    .toBe(`${server.url('/search')}?q=voyager%20browser`)
   await expect(voyager.tab.locator('#query')).toHaveText('voyager browser')
   expect(await searchRequests(voyager.app)).toHaveLength(1)
 })
