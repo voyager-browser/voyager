@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Voyager">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#03110F"/>
+      <stop offset="0.55" stop-color="#07302B"/>
+      <stop offset="1" stop-color="#052C3A"/>
+    </linearGradient>
+    <radialGradient id="auroraA" cx="0" cy="0" r="1" gradientTransform="translate(250 190) rotate(35) scale(540)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#34D399" stop-opacity="0.4"/>
+      <stop offset="0.6" stop-color="#34D399" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#34D399" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="auroraB" cx="0" cy="0" r="1" gradientTransform="translate(800 760) rotate(-140) scale(600)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22D3EE" stop-opacity="0.32"/>
+      <stop offset="0.6" stop-color="#22D3EE" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#22D3EE" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="needleRight" x1="748" y1="214" x2="512" y2="790" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ECFDF5"/>
+      <stop offset="0.5" stop-color="#6EE7B7"/>
+      <stop offset="1" stop-color="#10B981"/>
+    </linearGradient>
+    <linearGradient id="needleLeft" x1="276" y1="214" x2="512" y2="790" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.65" stop-color="#D1FAE5"/>
+      <stop offset="1" stop-color="#A7F3D0"/>
+    </linearGradient>
+    <filter id="softGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="16" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <clipPath id="appShape">
+      <rect width="1024" height="1024" rx="228"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#appShape)">
+    <rect width="1024" height="1024" fill="url(#background)"/>
+    <rect width="1024" height="1024" fill="url(#auroraA)"/>
+    <rect width="1024" height="1024" fill="url(#auroraB)"/>
+
+    <!-- Compass bezel -->
+    <circle cx="512" cy="512" r="368" fill="none" stroke="#D1FAE5" stroke-opacity="0.24" stroke-width="14"/>
+
+    <!-- Compass needle / Voyager V -->
+    <path d="M512 744 L276 200" fill="none" stroke="url(#needleLeft)" stroke-width="164" stroke-linecap="round"/>
+    <path d="M512 744 L748 200" fill="none" stroke="url(#needleRight)" stroke-width="164" stroke-linecap="round"/>
+    <path d="M512 744 L276 200" fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="28" stroke-linecap="round"/>
+
+    <!-- Pivot below the V -->
+    <circle cx="512" cy="808" r="40" fill="#041A17" stroke="#6EE7B7" stroke-width="14"/>
+    <circle cx="512" cy="808" r="12" fill="#34D399" filter="url(#softGlow)"/>
+
+    <!-- Stars -->
+    <circle cx="190" cy="200" r="9" fill="#D1FAE5" fill-opacity="0.85"/>
+    <circle cx="834" cy="200" r="5" fill="#D1FAE5" fill-opacity="0.5"/>
+    <circle cx="190" cy="824" r="5" fill="#D1FAE5" fill-opacity="0.4"/>
+    <circle cx="834" cy="824" r="7" fill="#D1FAE5" fill-opacity="0.6"/>
+  </g>
+</svg>
