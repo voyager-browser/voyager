@@ -81,6 +81,12 @@ export function BookmarksManager({
           void window.voyager.bookmarks.openInNewWindow(bookmark.url)
         }
       },
+      {
+        label: 'Open in Incognito Window',
+        onSelect: () => {
+          void window.voyager.bookmarks.openInIncognitoWindow(bookmark.url)
+        }
+      },
       { separator: true },
       {
         label: 'Edit…',

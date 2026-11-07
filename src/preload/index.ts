@@ -143,6 +143,8 @@ const api = {
       ipcRenderer.invoke(IpcChannels.BookmarksConsumeDragUrl),
     openInNewWindow: (url: string): Promise<void> =>
       ipcRenderer.invoke(IpcChannels.BookmarksOpenWindow, url),
+    openInIncognitoWindow: (url: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannels.BookmarksOpenIncognitoWindow, url),
     toggleBar: (): Promise<BookmarksState> => ipcRenderer.invoke(IpcChannels.BookmarksToggleBar),
     clear: (): Promise<BookmarksState> => ipcRenderer.invoke(IpcChannels.BookmarksClear),
     onStateChanged: (listener: (state: BookmarksState) => void): Unsubscribe =>
@@ -165,6 +167,13 @@ const api = {
       subscribe<PermissionPromptCancelled>(IpcChannels.PermissionsRequestCancelled, listener),
     onStateChanged: (listener: (state: SitePermissionsState) => void): Unsubscribe =>
       subscribe<SitePermissionsState>(IpcChannels.PermissionsStateChanged, listener)
+  },
+
+  windows: {
+    open: (url?: string): Promise<void> => ipcRenderer.invoke(IpcChannels.WindowsOpen, url),
+    openIncognito: (url?: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannels.WindowsOpenIncognito, url),
+    getState: (): Promise<{ incognito: boolean }> => ipcRenderer.invoke(IpcChannels.WindowsGetState)
   },
 
   history: {

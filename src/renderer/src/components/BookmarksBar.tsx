@@ -91,11 +91,19 @@ export function BookmarksBar(): React.JSX.Element | null {
       label: 'Add Page',
       disabled: activeTab === undefined || isNewTab(activeTab.url),
       onSelect: () => {
-        if (activeTab) addBookmark(activeTab.title || activeTab.url, activeTab.url, activeTab.favicon)
+        if (activeTab)
+          addBookmark(activeTab.title || activeTab.url, activeTab.url, activeTab.favicon)
       }
     },
     { label: 'Add Folder…', onSelect: () => setDialog({ kind: 'add-folder', parentId: null }) },
     { label: 'Open Bookmarks Manager', onSelect: openManager },
+    { separator: true },
+    {
+      label: 'New Incognito Window',
+      onSelect: () => {
+        void window.voyager.windows.openIncognito()
+      }
+    },
     { separator: true },
     { label: 'Paste', disabled: clipboard === null, onSelect: () => paste(null) }
   ]
@@ -114,6 +122,12 @@ export function BookmarksBar(): React.JSX.Element | null {
         label: 'Open in New Window',
         onSelect: () => {
           void window.voyager.bookmarks.openInNewWindow(bookmark.url)
+        }
+      },
+      {
+        label: 'Open in Incognito Window',
+        onSelect: () => {
+          void window.voyager.bookmarks.openInIncognitoWindow(bookmark.url)
         }
       },
       { separator: true },

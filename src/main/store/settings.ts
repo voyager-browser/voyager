@@ -13,11 +13,8 @@ export interface SettingsShape {
   clearCache?: boolean
   clearSitePermissions?: boolean
   openDownloadsWhenDone?: boolean
-  incognito?: boolean
   searchEngine?: SearchEngineId
   restoreSession?: boolean
   verticalTabs?: boolean
   contentBlocking?: boolean
-
-
 }

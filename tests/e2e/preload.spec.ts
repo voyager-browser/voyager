@@ -14,7 +14,8 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
     history: Object.keys(window.voyager.history),
     downloads: Object.keys(window.voyager.downloads),
     permissions: Object.keys(window.voyager.permissions),
-    ui: Object.keys(window.voyager.ui)
+    ui: Object.keys(window.voyager.ui),
+    windows: Object.keys(window.voyager.windows)
   }))
 
   expect(api.platform).toBe(process.platform)
@@ -31,7 +32,8 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
     'settings',
     'tabs',
     'theme',
-    'ui'
+    'ui',
+    'windows'
   ])
   expect(api.settings).toEqual(['get', 'open', 'set', 'onChanged'])
   expect(api.browsingData).toEqual(['clear'])
@@ -42,6 +44,7 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
   expect(api.navigation).toEqual(
     expect.arrayContaining(['go', 'back', 'forward', 'reload', 'findInPage', 'zoomIn'])
   )
+  expect(api.windows).toEqual(expect.arrayContaining(['open', 'openIncognito', 'getState']))
   expect(api.permissions).toEqual(
     expect.arrayContaining([
       'getState',

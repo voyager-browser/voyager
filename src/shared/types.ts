@@ -211,9 +211,7 @@ export interface UserPreferences {
   clearCache: boolean
   clearSitePermissions: boolean
   openDownloadsWhenDone: boolean
-  /** Whether the browser window runs in incognito mode (in-memory profile). */
-  incognito?: boolean
-  /** Active search engine; incognito contexts fall back to the default. */
+  /** Active search engine; incognito windows fall back to the default. */
   searchEngine?: SearchEngineId
   /** Reopen the tabs from the previous session on startup (default off). */
   restoreSession: boolean
