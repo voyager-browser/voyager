@@ -7,6 +7,7 @@ import type {
   BookmarksState,
   NewBookmarkFolderInput
 } from '../../../shared/types'
+import { isNewTab } from '../../../shared/url'
 import { useBrowserStore } from './browserStore'
 
 interface BookmarksStore extends BookmarksState {
@@ -54,7 +55,7 @@ export const useBookmarksStore = create<BookmarksStore>()((set, get) => ({
   bookmarkActivePage: () => {
     const browser = useBrowserStore.getState()
     const tab = browser.tabs.find((candidate) => candidate.id === browser.activeTabId)
-    if (!tab || tab.url === '' || tab.url === 'about:blank') return
+    if (!tab || isNewTab(tab.url)) return
     const existing = get().items.find(
       (item) => item.url === tab.url && (item.folderId ?? null) === null
     )

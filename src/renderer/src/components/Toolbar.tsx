@@ -1,5 +1,6 @@
 import { ArrowLeft, ArrowRight, Download, RotateCw, Star, X } from 'lucide-react'
 import { cn } from '../lib/cn'
+import { isNewTab } from '../../../shared/url'
 import { useActiveTab, useBrowserStore } from '../state/browserStore'
 import { useBookmarksStore, useIsBookmarked } from '../state/bookmarksStore'
 import { useDownloadsStore } from '../state/downloadsStore'
@@ -76,8 +77,7 @@ export function Toolbar(): React.JSX.Element {
   const loading = activeTab?.loading ?? false
   const canGoBack = activeTab?.canGoBack ?? false
   const canGoForward = activeTab?.canGoForward ?? false
-  const bookmarkDisabled =
-    activeTab === undefined || activeTab.url === '' || activeTab.url === 'about:blank'
+  const bookmarkDisabled = activeTab === undefined || isNewTab(activeTab.url)
 
   const toggleBookmark = (): void => {
     if (activeTab === undefined) return

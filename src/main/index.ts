@@ -75,7 +75,18 @@ app.whenReady().then(async (): Promise<void> => {
   if (!hasSingleInstanceLock) return
 
   protocol.registerFileProtocol('voyager', (request, callback) => {
-    const url = request.url.replace('voyager://', '')
+    // Start pages carry their settings in the query string, which must not be
+    // treated as part of the file path. Hashes never reach this handler.
+    const url = request.url.replace('voyager://', '').split(/[?#]/, 1)[0]
+    if (url === 'start' || url === 'start/') {
+      callback({ path: join(__dirname, '../renderer/', 'start.html') })
+      return
+    }
+    if (url.startsWith('start/')) {
+      const relative = url.substring('start/'.length)
+      callback({ path: join(__dirname, '../renderer/', relative) })
+      return
+    }
     if (url === 'settings' || url === 'settings/') {
       callback({ path: join(__dirname, '../renderer/', 'settings.html') })
       return

@@ -1,3 +1,4 @@
+import { isNewTab } from '../../src/shared/url'
 import { expect, test } from './fixtures'
 
 test('restores persisted tabs and active index', async ({ launchVoyager, server }) => {
@@ -44,7 +45,7 @@ test('ignores a saved session when restore is disabled (the default)', async ({
 
   const state = await voyager.state()
   expect(state.tabs.length).toBe(1)
-  expect(state.tabs[0].url).toBe('about:blank')
+  expect(isNewTab(state.tabs[0].url)).toBe(true)
 
   await voyager.close()
 })
@@ -56,8 +57,8 @@ test('falls back to a blank tab when no session is saved', async ({ launchVoyage
 
   const state = await voyager.state()
   expect(state.tabs.length).toBe(1)
-  expect(state.tabs[0].url).toBe('about:blank')
-  expect((await voyager.activeTab()).url).toBe('about:blank')
+  expect(isNewTab(state.tabs[0].url)).toBe(true)
+  expect(isNewTab((await voyager.activeTab()).url)).toBe(true)
 
   await voyager.close()
 })

@@ -1,3 +1,4 @@
+import { isNewTab } from '../../src/shared/url'
 import { expect, test } from './fixtures'
 import { primaryKey, waitForRenderedText } from './helpers/voyager'
 
@@ -20,21 +21,11 @@ test('creates new tabs and activates the latest one', async ({ voyager }) => {
 
   await voyager.chrome.getByRole('button', { name: 'New tab', exact: true }).click()
   await expect.poll(async () => (await voyager.state()).tabs.length).toBe(tabsBefore + 1)
-  await expect
-    .poll(async () => {
-      const url = (await voyager.activeTab()).url
-      return url === 'about:blank' || url === ''
-    })
-    .toBe(true)
+  await expect.poll(async () => isNewTab((await voyager.activeTab()).url)).toBe(true)
 
   await voyager.chrome.locator('body').press(`${primaryKey()}+T`)
   await expect.poll(async () => (await voyager.state()).tabs.length).toBe(tabsBefore + 2)
-  await expect
-    .poll(async () => {
-      const url = (await voyager.activeTab()).url
-      return url === 'about:blank' || url === ''
-    })
-    .toBe(true)
+  await expect.poll(async () => isNewTab((await voyager.activeTab()).url)).toBe(true)
 })
 
 test('shows separators between adjacent inactive horizontal tabs', async ({ voyager }) => {
@@ -75,12 +66,7 @@ test('closes tabs and recovers by reopening the last one', async ({ voyager, ser
 
   await voyager.chrome.getByRole('button', { name: 'Close Voyager Test Home' }).click()
   await expect.poll(async () => (await voyager.state()).tabs.length).toBe(1)
-  await expect
-    .poll(async () => {
-      const url = (await voyager.activeTab()).url
-      return url === 'about:blank' || url === ''
-    })
-    .toBe(true)
+  await expect.poll(async () => isNewTab((await voyager.activeTab()).url)).toBe(true)
 
   await voyager.chrome.locator('body').press(`${primaryKey()}+Shift+T`)
   await expect.poll(async () => (await voyager.state()).tabs.length).toBe(2)
@@ -181,9 +167,7 @@ test('closes other and right-hand tabs via the tab API', async ({ voyager, serve
 
   await voyager.chrome.locator('body').press(`${primaryKey()}+Shift+T`)
   await expect.poll(async () => (await voyager.state()).tabs.length).toBe(2)
-  await expect
-    .poll(async () => ['', 'about:blank'].includes((await voyager.activeTab()).url))
-    .toBe(true)
+  await expect.poll(async () => isNewTab((await voyager.activeTab()).url)).toBe(true)
 
   await voyager.chrome.evaluate(async () => {
     const state = await window.voyager.tabs.getState()

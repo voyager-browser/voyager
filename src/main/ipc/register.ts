@@ -182,6 +182,8 @@ export function registerIpcHandlers(context: IpcContext): void {
           throw new Error(`Unknown search engine: ${String(value)}`)
         }
         setSettings('searchEngine', value)
+        // Open start pages show the active engine; rebuild them in place.
+        for (const window of allWindows()) window.tabs.refreshStartPages()
         return respond()
       }
       if (key === 'incognito') {

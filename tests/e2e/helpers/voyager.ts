@@ -7,7 +7,9 @@ import {
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
+import { DEFAULT_NEW_TAB_URL } from '../../../src/shared/constants'
 import type { BrowserState, TabState } from '../../../src/shared/types'
+import { isNewTab } from '../../../src/shared/url'
 import type { TestServer } from './server'
 
 export type Modifier = 'shift' | 'control' | 'alt' | 'meta'
@@ -308,6 +310,7 @@ export async function pressPageShortcut(
   )
   const state = await voyager.state()
   const activeUrl = state.tabs.find((tab) => tab.id === state.activeTabId)?.url ?? ''
+  const wantsBlank = !activeUrl || isNewTab(activeUrl)
   await voyager.app.evaluate(
     ({ BaseWindow, webContents }, input) => {
       const window = BaseWindow.getAllWindows().find((candidate) => !candidate.isDestroyed())
@@ -317,14 +320,18 @@ export async function pressPageShortcut(
         return (
           !contents.isDestroyed() &&
           !url.startsWith('file:') &&
-          !url.startsWith('voyager:') &&
+          !url.startsWith('voyager://settings') &&
           !url.startsWith('devtools:')
         )
       })
-      const wantsBlank = !input.activeUrl || input.activeUrl === 'about:blank'
+      const isBlankUrl = (url: string): boolean =>
+        url === '' ||
+        url === 'about:blank' ||
+        url === input.startUrl ||
+        url.startsWith(`${input.startUrl}?`)
       const target =
-        (wantsBlank
-          ? candidates.find((contents) => ['', 'about:blank'].includes(contents.getURL()))
+        (input.wantsBlank
+          ? candidates.find((contents) => isBlankUrl(contents.getURL()))
           : candidates.find((contents) => contents.getURL() === input.activeUrl)) ??
         candidates.find((contents) => contents.isFocused()) ??
         candidates[0]
@@ -339,7 +346,7 @@ export async function pressPageShortcut(
       target.sendInputEvent({ type: 'keyDown', keyCode: kc, modifiers: input.modifiers })
       target.sendInputEvent({ type: 'keyUp', keyCode: kc, modifiers: input.modifiers })
     },
-    { keyCode, modifiers: normalized, activeUrl }
+    { keyCode, modifiers: normalized, activeUrl, wantsBlank, startUrl: DEFAULT_NEW_TAB_URL }
   )
 }
 

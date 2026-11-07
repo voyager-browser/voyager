@@ -3,7 +3,9 @@ import { BaseWindow, WebContentsView, session, type WebContents } from 'electron
 import { randomUUID } from 'node:crypto'
 import { IpcChannels } from '../../shared/ipc-channels'
 import type { BrowserState } from '../../shared/types'
-import { INCOGNITO_PARTITION_PREFIX } from '../../shared/constants'
+import { DEFAULT_NEW_TAB_URL, INCOGNITO_PARTITION_PREFIX } from '../../shared/constants'
+import { DEFAULT_SEARCH_ENGINE, isSearchEngineId, type SearchEngineId } from '../../shared/search'
+import { isNewTab } from '../../shared/url'
 import { sessionStore, getSettings } from '../store'
 import { attachDownloadsTracking } from '../downloads/downloads'
 import { attachPermissionHandlers } from '../permissions/permissions'
@@ -116,6 +118,13 @@ export class WindowController {
     return this.incognito ? this.incognitoPartition : null
   }
 
+  /** Search engine that applies to new tabs in this window. */
+  get searchEngine(): SearchEngineId {
+    if (this.incognito) return DEFAULT_SEARCH_ENGINE
+    const stored = getSettings<SearchEngineId>('searchEngine', DEFAULT_SEARCH_ENGINE)
+    return isSearchEngineId(stored) ? stored : DEFAULT_SEARCH_ENGINE
+  }
+
   /** Switch the window between normal and incognito browsing profiles. */
   setIncognito(incognito: boolean): void {
     this.incognito = incognito
@@ -126,6 +135,7 @@ export class WindowController {
       this.incognitoPartition = `${INCOGNITO_PARTITION_PREFIX}${randomUUID()}`
     }
     this.attachIncognitoSession()
+    this.tabs.refreshStartPages()
   }
 
   /**
@@ -192,7 +202,7 @@ export class WindowController {
   bookmarkActivePage(): void {
     const state = this.tabs.snapshot()
     const tab = state.tabs.find((candidate) => candidate.id === state.activeTabId)
-    if (!tab || tab.url === '' || tab.url === 'about:blank') return
+    if (!tab || isNewTab(tab.url)) return
     const existing = currentBookmarksState().items.find(
       (item) => item.url === tab.url && (item.folderId ?? null) === null
     )
@@ -335,7 +345,10 @@ export class WindowController {
     }
     const ids: string[] = []
     for (const tab of tabs) {
-      const id = this.tabs.create({ url: tab.url, active: false })
+      // Start-page URLs contain settings captured at save time; recreate them
+      // from the current engine instead of replaying stale query parameters.
+      const request = isNewTab(tab.url) ? {} : { url: tab.url }
+      const id = this.tabs.create({ ...request, active: false })
       if (tab.pinned) this.tabs.pinToggle(id)
       ids.push(id)
     }
@@ -350,7 +363,7 @@ export class WindowController {
     if (this.disposed) return
     if (getSettings('restoreSession', false) !== true) return
     const entries = state.tabs.map((tab) => ({
-      url: tab.url,
+      url: isNewTab(tab.url) ? DEFAULT_NEW_TAB_URL : tab.url,
       title: tab.title,
       pinned: tab.pinned
     }))

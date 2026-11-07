@@ -1,5 +1,6 @@
 import { Copy, PanelLeft, Pin, Plus, RotateCw, Volume2, VolumeX, X } from 'lucide-react'
 import type { TabState } from '../../../shared/types'
+import { isNewTab } from '../../../shared/url'
 import { useBrowserStore } from '../state/browserStore'
 import type { ContextMenuItem } from './ui/ContextMenu'
 
@@ -43,7 +44,7 @@ export function buildTabMenuItems(tab: TabState, options: TabMenuOptions): Conte
     {
       label: 'Copy URL',
       icon: <Copy className="h-3.5 w-3.5" />,
-      disabled: tab.url === 'about:blank' || tab.url === '',
+      disabled: isNewTab(tab.url),
       onSelect: () => store.copyTabUrl(tab.id)
     },
     { separator: true },
