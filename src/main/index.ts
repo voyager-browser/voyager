@@ -7,7 +7,13 @@ import { attachContentBlocking, primeContentBlocking } from './contentBlocking/c
 import { flushAllStores, getSettings } from './store'
 
 import { WindowController } from './window/WindowController'
-import { registerWindow } from './window/windowRegistry'
+import {
+  activeWindow,
+  allWindows,
+  registerWindow,
+  windowForAnyWebContents
+} from './window/windowRegistry'
+import { createWindow, createIncognitoWindow } from './window/createWindow'
 import { attachDownloadsTracking } from './downloads/downloads'
 import { IpcChannels } from '../shared/ipc-channels'
 import { findLaunchUrl } from './launch/urlArgument'
@@ -41,11 +47,12 @@ if (!hasSingleInstanceLock) {
   // command-line argument; focus the window and open the link as a new tab.
   app.on('second-instance', (_event, argv) => {
     const url = findLaunchUrl(argv)
+    const window = activeWindow()
     if (url) {
-      if (controller) controller.openUrl(url)
+      if (window) window.openUrl(url)
       else pendingUrl = url
     } else {
-      controller?.window.focus()
+      window?.window.focus()
     }
   })
 }
@@ -53,15 +60,22 @@ if (!hasSingleInstanceLock) {
 // macOS delivers links (including default-browser clicks) through open-url.
 app.on('open-url', (event, url) => {
   event.preventDefault()
-  if (controller) controller.openUrl(url)
+  const window = activeWindow()
+  if (window) window.openUrl(url)
   else pendingUrl = url
 })
 
 registerIpcHandlers({
   send: (channel, payload) => {
-    controller?.sendToChrome(channel, payload)
+    for (const window of allWindows()) window.sendToChrome(channel, payload)
   },
-  getWindow: () => controller
+  getWindow: (event) => windowForAnyWebContents(event?.sender) ?? activeWindow(),
+  openWindow: (url) => {
+    createWindow(url)
+  },
+  openIncognitoWindow: (url) => {
+    createIncognitoWindow(url)
+  }
 })
 
 // Persist any debounced store writes before the process goes away.
@@ -81,35 +95,28 @@ app.whenReady().then(async (): Promise<void> => {
     primeContentBlocking(app.getPath('userData'))
   }
   attachContentBlocking(session.defaultSession)
-  controller = new WindowController({ incognito: getSettings('incognito', false) === true })
+  controller = new WindowController()
   registerWindow(controller)
-  createAppMenu(() => controller)
+  createAppMenu(() => activeWindow())
   autoUpdater.checkForUpdatesAndNotify()
   controller.onDestroyed(() => {
-    controller = null
+    if (controller?.window.isDestroyed()) controller = null
   })
-  attachDownloadsTracking(session.defaultSession, (state) =>
-    controller?.sendToChrome(IpcChannels.DownloadsStateChanged, state)
-  )
+  attachDownloadsTracking(session.defaultSession, (state) => {
+    for (const window of allWindows()) window.sendToChrome(IpcChannels.DownloadsStateChanged, state)
+  })
   const initialUrl = pendingUrl
   pendingUrl = null
   await controller.show(initialUrl ?? undefined)
   if (pendingUrl) {
-    controller.openUrl(pendingUrl)
+    activeWindow()?.openUrl(pendingUrl)
     pendingUrl = null
   }
 })
 
 app.on('activate', () => {
-  if (controller === null) {
-    void (async () => {
-      controller = new WindowController({ incognito: getSettings('incognito', false) === true })
-      registerWindow(controller)
-      controller.onDestroyed(() => {
-        controller = null
-      })
-      await controller.show()
-    })()
+  if (allWindows().length === 0) {
+    createWindow()
   }
 })
 

@@ -65,6 +65,7 @@ export const IpcChannels = {
   BookmarksPaste: 'bookmarks:paste',
   BookmarksConsumeDragUrl: 'bookmarks:consume-drag-url',
   BookmarksOpenWindow: 'bookmarks:open-window',
+  BookmarksOpenIncognitoWindow: 'bookmarks:open-incognito-window',
   BookmarksToggleBar: 'bookmarks:toggle-bar',
   BookmarksClear: 'bookmarks:clear',
   BookmarksStateChanged: 'bookmarks:state-changed',
@@ -95,6 +96,10 @@ export const IpcChannels = {
   HistoryRecordVisit: 'history:record-visit',
   HistoryRemove: 'history:remove',
   HistoryClear: 'history:clear',
+
+  WindowsOpen: 'windows:open',
+  WindowsOpenIncognito: 'windows:open-incognito',
+  WindowsGetState: 'windows:get-state',
 
   UiFocusOmnibox: 'ui:focus-omnibox',
   UiFindInPage: 'ui:find-in-page',

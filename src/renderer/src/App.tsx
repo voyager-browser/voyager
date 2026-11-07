@@ -62,12 +62,13 @@ export default function App(): React.JSX.Element {
   // Chrome-focused keyboard shortcuts.
   useEffect(() => installChromeShortcuts(), [])
 
-  // Keep the chrome in sync with persisted preferences; the settings window
-  // broadcasts changes over settings:changed.
+  // Keep the chrome in sync with persisted preferences and per-window state.
   useEffect(() => {
+    void window.voyager.windows.getState().then((state) => {
+      useBrowserStore.getState().setIncognito(state.incognito)
+    })
     const applyPreferences = (prefs: UserPreferences): void => {
       const store = useBrowserStore.getState()
-      store.setIncognito(Boolean(prefs.incognito))
       store.setSearchEngine(
         isSearchEngineId(prefs.searchEngine) ? prefs.searchEngine : DEFAULT_SEARCH_ENGINE
       )

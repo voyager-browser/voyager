@@ -1,10 +1,20 @@
 import { WindowController } from './WindowController'
 import { registerWindow } from './windowRegistry'
 
-/** Open another full Voyager window, optionally starting at a URL. */
-export function createWindow(initialUrl?: string): WindowController {
-  const controller = new WindowController()
+export interface CreateWindowOptions {
+  url?: string
+  incognito?: boolean
+}
+
+/** Open another full Voyager window. */
+export function createWindow(options: CreateWindowOptions | string = {}): WindowController {
+  const normalized = typeof options === 'string' ? { url: options } : options
+  const controller = new WindowController({ incognito: normalized.incognito })
   registerWindow(controller)
-  void controller.show(initialUrl)
+  void controller.show(normalized.url)
   return controller
+}
+
+export function createIncognitoWindow(url?: string): WindowController {
+  return createWindow({ url, incognito: true })
 }

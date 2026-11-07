@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Download, RotateCw, Star, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Download, RotateCw, Star, VenetianMask, X } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { isNewTab } from '../../../shared/url'
 import { useActiveTab, useBrowserStore } from '../state/browserStore'
@@ -48,6 +48,7 @@ function DownloadProgressRing({ progress }: { progress: number | null }): React.
 
 export function Toolbar(): React.JSX.Element {
   const activeTab = useActiveTab()
+  const incognito = useBrowserStore((state) => state.incognito)
   const goBack = useBrowserStore((state) => state.goBack)
   const goForward = useBrowserStore((state) => state.goForward)
   const reload = useBrowserStore((state) => state.reload)
@@ -115,6 +116,17 @@ export function Toolbar(): React.JSX.Element {
       />
 
       <Omnibox />
+
+      {incognito && (
+        <span
+          className="no-drag ml-1 flex shrink-0 items-center rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-muted"
+          title="You are in incognito mode"
+          aria-label="You are in incognito mode"
+        >
+          <VenetianMask className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+          Incognito
+        </span>
+      )}
 
       <div className="w-1" />
       <IconButton

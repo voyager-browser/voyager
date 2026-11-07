@@ -3,10 +3,13 @@ import { IpcChannels } from '../../shared/ipc-channels'
 import type { WindowController } from '../window/WindowController'
 import { getSettings } from '../store'
 import { openSettingsWindow } from '../window/settingsWindow'
+import { createWindow, createIncognitoWindow } from '../window/createWindow'
+import { activeWindow } from '../window/windowRegistry'
 
 export function createAppMenu(getController?: () => WindowController | null): void {
   const isMac = process.platform === 'darwin'
-  const controller = (): WindowController | null => (getController ? getController() : null)
+  const controller = (): WindowController | null =>
+    (getController ? getController() : null) ?? activeWindow()
 
   const recentClosed: MenuItemConstructorOptions[] =
     controller()
@@ -58,7 +61,21 @@ export function createAppMenu(getController?: () => WindowController | null): vo
 
   template.push({
     label: 'File',
-    submenu: [{ role: 'close' }, ...(isMac ? [] : ([{ role: 'quit' }] as const))]
+    submenu: [
+      {
+        label: 'New Window',
+        accelerator: 'CmdOrCtrl+N',
+        click: () => createWindow()
+      },
+      {
+        label: 'New Incognito Window',
+        accelerator: 'CmdOrCtrl+Shift+N',
+        click: () => createIncognitoWindow()
+      },
+      { type: 'separator' },
+      { role: 'close' },
+      ...(isMac ? [] : ([{ role: 'quit' }] as const))
+    ]
   })
 
   template.push({

@@ -38,3 +38,19 @@ export function windowForWebContents(webContents: WebContents): WindowController
   }
   return null
 }
+
+/** Find the window that owns a chrome or tab webContents. */
+export function windowForAnyWebContents(
+  webContents: WebContents | undefined | null
+): WindowController | null {
+  if (!webContents) return null
+  for (const controller of controllers) {
+    if (
+      controller.chrome.webContents === webContents ||
+      controller.tabs.tabIdForWebContents(webContents)
+    ) {
+      return controller
+    }
+  }
+  return null
+}
