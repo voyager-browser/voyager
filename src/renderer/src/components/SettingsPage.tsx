@@ -169,6 +169,7 @@ export function SettingsPage(): React.JSX.Element {
                     <button
                       key={child.id}
                       type="button"
+                      aria-label={child.id === 'site-permissions' ? 'Go to site permissions' : child.label}
                       onClick={() => scrollToSection(child.id)}
                       className={`flex w-full items-center rounded-md px-2 py-1 text-left text-[12px] transition-colors ${
                         activeSection === child.id
@@ -434,7 +435,7 @@ export function SettingsPage(): React.JSX.Element {
           <section data-settings-section="about" className="rounded-lg border border-border bg-surface p-5">
             <h2 className="mb-4 text-[15px] font-semibold text-fg">About</h2>
             <div className="space-y-1 text-[13px] text-fg">
-              <div>Voyager {appInfo?.app ?? '1.0.0'}</div>
+              <div>Version {appInfo?.app ?? '1.0.0'}</div>
             </div>
           </section>
         </div>
