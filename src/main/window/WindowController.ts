@@ -9,6 +9,7 @@ import { isNewTab } from '../../shared/url'
 import { sessionStore, getSettings } from '../store'
 import { attachDownloadsTracking } from '../downloads/downloads'
 import { attachPermissionHandlers } from '../permissions/permissions'
+import { registerVoyagerProtocol } from '../protocol/voyagerProtocol'
 
 import {
   currentBookmarksState,
@@ -146,6 +147,9 @@ export class WindowController {
   private attachIncognitoSession(): void {
     if (!this.incognitoPartition) return
     const ses = session.fromPartition(this.incognitoPartition)
+    // Internal pages (voyager://start, settings assets) must resolve in the
+    // incognito session's partition as well as the default session.
+    registerVoyagerProtocol(ses.protocol)
     attachDownloadsTracking(
       ses,
       (state) => this.sendToChrome(IpcChannels.DownloadsStateChanged, state),
