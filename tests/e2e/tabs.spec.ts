@@ -64,6 +64,11 @@ test('closes tabs and recovers by reopening the last one', async ({ voyager, ser
   await expect.poll(async () => (await voyager.state()).tabs.length).toBe(1)
   expect((await voyager.activeTab()).url).toBe(homeUrl)
 
+  await voyager.chrome.locator('body').press(`${primaryKey()}+T`)
+  await expect.poll(async () => (await voyager.state()).tabs.length).toBe(2)
+
+  await voyager.chrome.locator('body').press(`${primaryKey()}+1`)
+  await expect.poll(async () => (await voyager.activeTab()).url).toBe(homeUrl)
   await voyager.chrome.getByRole('button', { name: 'Close Voyager Test Home' }).click()
   await expect.poll(async () => (await voyager.state()).tabs.length).toBe(1)
   await expect.poll(async () => isNewTab((await voyager.activeTab()).url)).toBe(true)

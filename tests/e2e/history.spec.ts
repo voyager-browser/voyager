@@ -168,7 +168,14 @@ test('reopens a recently closed tab with the keyboard shortcut', async ({ voyage
   await voyager.navigate(server.url('/home'))
   await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/home'))
 
+  await voyager.chrome.locator('body').press(`${primaryKey()}+T`)
+  await expect.poll(async () => (await voyager.state()).tabs.length).toBe(2)
+
+  await voyager.chrome.locator('body').press(`${primaryKey()}+1`)
+  await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/home'))
+
   await voyager.chrome.locator('body').press(`${primaryKey()}+W`)
+  await expect.poll(async () => (await voyager.state()).tabs.length).toBe(1)
   await expect.poll(async () => isNewTab((await voyager.activeTab()).url)).toBe(true)
 
   await voyager.chrome.locator('body').press(`${primaryKey()}+Shift+T`)
@@ -179,7 +186,14 @@ test('reopens a recently closed tab from the History menu', async ({ voyager, se
   await voyager.navigate(server.url('/home'))
   await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/home'))
 
+  await voyager.chrome.locator('body').press(`${primaryKey()}+T`)
+  await expect.poll(async () => (await voyager.state()).tabs.length).toBe(2)
+
+  await voyager.chrome.locator('body').press(`${primaryKey()}+1`)
+  await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/home'))
+
   await voyager.chrome.locator('body').press(`${primaryKey()}+W`)
+  await expect.poll(async () => (await voyager.state()).tabs.length).toBe(1)
   await expect.poll(async () => isNewTab((await voyager.activeTab()).url)).toBe(true)
 
   const reopened = await voyager.app.evaluate(({ Menu }) => {
