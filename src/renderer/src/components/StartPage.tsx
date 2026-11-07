@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Compass, Search, VenetianMask } from 'lucide-react'
+import { Search, VenetianMask } from 'lucide-react'
+import voyagerIcon from '../assets/voyager-icon.svg'
 import {
   DEFAULT_SEARCH_ENGINE,
   SEARCH_ENGINES,
@@ -36,9 +37,13 @@ export function StartPage(): React.JSX.Element {
     <div className="flex h-full flex-col items-center justify-center overflow-auto bg-bg px-6 text-fg">
       <main className="w-full max-w-[560px] pb-16">
         <header className="mb-8 flex flex-col items-center gap-3">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent text-accent-fg shadow-lg shadow-black/20">
-            <Compass className="h-8 w-8" aria-hidden="true" />
-          </div>
+          <img
+            src={voyagerIcon}
+            alt=""
+            aria-hidden="true"
+            className="h-16 w-16 rounded-2xl shadow-lg shadow-black/20"
+            draggable={false}
+          />
           <h1 className="text-[28px] font-semibold tracking-tight">Voyager</h1>
           {incognito && (
             <span
