@@ -25,8 +25,8 @@ export function openSettingsWindow(target?: SettingsTarget): void {
   }
 
   const win = new BrowserWindow({
-    width: 900,
-    height: 650,
+    width: 1100,
+    height: 720,
     title: 'Settings - Voyager',
     backgroundColor: '#1a1b22',
     webPreferences: {
