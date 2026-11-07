@@ -52,7 +52,7 @@ import {
 } from '../permissions/permissions'
 import type { WindowController } from '../window/WindowController'
 import { openSettingsWindow } from '../window/settingsWindow'
-import { allWindows, windowForWebContents } from '../window/windowRegistry'
+import { allWindows, windowForAnyWebContents, windowForWebContents } from '../window/windowRegistry'
 import { consumePendingDragUrl, setPendingDragUrl } from '../bookmarks/drag'
 import { getSettings, setSettings } from '../store'
 import { isDefaultBrowser, setDefaultBrowser } from '../defaultBrowser'
@@ -125,7 +125,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   nativeTheme.themeSource = savedMode
 
   configurePermissionPromptRouter((webContents) => {
-    const window = context.getWindow(event as any)
+    const window = windowForAnyWebContents(webContents) ?? context.getWindow()
     if (!window) return null
     return {
       tabId: webContents ? window.tabIdForWebContents(webContents) : null,
