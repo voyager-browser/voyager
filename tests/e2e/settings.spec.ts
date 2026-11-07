@@ -97,6 +97,18 @@ test('theme changes broadcast to the chrome window', async ({ voyager }) => {
     .toBe('system')
 })
 
+test('reloads open pages after an explicit theme-mode change', async ({ voyager, server }) => {
+  await voyager.navigate(server.url('/count'))
+  await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/count'))
+  const hitsBefore = server.hits('/count')
+
+  const settings = await openSettings(voyager)
+  const current = await settings.evaluate(() => window.voyager.theme.get())
+  await settings.getByLabel(current.mode === 'dark' ? 'light' : 'dark').click()
+
+  await expect.poll(() => server.hits('/count')).toBeGreaterThan(hitsBefore)
+})
+
 test('vertical tabs toggle persists and updates the chrome window', async ({ voyager }) => {
   const settings = await openSettings(voyager)
 
