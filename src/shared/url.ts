@@ -91,13 +91,18 @@ export function isNewTab(url: string): boolean {
   if (url === '' || url === 'about:blank') return true
   if (url === DEFAULT_NEW_TAB_URL) return true
   const prefix = `${DEFAULT_NEW_TAB_URL}/`
-  return (
+  if (
     url.startsWith(`${DEFAULT_NEW_TAB_URL}?`) ||
     url === prefix ||
     url.startsWith(`${prefix}?`) ||
     url.startsWith(`${prefix}#`) ||
     url.startsWith(`${DEFAULT_NEW_TAB_URL}#`)
-  )
+  ) {
+    return true
+  }
+  // electron-vite dev serves renderer entries from a local HTTP dev server.
+  const parsed = safeParseUrl(url)
+  return parsed?.pathname === '/start.html'
 }
 
 /**
