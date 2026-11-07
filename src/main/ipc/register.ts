@@ -140,15 +140,15 @@ export function registerIpcHandlers(context: IpcContext): void {
     node: process.versions.node ?? ''
   }))
 
-  ipcMain.handle(IpcChannels.DefaultBrowserGet, () => isDefaultBrowser())
-  ipcMain.handle(IpcChannels.DefaultBrowserSet, () => setDefaultBrowser())
+  ipcMain.handle(IpcChannels.DefaultBrowserGet, (event) => (void event, isDefaultBrowser()))
+  ipcMain.handle(IpcChannels.DefaultBrowserSet, (event) => (void event, setDefaultBrowser()))
 
   ipcMain.handle(IpcChannels.SettingsOpen, (event, target?: SettingsTarget) => {
     void event
     return openSettingsWindow(target)
   })
 
-  ipcMain.handle(IpcChannels.SettingsGet, () => userPreferences())
+  ipcMain.handle(IpcChannels.SettingsGet, (event) => (void event, userPreferences()))
 
   const supportedSettings = new Set<keyof UserPreferences>([
     'clearHistory',
@@ -220,7 +220,7 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(
     IpcChannels.TabsGetState,
-    () => context.getWindow(event as any)?.tabs.snapshot() ?? null
+    (event) => context.getWindow(event as any)?.tabs.snapshot() ?? null
   )
 
   ipcMain.handle(IpcChannels.TabsCreate, (event, request: NewTabRequest) =>
@@ -270,35 +270,39 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   /* ---- navigation ------------------------------------------------------ */
 
-  ipcMain.handle(IpcChannels.NavBack, () => context.getWindow(event as any)?.tabs.goBack())
-  ipcMain.handle(IpcChannels.NavForward, () => context.getWindow(event as any)?.tabs.goForward())
-  ipcMain.handle(IpcChannels.NavReload, () => context.getWindow(event as any)?.tabs.reload())
-  ipcMain.handle(IpcChannels.NavStop, () => context.getWindow(event as any)?.tabs.stop())
+  ipcMain.handle(IpcChannels.NavBack, (event) => context.getWindow(event as any)?.tabs.goBack())
+  ipcMain.handle(IpcChannels.NavForward, (event) =>
+    context.getWindow(event as any)?.tabs.goForward()
+  )
+  ipcMain.handle(IpcChannels.NavReload, (event) => context.getWindow(event as any)?.tabs.reload())
+  ipcMain.handle(IpcChannels.NavStop, (event) => context.getWindow(event as any)?.tabs.stop())
   ipcMain.handle(IpcChannels.NavGo, (event, url: string) =>
     context.getWindow(event as any)?.tabs.navigate(url)
   )
-  ipcMain.handle(IpcChannels.NavForceReload, () =>
+  ipcMain.handle(IpcChannels.NavForceReload, (event) =>
     context.getWindow(event as any)?.tabs.reloadIgnoringCache()
   )
   ipcMain.handle(IpcChannels.NavFindInPage, (event, query: string, forward?: boolean) =>
     context.getWindow(event as any)?.tabs.findInPage(query, forward ?? true)
   )
-  ipcMain.handle(IpcChannels.NavStopFindInPage, () =>
+  ipcMain.handle(IpcChannels.NavStopFindInPage, (event) =>
     context.getWindow(event as any)?.tabs.stopFindInPage()
   )
-  ipcMain.handle(IpcChannels.NavZoomIn, () => context.getWindow(event as any)?.tabs.zoomIn())
-  ipcMain.handle(IpcChannels.NavZoomOut, () => context.getWindow(event as any)?.tabs.zoomOut())
-  ipcMain.handle(IpcChannels.NavZoomReset, () => context.getWindow(event as any)?.tabs.zoomReset())
-  ipcMain.handle(IpcChannels.NavPrint, () => context.getWindow(event as any)?.tabs.print())
-  ipcMain.handle(IpcChannels.NavPrintToPdf, async () => {
+  ipcMain.handle(IpcChannels.NavZoomIn, (event) => context.getWindow(event as any)?.tabs.zoomIn())
+  ipcMain.handle(IpcChannels.NavZoomOut, (event) => context.getWindow(event as any)?.tabs.zoomOut())
+  ipcMain.handle(IpcChannels.NavZoomReset, (event) =>
+    context.getWindow(event as any)?.tabs.zoomReset()
+  )
+  ipcMain.handle(IpcChannels.NavPrint, (event) => context.getWindow(event as any)?.tabs.print())
+  ipcMain.handle(IpcChannels.NavPrintToPdf, async (event) => {
     const buf = await context.getWindow(event as any)?.tabs.printToPdf()
     return buf ? buf.toString('base64') : null
   })
-  ipcMain.handle(IpcChannels.DevToolsToggle, () =>
+  ipcMain.handle(IpcChannels.DevToolsToggle, (event) =>
     context.getWindow(event as any)?.tabs.toggleDevTools()
   )
 
-  ipcMain.handle(IpcChannels.TabsReopenLastClosed, () =>
+  ipcMain.handle(IpcChannels.TabsReopenLastClosed, (event) =>
     context.getWindow(event as any)?.tabs.reopenLastClosed()
   )
 
@@ -307,11 +311,15 @@ export function registerIpcHandlers(context: IpcContext): void {
   const broadcastBookmarks = (state: BookmarksState): void =>
     context.send(IpcChannels.BookmarksStateChanged, state)
 
-  ipcMain.handle(IpcChannels.BookmarksGetState, () => currentBookmarksState())
+  ipcMain.handle(IpcChannels.BookmarksGetState, (event) => (void event, currentBookmarksState()))
 
-  ipcMain.handle(IpcChannels.BookmarksAdd, (event, input: NewBookmarkInput) =>
-    addBookmark(input, broadcastBookmarks, (visible) =>
-      context.getWindow(event as any)?.setBookmarksBarVisible(visible)
+  ipcMain.handle(
+    IpcChannels.BookmarksAdd,
+    (event, input: NewBookmarkInput) => (
+      void event,
+      addBookmark(input, broadcastBookmarks, (visible) =>
+        context.getWindow(event as any)?.setBookmarksBarVisible(visible)
+      )
     )
   )
 
@@ -343,7 +351,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return state
   }
 
-  ipcMain.handle(IpcChannels.PermissionsGetState, () => currentSitePermissions())
+  ipcMain.handle(IpcChannels.PermissionsGetState, (event) => (void event, currentSitePermissions()))
 
   ipcMain.handle(IpcChannels.PermissionsGetForOrigin, (event, origin: string) => {
     void event
@@ -360,7 +368,8 @@ export function registerIpcHandlers(context: IpcContext): void {
     return changed ? publishPermissions() : currentSitePermissions()
   })
 
-  ipcMain.handle(IpcChannels.PermissionsClear, () => {
+  ipcMain.handle(IpcChannels.PermissionsClear, (event) => {
+    void event
     const changed = clearSitePermissions()
     return changed ? publishPermissions() : currentSitePermissions()
   })
@@ -436,7 +445,10 @@ export function registerIpcHandlers(context: IpcContext): void {
     return pasteBookmarkNode(parentId, broadcastBookmarks)
   })
 
-  ipcMain.handle(IpcChannels.BookmarksConsumeDragUrl, () => consumePendingDragUrl())
+  ipcMain.handle(
+    IpcChannels.BookmarksConsumeDragUrl,
+    (event) => (void event, consumePendingDragUrl())
+  )
 
   ipcMain.handle(IpcChannels.BookmarksOpenWindow, (event, url: string) => {
     void event
@@ -462,13 +474,13 @@ export function registerIpcHandlers(context: IpcContext): void {
     incognito: context.getWindow(event as any)?.isIncognito ?? false
   }))
 
-  ipcMain.handle(IpcChannels.BookmarksClear, () =>
+  ipcMain.handle(IpcChannels.BookmarksClear, (event) =>
     clearBookmarks(broadcastBookmarks, (visible) =>
       context.getWindow(event as any)?.setBookmarksBarVisible(visible)
     )
   )
 
-  ipcMain.handle(IpcChannels.BookmarksToggleBar, () =>
+  ipcMain.handle(IpcChannels.BookmarksToggleBar, (event) =>
     toggleBookmarksBar(broadcastBookmarks, (visible) =>
       context.getWindow(event as any)?.setBookmarksBarVisible(visible)
     )
@@ -501,7 +513,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   )
   /* ---- history --------------------------------------------------------- */
 
-  ipcMain.handle(IpcChannels.HistoryGetState, () => currentHistoryState())
+  ipcMain.handle(IpcChannels.HistoryGetState, (event) => (void event, currentHistoryState()))
 
   ipcMain.handle(
     IpcChannels.HistoryRecordVisit,
@@ -517,16 +529,18 @@ export function registerIpcHandlers(context: IpcContext): void {
     return publishHistory((state) => context.send(IpcChannels.HistoryStateChanged, state))
   })
 
-  ipcMain.handle(IpcChannels.HistoryClear, () => {
+  ipcMain.handle(IpcChannels.HistoryClear, (event) => {
+    void event
     clearHistory()
     return publishHistory((state) => context.send(IpcChannels.HistoryStateChanged, state))
   })
 
   /* ---- downloads ------------------------------------------------------ */
 
-  ipcMain.handle(IpcChannels.DownloadsGetState, () => currentDownloadsState())
+  ipcMain.handle(IpcChannels.DownloadsGetState, (event) => (void event, currentDownloadsState()))
 
-  ipcMain.handle(IpcChannels.DownloadsClear, () => {
+  ipcMain.handle(IpcChannels.DownloadsClear, (event) => {
+    void event
     clearDownloads()
     return publishDownloads((state) => context.send(IpcChannels.DownloadsStateChanged, state))
   })
@@ -574,7 +588,7 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   // The chrome view is normally clipped to its strip height; while a dropdown,
   // palette or menu is open it expands over the page so overlays are not cut off.
-  ipcMain.handle(IpcChannels.UiOpenDownloads, () =>
+  ipcMain.handle(IpcChannels.UiOpenDownloads, (event) =>
     context.getWindow(event as any)?.sendToChrome(IpcChannels.UiOpenDownloads)
   )
   ipcMain.handle(IpcChannels.UiSetOverlayOpen, (event, open: boolean) =>
