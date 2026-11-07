@@ -144,6 +144,25 @@ test('toggles DevTools for the active tab', async ({ voyager, server }) => {
   await expect.poll(() => devToolsOpen(voyager.app)).toBe(false)
 })
 
+test('opens links clicked from DevTools in a new Voyager tab', async ({ voyager, server }) => {
+  await voyager.navigate(server.url('/home'))
+  const target = server.url('/second')
+  const before = (await voyager.state()).tabs.length
+
+  await voyager.app.evaluate(({ webContents }, url) => {
+    const inspected = webContents.getAllWebContents().find((contents) => {
+      const current = contents.getURL()
+      return (
+        !contents.isDestroyed() && !current.startsWith('devtools://') && current.includes('/home')
+      )
+    })
+    inspected?.emit('devtools-open-url', { preventDefault() {} } as never, url)
+  }, target)
+
+  await expect.poll(async () => (await voyager.state()).tabs.length).toBe(before + 1)
+  await expect.poll(async () => (await voyager.activeTab()).url).toBe(target)
+})
+
 test('View menu actions target the active page, not the chrome', async ({ voyager, server }) => {
   await voyager.navigate(server.url('/count'))
   await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/count'))
@@ -180,4 +199,3 @@ test('View menu actions target the active page, not the chrome', async ({ voyage
   await clickViewItem('Toggle Developer Tools')
   await expect.poll(() => devToolsOpen(voyager.app)).toBe(false)
 })
-
