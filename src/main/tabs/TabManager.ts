@@ -372,6 +372,12 @@ export class TabManager {
 
   /** Resolve the internal start page for this window's profile. */
   private startUrl(): string {
+    const devServerUrl = process.env['ELECTRON_RENDERER_URL']
+    if (devServerUrl) {
+      const params = new URLSearchParams({ engine: this.window.searchEngine })
+      if (this.window.isIncognito) params.set('incognito', '1')
+      return `${devServerUrl}/start.html?${params.toString()}`
+    }
     return startPageUrl(this.window.searchEngine, this.window.isIncognito)
   }
 
