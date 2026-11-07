@@ -219,8 +219,7 @@ export class TabManager {
   /** Refresh every open page, e.g. after an explicit theme-mode change. */
   reloadAll(): void {
     for (const entry of this.entries.values()) {
-      const webContents = entry.view.webContents
-      if (!webContents.isDestroyed()) webContents.reload()
+      if (!entry.view.webContents.isDestroyed()) entry.view.webContents.reload()
     }
   }
 
