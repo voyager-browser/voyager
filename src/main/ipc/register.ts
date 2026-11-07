@@ -56,7 +56,7 @@ import {
 } from '../permissions/permissions'
 import type { WindowController } from '../window/WindowController'
 import { openSettingsWindow } from '../window/settingsWindow'
-import { allWindows } from '../window/windowRegistry'
+import { allWindows, windowForWebContents } from '../window/windowRegistry'
 import { consumePendingDragUrl, setPendingDragUrl } from '../bookmarks/drag'
 import { getSettings, setSettings } from '../store'
 import { isDefaultBrowser, setDefaultBrowser } from '../defaultBrowser'
@@ -71,6 +71,7 @@ import {
   removeDownload,
   resumeDownload
 } from '../downloads/downloads'
+import { requestPrompt, respondToPrompt } from '../prompt/prompt'
 
 /** Outbound channel + access to the live window so handlers can act on it. */
 export interface IpcContext {
@@ -446,6 +447,27 @@ export function registerIpcHandlers(context: IpcContext): void {
   )
 
   ipcMain.on(IpcChannels.TabDragStart, (_event, url: string) => setPendingDragUrl(url))
+
+  // Tabs block inside sendSync until the chrome UI answers the prompt.
+  ipcMain.on(
+    IpcChannels.TabPrompt,
+    (event, payload: { message?: unknown; defaultValue?: unknown }) => {
+      const window = windowForWebContents(event.sender)
+      if (!window) {
+        event.returnValue = null
+        return
+      }
+      requestPrompt(window, event, payload)
+    }
+  )
+
+  ipcMain.handle(
+    IpcChannels.PromptRespond,
+    (_event, response: { id?: unknown; value?: unknown }) => {
+      if (typeof response?.id !== 'string') return
+      respondToPrompt(response.id, response.value)
+    }
+  )
   /* ---- history --------------------------------------------------------- */
 
   ipcMain.handle(IpcChannels.HistoryGetState, () => currentHistoryState())

@@ -106,6 +106,26 @@ const permissionsPage = document(
   </script>`
 )
 
+const promptPage = document(
+  'Prompt Test Page',
+  `<h1 id="heading">Prompt Test Page</h1>
+  <button id="plain-prompt" type="button">Ask plain</button>
+  <button id="default-prompt" type="button">Ask with default</button>
+  <p id="prompt-result">No prompt yet</p>
+  <script>
+    const result = document.getElementById('prompt-result')
+    const record = (value) => {
+      result.textContent = value === null ? 'cancelled' : 'answer:' + value
+    }
+    document.getElementById('plain-prompt').addEventListener('click', () => {
+      record(window.prompt('What is your name?'))
+    })
+    document.getElementById('default-prompt').addEventListener('click', () => {
+      record(window.prompt('Rename this item', 'Untitled'))
+    })
+  </script>`
+)
+
 const findPage = document(
   'Find Page',
   `<h1 id="heading">Find Page</h1>
@@ -133,6 +153,10 @@ async function handle(req: URL, res: ServerResponse, counts: Map<string, number>
   }
   if (path === '/find') {
     sendHtml(res, findPage)
+    return
+  }
+  if (path === '/prompt') {
+    sendHtml(res, promptPage)
     return
   }
   if (path === '/permissions') {

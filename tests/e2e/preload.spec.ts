@@ -54,7 +54,14 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
     ])
   )
   expect(api.ui).toEqual(
-    expect.arrayContaining(['onFocusOmnibox', 'onFindInPage', 'onOpenHistory', 'onOpenDownloads'])
+    expect.arrayContaining([
+      'onFocusOmnibox',
+      'onFindInPage',
+      'onOpenHistory',
+      'onOpenDownloads',
+      'onPromptRequest',
+      'respondToPrompt'
+    ])
   )
 })
 

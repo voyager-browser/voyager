@@ -50,6 +50,11 @@ export class TabManager {
     return this.activeId
   }
 
+  /** Return keyboard focus to the active page, e.g. after a prompt closes. */
+  focusActivePage(): void {
+    this.activeWebContents()?.focus()
+  }
+
   /** Resolve the tab that owns a WebContents, used for permission scoping. */
   tabIdForWebContents(webContents: WebContents): string | null {
     for (const [id, entry] of this.entries) {

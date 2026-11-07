@@ -18,6 +18,7 @@ import type {
   PermissionPromptCancelled,
   PermissionPromptRequest,
   PermissionRequestChoice,
+  PromptRequest,
   SettingsTarget,
   SitePermissionsState,
   ThemeMode,
@@ -209,6 +210,10 @@ const api = {
       subscribe<void>(IpcChannels.UiOpenDownloads, listener),
     onOpenBookmarksManager: (listener: () => void): Unsubscribe =>
       subscribe<void>(IpcChannels.UiOpenBookmarksManager, listener),
+    onPromptRequest: (listener: (request: PromptRequest) => void): Unsubscribe =>
+      subscribe<PromptRequest>(IpcChannels.UiPromptRequest, listener),
+    respondToPrompt: (id: string, value: string | null): Promise<void> =>
+      ipcRenderer.invoke(IpcChannels.PromptRespond, { id, value }),
     setOverlayOpen: (open: boolean): Promise<void> =>
       ipcRenderer.invoke(IpcChannels.UiSetOverlayOpen, open),
     setRailExpanded: (expanded: boolean): Promise<void> =>

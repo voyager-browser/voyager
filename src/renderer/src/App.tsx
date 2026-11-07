@@ -6,6 +6,7 @@ import { DownloadsPanel } from './components/DownloadsPanel'
 import { FindBar } from './components/FindBar'
 import { HistoryPanel } from './components/HistoryPanel'
 import { PermissionPrompt } from './components/PermissionPrompt'
+import { PromptDialog } from './components/PromptDialog'
 import { TabSearchPalette } from './components/TabSearchPalette'
 import { TitleBar } from './components/TitleBar'
 import { Toolbar } from './components/Toolbar'
@@ -150,6 +151,7 @@ export default function App(): React.JSX.Element {
       />
       <FindBar open={findOpen} onClose={() => setFindOpen(false)} />
       <PermissionPrompt />
+      <PromptDialog />
       <BookmarksManager
         open={bookmarksManagerOpen}
         onClose={() => useUiStore.getState().closeBookmarksManager()}
