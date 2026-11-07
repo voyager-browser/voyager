@@ -36,7 +36,7 @@ test('window.prompt renders the message and returns the entered value', async ({
   const input = voyager.chrome.locator('#prompt-input')
   await expect(input).toHaveValue('Ada Lovelace')
   await input.fill('Grace Hopper')
-  await voyager.chrome.getByRole('button', { name: 'OK' }).click()
+  await dialog.getByRole('button', { name: 'OK', exact: true }).click()
 
   await expect(voyager.tab.locator('#prompt-result')).toHaveText('answer:Grace Hopper')
   await expect(dialog).toHaveCount(0)
@@ -54,7 +54,7 @@ test('cancelling a prompt returns null and a blank message still shows an input'
   await expect(voyager.chrome.locator('#prompt-message')).toHaveCount(0)
   await expect(voyager.chrome.locator('#prompt-input')).toHaveValue('')
 
-  await voyager.chrome.getByRole('button', { name: 'Cancel' }).click()
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
 
   await expect(voyager.tab.locator('#prompt-result')).toHaveText('cancelled')
   await expect(dialog).toHaveCount(0)
