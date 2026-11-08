@@ -5,12 +5,23 @@ import type { SettingsTarget } from '../../shared/types'
 
 let settingsWindow: BrowserWindow | null = null
 
+/**
+ * In development the renderer is served by Vite, so the settings window has to
+ * load the dev-server page instead of the (possibly stale) bundled file served
+ * through the voyager:// protocol.
+ */
+function settingsBaseUrl(): string {
+  const devServerUrl = process.env['ELECTRON_RENDERER_URL']
+  return devServerUrl ? `${devServerUrl.replace(/\/$/, '')}/settings.html` : SETTINGS_URL
+}
+
 function settingsUrlFor(target?: SettingsTarget): string {
-  if (target?.page !== 'site-permissions') return SETTINGS_URL
+  const base = settingsBaseUrl()
+  if (target?.page !== 'site-permissions') return base
   const params = new URLSearchParams()
   if (target.origin) params.set('origin', target.origin)
   const query = params.toString()
-  return `${SETTINGS_URL}#site-permissions${query ? `?${query}` : ''}`
+  return `${base}#site-permissions${query ? `?${query}` : ''}`
 }
 
 /** Open the settings window, or focus it when it is already open. */
