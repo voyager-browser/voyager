@@ -521,6 +521,25 @@ export function SettingsPage(): React.JSX.Element {
                               </button>
                             )}
                           </div>
+                          <label className="flex items-center gap-2 text-[12px] text-fg">
+                            <span className="text-muted">Background color</span>
+                            <input
+                              type="color"
+                              value={editingBackground || '#0ea5e9'}
+                              onChange={(event) => setEditingBackground(event.target.value)}
+                              className="h-7 w-9 cursor-pointer rounded border border-border bg-bg p-0.5"
+                              aria-label="Custom background color"
+                            />
+                            {editingBackground && (
+                              <button
+                                type="button"
+                                onClick={() => setEditingBackground('')}
+                                className="text-[12px] text-muted hover:text-danger"
+                              >
+                                Use preset
+                              </button>
+                            )}
+                          </label>
                           <div className="flex gap-2">
                             <button
                               type="button"
@@ -672,6 +691,25 @@ export function SettingsPage(): React.JSX.Element {
                     </button>
                   )}
                 </div>
+                <label className="mt-2 flex items-center gap-2 text-[12px] text-fg">
+                  <span className="text-muted">Background color</span>
+                  <input
+                    type="color"
+                    value={newProfileBackground || '#0ea5e9'}
+                    onChange={(event) => setNewProfileBackground(event.target.value)}
+                    className="h-7 w-9 cursor-pointer rounded border border-border bg-bg p-0.5"
+                    aria-label="Custom background color"
+                  />
+                  {newProfileBackground && (
+                    <button
+                      type="button"
+                      onClick={() => setNewProfileBackground('')}
+                      className="text-[12px] text-muted hover:text-danger"
+                    >
+                      Use preset
+                    </button>
+                  )}
+                </label>
               </div>
             </section>
 
