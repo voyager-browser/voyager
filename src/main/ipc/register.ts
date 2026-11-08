@@ -193,7 +193,8 @@ function userPreferences(profileId: string): UserPreferences {
     homeUrl:
       typeof getSettings(profileId, 'homeUrl', DEFAULT_NEW_TAB_URL) === 'string'
         ? (getSettings(profileId, 'homeUrl', DEFAULT_NEW_TAB_URL) as string)
-        : DEFAULT_NEW_TAB_URL
+        : DEFAULT_NEW_TAB_URL,
+    memorySaver: getSettings(profileId, 'memorySaver', false) === true
   }
 }
 
@@ -272,7 +273,8 @@ export function registerIpcHandlers(context: IpcContext): void {
     'proxyBypassRules',
     'spellcheck',
     'showHomeButton',
-    'homeUrl'
+    'homeUrl',
+    'memorySaver'
   ])
 
   ipcMain.handle(

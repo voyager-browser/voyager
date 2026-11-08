@@ -153,7 +153,8 @@ export function SettingsPage(): React.JSX.Element {
     proxyBypassRules: DEFAULT_PROXY_CONFIG.bypassRules,
     spellcheck: true,
     showHomeButton: false,
-    homeUrl: DEFAULT_NEW_TAB_URL
+    homeUrl: DEFAULT_NEW_TAB_URL,
+    memorySaver: false
   })
   const [customFilterUrl, setCustomFilterUrl] = useState('')
   const [customFilterError, setCustomFilterError] = useState<string | null>(null)
@@ -1129,6 +1130,21 @@ export function SettingsPage(): React.JSX.Element {
                   <span className="block">Use spell check</span>
                   <span className="mt-0.5 block text-[11.5px] text-muted">
                     Check spelling in text fields on web pages.
+                  </span>
+                </span>
+              </label>
+
+              <label className="mt-4 flex items-start gap-2 text-[13px] text-fg">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={preferences.memorySaver}
+                  onChange={(event) => void setPreference('memorySaver', event.target.checked)}
+                />
+                <span>
+                  <span className="block">Memory Saver</span>
+                  <span className="mt-0.5 block text-[11.5px] text-muted">
+                    Unload inactive tabs to save memory. They reload when you open them.
                   </span>
                 </span>
               </label>

@@ -40,6 +40,8 @@ export interface TabState {
   muted: boolean
   hasAudio: boolean
   crashed: boolean
+  /** True when the tab has been unloaded by Memory Saver and will reload on activate. */
+  discarded?: boolean
 }
 
 export interface BrowserState {
@@ -299,6 +301,8 @@ export interface UserPreferences {
   showHomeButton: boolean
   /** URL opened by the Home button. */
   homeUrl: string
+  /** Unload inactive tabs to save memory; they reload when activated. */
+  memorySaver: boolean
 }
 
 /** Site data categories cleared together from Settings. */

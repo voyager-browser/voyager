@@ -8,6 +8,7 @@ import type { BrowserState, NewTabRequest, TabState } from '../../shared/types'
 import { isNewTab, startPageUrl } from '../../shared/url'
 import { currentHistoryState, recordVisit, updateHistoryTitle } from '../history/history'
 import { openSettingsWindow } from '../window/settingsWindow'
+import { getSettings } from '../store'
 import type { WindowController } from '../window/WindowController'
 
 interface TabEntry {
@@ -21,6 +22,8 @@ interface TabEntry {
   muted: boolean
   hasAudio: boolean
   crashed: boolean
+  discarded: boolean
+  discarding: boolean
 }
 
 function isInternalUrl(url: string): boolean {
@@ -70,14 +73,15 @@ export class TabManager {
         id,
         title: isNewTab(entry.url) ? 'New Tab' : entry.title,
         url: entry.url,
-        loading: entry.loading,
+        loading: entry.discarded ? false : entry.loading,
         favicon: entry.favicon,
-        canGoBack: wc.navigationHistory.canGoBack(),
-        canGoForward: wc.navigationHistory.canGoForward(),
+        canGoBack: entry.discarded ? false : wc.navigationHistory.canGoBack(),
+        canGoForward: entry.discarded ? false : wc.navigationHistory.canGoForward(),
         pinned: entry.pinned,
         muted: entry.muted || wc.isAudioMuted(),
-        hasAudio: entry.hasAudio,
-        crashed: entry.crashed
+        hasAudio: entry.discarded ? false : entry.hasAudio,
+        crashed: entry.crashed,
+        discarded: entry.discarded
       })
     }
     return { tabs, activeTabId: this.activeId }
@@ -109,7 +113,9 @@ export class TabManager {
       pinned: false,
       muted: false,
       hasAudio: false,
-      crashed: false
+      crashed: false,
+      discarded: false,
+      discarding: false
     }
 
     this.entries.set(entry.id, entry)
@@ -136,17 +142,59 @@ export class TabManager {
     const entry = this.entries.get(id)
     if (!entry) return
     if (this.activeId === id) {
-      entry.view.webContents.focus()
+      if (entry.discarded) this.restoreDiscardedTab(entry)
+      else entry.view.webContents.focus()
       return
     }
     const previous = this.activeId
     this.activeId = id
     if (previous) {
       const previousEntry = this.entries.get(previous)
-      if (previousEntry) this.window.hideTabView(previousEntry.view)
+      if (previousEntry) this.deactivateTab(previousEntry)
     }
-    this.window.showTabView(entry.view)
+    if (entry.discarded) {
+      this.window.showTabView(entry.view)
+      this.restoreDiscardedTab(entry)
+    } else {
+      this.window.showTabView(entry.view)
+    }
     this.broadcast()
+  }
+
+  private memorySaverEnabled(): boolean {
+    return getSettings(this.window.profile, 'memorySaver', false) === true
+  }
+
+  private canDiscard(entry: TabEntry): boolean {
+    if (!this.memorySaverEnabled()) return false
+    if (entry.discarded || entry.loading || entry.hasAudio || entry.crashed) return false
+    if (!entry.url || isNewTab(entry.url)) return false
+    return true
+  }
+
+  private deactivateTab(entry: TabEntry): void {
+    this.window.hideTabView(entry.view)
+    if (this.canDiscard(entry)) {
+      this.discardTab(entry)
+    }
+  }
+
+  private discardTab(entry: TabEntry): void {
+    entry.discarded = true
+    entry.discarding = true
+    entry.hasAudio = false
+    entry.loading = false
+    void entry.view.webContents.loadURL('about:blank')
+  }
+
+  private restoreDiscardedTab(entry: TabEntry): void {
+    if (!entry.discarded) return
+    const url = entry.url
+    entry.discarded = false
+    entry.discarding = false
+    entry.loading = true
+    this.broadcast()
+    if (url) void entry.view.webContents.loadURL(url)
   }
 
   close(id: string): void {
@@ -443,6 +491,7 @@ export class TabManager {
     })
 
     wc.on('page-title-updated', () => {
+      if (entry.discarding || entry.discarded) return
       const newTitle = wc.getTitle()
       entry.title = newTitle
       let changed = false
@@ -472,18 +521,27 @@ export class TabManager {
       this.broadcast()
     })
     wc.on('page-favicon-updated', (_event, favicons) => {
+      if (entry.discarding || entry.discarded) return
       entry.favicon = favicons[0] ?? null
       this.broadcast()
     })
     wc.on('did-start-loading', () => {
+      if (entry.discarding) return
       entry.loading = true
       this.broadcast()
     })
     wc.on('did-stop-loading', () => {
+      if (entry.discarding) {
+        entry.discarding = false
+        entry.loading = false
+        this.broadcast()
+        return
+      }
       entry.loading = false
       this.broadcast()
     })
     wc.on('did-navigate', (_event, url) => {
+      if (entry.discarding || (entry.discarded && url === 'about:blank')) return
       entry.url = url
       // Record history for main frame navigations to real pages.
       if (!isNewTab(url) && url.startsWith('http') && !this.window.isIncognito) {
@@ -499,6 +557,7 @@ export class TabManager {
     })
     wc.on('did-navigate-in-page', (_event, url, isMainFrame) => {
       if (isMainFrame) {
+        if (entry.discarding || (entry.discarded && url === 'about:blank')) return
         entry.url = url
         if (!isNewTab(url) && url.startsWith('http') && !this.window.isIncognito) {
           try {
