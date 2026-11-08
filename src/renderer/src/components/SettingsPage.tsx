@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronRight } from 'lucide-react'
+import {
+  ChevronRight,
+  Database,
+  Download,
+  Info,
+  Palette,
+  Power,
+  Search,
+  Shield,
+  ShieldCheck,
+  Trash2,
+  type LucideIcon
+} from 'lucide-react'
 import { useBookmarksStore } from '../state/bookmarksStore'
 import { useHistoryStore } from '../state/historyStore'
 import { useDownloadsStore } from '../state/downloadsStore'
@@ -17,6 +29,35 @@ function sitePermissionsRoute(): { open: boolean; origin?: string } {
   const origin = new URLSearchParams(query).get('origin') ?? undefined
   return { open: true, origin }
 }
+
+interface SettingsNavItem {
+  id: string
+  label: string
+  icon: LucideIcon
+  children?: Array<{ id: string; label: string }>
+}
+
+/** Sidebar groups mirror Chrome's settings navigation. */
+const SETTINGS_NAV_GROUPS: SettingsNavItem[][] = [
+  [
+    {
+      id: 'privacy',
+      label: 'Privacy and security',
+      icon: ShieldCheck,
+      children: [{ id: 'site-permissions', label: 'Site permissions' }]
+    },
+    { id: 'appearance', label: 'Appearance', icon: Palette },
+    { id: 'search', label: 'Search', icon: Search },
+    { id: 'startup', label: 'On startup', icon: Power }
+  ],
+  [
+    { id: 'content-blocking', label: 'Content blocking', icon: Shield },
+    { id: 'downloads', label: 'Downloads', icon: Download },
+    { id: 'clear-browsing-data', label: 'Clear browsing data', icon: Trash2 },
+    { id: 'data', label: 'Data', icon: Database }
+  ],
+  [{ id: 'about', label: 'About', icon: Info }]
+]
 
 export function SettingsPage(): React.JSX.Element {
   const { mode, setMode } = useTheme()
@@ -117,6 +158,28 @@ export function SettingsPage(): React.JSX.Element {
     })
   }
 
+  // Keep the sidebar highlight in sync while the content pane scrolls.
+  useEffect(() => {
+    const container = contentRef.current
+    if (!container || sitePermissionsOpen) return
+    const sections = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-settings-section]')
+    )
+    if (sections.length === 0) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+        const id = visible[0]?.target.getAttribute('data-settings-section')
+        if (id) setActiveSection(id)
+      },
+      { root: container, rootMargin: '0px 0px -65% 0px', threshold: 0 }
+    )
+    for (const section of sections) observer.observe(section)
+    return () => observer.disconnect()
+  }, [sitePermissionsOpen])
+
   if (sitePermissionsOpen) {
     return (
       <SitePermissionsSettings
@@ -130,58 +193,67 @@ export function SettingsPage(): React.JSX.Element {
     )
   }
 
-  const navItems: Array<{ id: string; label: string; children?: Array<{ id: string; label: string }> }> = [
-    { id: 'appearance', label: 'Appearance' },
-    { id: 'startup', label: 'On startup' },
-    { id: 'search', label: 'Search' },
-    { id: 'content-blocking', label: 'Content blocking' },
-    {
-      id: 'privacy',
-      label: 'Privacy and security',
-      children: [{ id: 'site-permissions', label: 'Site permissions' }]
-    },
-    { id: 'downloads', label: 'Downloads' },
-    { id: 'clear-browsing-data', label: 'Clear browsing data' },
-    { id: 'data', label: 'Data' },
-    { id: 'about', label: 'About' }
-  ]
-
   return (
-    <div className="flex h-full w-full bg-bg text-fg">
-      <aside className="w-56 shrink-0 overflow-y-auto border-r border-border bg-surface/40 px-3 py-6">
-        <h1 className="mb-1 px-2 text-[18px] font-semibold text-fg">Settings</h1>
-        <p className="mb-4 px-2 text-[12px] text-muted">Voyager {appInfo?.app ?? '1.0.0'}</p>
-        <nav aria-label="Settings sections" className="space-y-1">
-          {navItems.map((item) => (
-            <div key={item.id}>
-              <button
-                type="button"
-                onClick={() => scrollToSection(item.id)}
-                className={`flex w-full items-center rounded-md px-2 py-1.5 text-left text-[13px] transition-colors ${
-                  activeSection === item.id ? 'bg-hover text-fg' : 'text-muted hover:bg-hover hover:text-fg'
-                }`}
-              >
-                {item.label}
-              </button>
-              {item.children && (
-                <div className="ml-2 mt-0.5 space-y-0.5 border-l border-border pl-2">
-                  {item.children.map((child) => (
+    <div className="flex h-full w-full overflow-hidden bg-bg text-fg">
+      <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-surface">
+        <div className="px-4 pb-3 pt-5">
+          <h1 className="text-[17px] font-semibold text-fg">Settings</h1>
+          <p className="mt-0.5 text-[11.5px] text-muted">Voyager {appInfo?.app ?? '1.0.0'}</p>
+        </div>
+        <nav aria-label="Settings sections" className="flex-1 overflow-y-auto px-2 pb-4">
+          {SETTINGS_NAV_GROUPS.map((group, groupIndex) => (
+            <div
+              key={groupIndex}
+              className={groupIndex > 0 ? 'mt-3 border-t border-border pt-3' : ''}
+            >
+              {group.map((item) => {
+                const Icon = item.icon
+                const active = activeSection === item.id
+                return (
+                  <div key={item.id}>
                     <button
-                      key={child.id}
                       type="button"
-                      aria-label={child.id === 'site-permissions' ? 'Open site permission settings' : child.label}
-                      onClick={() => scrollToSection(child.id)}
-                      className={`flex w-full items-center rounded-md px-2 py-1 text-left text-[12px] transition-colors ${
-                        activeSection === child.id
-                          ? 'bg-hover text-fg'
+                      onClick={() => scrollToSection(item.id)}
+                      aria-current={active ? 'page' : undefined}
+                      className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] transition-colors ${
+                        active
+                          ? 'bg-accent/10 font-medium text-fg'
                           : 'text-muted hover:bg-hover hover:text-fg'
                       }`}
                     >
-                      {child.label}
+                      <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+                      <span className="truncate">{item.label}</span>
                     </button>
-                  ))}
-                </div>
-              )}
+                    {item.children && (
+                      <div className="mb-1 ml-[1.375rem] space-y-0.5 border-l border-border pl-3">
+                        {item.children.map((child) => {
+                          const childActive = activeSection === child.id
+                          return (
+                            <button
+                              key={child.id}
+                              type="button"
+                              aria-label={
+                                child.id === 'site-permissions'
+                                  ? 'Open site permission settings'
+                                  : child.label
+                              }
+                              onClick={() => scrollToSection(child.id)}
+                              aria-current={childActive ? 'page' : undefined}
+                              className={`flex w-full items-center rounded-md px-2 py-1.5 text-left text-[12px] transition-colors ${
+                                childActive
+                                  ? 'bg-accent/10 font-medium text-fg'
+                                  : 'text-muted hover:bg-hover hover:text-fg'
+                              }`}
+                            >
+                              {child.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           ))}
         </nav>
