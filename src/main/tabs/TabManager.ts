@@ -329,7 +329,8 @@ export class TabManager {
     if (wc.isDevToolsOpened()) {
       wc.closeDevTools()
     } else {
-      wc.openDevTools()
+      // Open detached so docked DevTools cannot overlap/crop the tab view.
+      wc.openDevTools({ mode: 'detach' })
     }
   }
 
