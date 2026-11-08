@@ -3,13 +3,16 @@ import { BaseWindow, WebContentsView, session, type WebContents } from 'electron
 import { randomUUID } from 'node:crypto'
 import { IpcChannels } from '../../shared/ipc-channels'
 import type { BrowserState } from '../../shared/types'
+import { DEFAULT_PROFILE_ID, type ProfileInfo } from '../../shared/profiles'
 import { DEFAULT_NEW_TAB_URL, INCOGNITO_PARTITION_PREFIX } from '../../shared/constants'
 import { DEFAULT_SEARCH_ENGINE, isSearchEngineId, type SearchEngineId } from '../../shared/search'
 import { isNewTab } from '../../shared/url'
-import { sessionStore, getSettings } from '../store'
+import { getSettings, storesFor } from '../store'
 import { attachDownloadsTracking } from '../downloads/downloads'
 import { attachPermissionHandlers } from '../permissions/permissions'
 import { registerVoyagerProtocol } from '../protocol/voyagerProtocol'
+import { ensureProfileSession } from '../profiles/session'
+import { profileById, profilePartition } from '../profiles/profiles'
 
 import {
   currentBookmarksState,
@@ -51,13 +54,18 @@ export class WindowController {
   private disposed = false
   private incognito: boolean
   private incognitoPartition: string | null
+  private readonly profileId: string
 
-  constructor(options: { incognito?: boolean } = {}) {
+  constructor(options: { incognito?: boolean; profileId?: string } = {}) {
     this.incognito = options.incognito ?? false
+    this.profileId = options.profileId ?? DEFAULT_PROFILE_ID
     // Incognito profiles live in an in-memory session and are never persisted.
-    this.incognitoPartition = this.incognito ? `${INCOGNITO_PARTITION_PREFIX}${randomUUID()}` : null
-    this.verticalTabs = getSettings('verticalTabs', false) === true
-    this.attachIncognitoSession()
+    this.incognitoPartition = this.incognito
+      ? `${INCOGNITO_PARTITION_PREFIX}${randomUUID()}`
+      : null
+    this.verticalTabs = getSettings(this.profileId, 'verticalTabs', false) === true
+    if (this.incognito) this.attachIncognitoSession()
+    else ensureProfileSession(this.profileId)
     this.layout = computeLayout(1280, 800)
 
     this.window = new BaseWindow({
@@ -103,7 +111,7 @@ export class WindowController {
     this.window.on('closed', () => {
       this.disposed = true
     })
-    this.setBookmarksBarVisible(currentBookmarksState().barVisible)
+    this.setBookmarksBarVisible(currentBookmarksState(this.profileId).barVisible)
     this.applyLayout()
   }
 
@@ -112,15 +120,37 @@ export class WindowController {
     return this.incognito
   }
 
+  /** Profile that owns this window's bookmarks, history, settings, etc. */
+  get profile(): string {
+    return this.profileId
+  }
+
+  /** Metadata for the active profile, used by the toolbar avatar. */
+  get profileInfo(): ProfileInfo {
+    return (
+      profileById(this.profileId) ?? {
+        id: DEFAULT_PROFILE_ID,
+        name: 'Default',
+        color: 'blue',
+        createdAt: 0,
+        isDefault: true
+      }
+    )
+  }
+
   /** Session partition for this window; null means the default persistent session. */
   get partition(): string | null {
-    return this.incognito ? this.incognitoPartition : null
+    return this.incognito ? this.incognitoPartition : profilePartition(this.profileId)
   }
 
   /** Search engine that applies to new tabs in this window. */
   get searchEngine(): SearchEngineId {
     if (this.incognito) return DEFAULT_SEARCH_ENGINE
-    const stored = getSettings<SearchEngineId>('searchEngine', DEFAULT_SEARCH_ENGINE)
+    const stored = getSettings<SearchEngineId>(
+      this.profileId,
+      'searchEngine',
+      DEFAULT_SEARCH_ENGINE
+    )
     return isSearchEngineId(stored) ? stored : DEFAULT_SEARCH_ENGINE
   }
 
@@ -150,10 +180,11 @@ export class WindowController {
     registerVoyagerProtocol(ses.protocol)
     attachDownloadsTracking(
       ses,
+      this.profileId,
       (state) => this.sendToChrome(IpcChannels.DownloadsStateChanged, state),
       { persist: false }
     )
-    attachPermissionHandlers(ses)
+    attachPermissionHandlers(ses, this.profileId)
   }
 
   /** Grow or shrink the chrome region for the bookmarks bar. */
@@ -195,6 +226,7 @@ export class WindowController {
   /** Flip the bookmarks bar and tell the chrome renderer about the new state. */
   toggleBookmarksBar(): void {
     toggleBookmarksBar(
+      this.profileId,
       (state) => this.sendToChrome(IpcChannels.BookmarksStateChanged, state),
       (visible) => this.setBookmarksBarVisible(visible)
     )
@@ -205,19 +237,24 @@ export class WindowController {
     const state = this.tabs.snapshot()
     const tab = state.tabs.find((candidate) => candidate.id === state.activeTabId)
     if (!tab || isNewTab(tab.url)) return
-    const existing = currentBookmarksState().items.find(
+    const existing = currentBookmarksState(this.profileId).items.find(
       (item) => item.url === tab.url && (item.folderId ?? null) === null
     )
     const publish = (next: ReturnType<typeof currentBookmarksState>): void => {
       for (const window of allWindows()) {
-        window.sendToChrome(IpcChannels.BookmarksStateChanged, next)
+        if (window.profile === this.profileId) {
+          window.sendToChrome(IpcChannels.BookmarksStateChanged, next)
+        }
       }
     }
     if (existing) {
-      removeBookmark(existing.id, publish, (visible) => this.setBookmarksBarVisible(visible))
+      removeBookmark(this.profileId, existing.id, publish, (visible) =>
+        this.setBookmarksBarVisible(visible)
+      )
       return
     }
     addBookmark(
+      this.profileId,
       { title: tab.title || tab.url, url: tab.url, favicon: tab.favicon },
       publish,
       (visible) => this.setBookmarksBarVisible(visible)
@@ -332,7 +369,8 @@ export class WindowController {
       this.tabs.create(start)
       return
     }
-    if (getSettings('restoreSession', false) !== true) {
+    const sessionStore = storesFor(this.profileId).session
+    if (getSettings(this.profileId, 'restoreSession', false) !== true) {
       // Drop any snapshot captured while restore was enabled so tabs do not
       // reappear if the preference is toggled back on later.
       sessionStore.set('tabs', [])
@@ -363,7 +401,8 @@ export class WindowController {
   private persistSession(state: BrowserState): void {
     if (this.incognito) return
     if (this.disposed) return
-    if (getSettings('restoreSession', false) !== true) return
+    if (getSettings(this.profileId, 'restoreSession', false) !== true) return
+    const sessionStore = storesFor(this.profileId).session
     const entries = state.tabs.map((tab) => ({
       url: isNewTab(tab.url) ? DEFAULT_NEW_TAB_URL : tab.url,
       title: tab.title,

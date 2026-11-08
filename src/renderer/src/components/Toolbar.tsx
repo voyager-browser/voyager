@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowRight, Download, RotateCw, Star, VenetianMask, X } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { isNewTab } from '../../../shared/url'
+import { PROFILE_COLOR_CLASSES } from '../../../shared/profiles'
 import { useActiveTab, useBrowserStore } from '../state/browserStore'
 import { useBookmarksStore, useIsBookmarked } from '../state/bookmarksStore'
 import { useDownloadsStore } from '../state/downloadsStore'
@@ -49,6 +50,7 @@ function DownloadProgressRing({ progress }: { progress: number | null }): React.
 export function Toolbar(): React.JSX.Element {
   const activeTab = useActiveTab()
   const incognito = useBrowserStore((state) => state.incognito)
+  const profile = useBrowserStore((state) => state.profile)
   const goBack = useBrowserStore((state) => state.goBack)
   const goForward = useBrowserStore((state) => state.goForward)
   const reload = useBrowserStore((state) => state.reload)
@@ -151,6 +153,20 @@ export function Toolbar(): React.JSX.Element {
           <Download className="h-4 w-4" />
         )}
       </IconButton>
+      {profile && !incognito && (
+        <button
+          type="button"
+          className={cn(
+            'no-drag ml-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white transition-opacity hover:opacity-90',
+            PROFILE_COLOR_CLASSES[profile.color]
+          )}
+          title={`${profile.name} profile`}
+          aria-label={`Profile: ${profile.name}. Manage profiles.`}
+          onClick={() => void window.voyager.settings.open({ page: 'profiles' })}
+        >
+          {(profile.name.trim()[0] ?? '?').toUpperCase()}
+        </button>
+      )}
     </div>
   )
 }

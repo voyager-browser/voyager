@@ -10,7 +10,7 @@ import type {
   SitePermissionDecision,
   SitePermissionsState
 } from '../../shared/types'
-import { permissionsStore } from '../store'
+import { storesFor } from '../store'
 
 /**
  * Chromium permissions that are safe to grant without asking. Everything else
@@ -61,12 +61,14 @@ interface PendingPermissionRequest {
   webContents: WebContents | null
   origin: string
   kind: PermissionKind
+  profileId: string
   onDestroyed?: () => void
 }
 
 export interface PermissionResponseResult {
   handled: boolean
   changed: boolean
+  profileId?: string
 }
 
 const attachedSessions = new WeakSet<Session>()
@@ -121,8 +123,12 @@ function originFromRequest(
   )
 }
 
-function decisionForOrigin(origin: string, kind: PermissionKind): PermissionDecision | undefined {
-  const decisions = permissionsStore.get('decisions')
+function decisionForOrigin(
+  profileId: string,
+  origin: string,
+  kind: PermissionKind
+): PermissionDecision | undefined {
+  const decisions = storesFor(profileId).permissions.get('decisions')
   const find = (candidate: PermissionKind): SitePermissionDecision | undefined =>
     decisions.find((decision) => decision.origin === origin && decision.kind === candidate)
 
@@ -170,36 +176,46 @@ function hasTabGrant(
 }
 
 function upsertDecision(
+  profileId: string,
   origin: string,
   kind: PermissionKind,
   decision: PermissionDecision
 ): boolean {
-  const current = permissionsStore.get('decisions')
+  const store = storesFor(profileId).permissions
+  const current = store.get('decisions')
   const existing = current.find((item) => item.origin === origin && item.kind === kind)
   if (existing?.decision === decision) return false
 
   const next = current.filter((item) => !(item.origin === origin && item.kind === kind))
   next.push({ origin, kind, decision, updatedAt: Date.now() })
-  permissionsStore.set('decisions', next)
+  store.set('decisions', next)
   return true
 }
 
-export function currentSitePermissions(): SitePermissionsState {
-  return { decisions: [...permissionsStore.get('decisions')] }
+export function currentSitePermissions(profileId: string): SitePermissionsState {
+  return { decisions: [...storesFor(profileId).permissions.get('decisions')] }
 }
 
-export function sitePermissionsForOrigin(origin: string): SitePermissionsState {
+export function sitePermissionsForOrigin(
+  profileId: string,
+  origin: string
+): SitePermissionsState {
   const normalized = permissionOriginForUrl(origin) ?? origin
   return {
-    decisions: permissionsStore
-      .get('decisions')
+    decisions: storesFor(profileId)
+      .permissions.get('decisions')
       .filter((decision) => decision.origin === normalized)
   }
 }
 
 /** Remove one site's decision, an entire site, or every saved decision. */
-export function removeSitePermissions(origin?: string, kind?: PermissionKind): boolean {
-  const current = permissionsStore.get('decisions')
+export function removeSitePermissions(
+  profileId: string,
+  origin?: string,
+  kind?: PermissionKind
+): boolean {
+  const store = storesFor(profileId).permissions
+  const current = store.get('decisions')
   const normalized = origin === undefined ? undefined : (permissionOriginForUrl(origin) ?? origin)
   const next = current.filter((decision) => {
     const originMatches = normalized === undefined || decision.origin === normalized
@@ -207,13 +223,14 @@ export function removeSitePermissions(origin?: string, kind?: PermissionKind): b
     return !(originMatches && kindMatches)
   })
   if (next.length === current.length) return false
-  permissionsStore.set('decisions', next)
+  store.set('decisions', next)
   return true
 }
 
-export function clearSitePermissions(): boolean {
-  if (permissionsStore.get('decisions').length === 0) return false
-  permissionsStore.set('decisions', [])
+export function clearSitePermissions(profileId: string): boolean {
+  const store = storesFor(profileId).permissions
+  if (store.get('decisions').length === 0) return false
+  store.set('decisions', [])
   return true
 }
 
@@ -238,7 +255,7 @@ export function respondToPermissionRequest(
 
   switch (choice) {
     case 'allow-site':
-      changed = upsertDecision(entry.origin, entry.kind, 'allow')
+      changed = upsertDecision(entry.profileId, entry.origin, entry.kind, 'allow')
       granted = true
       break
     case 'allow-once':
@@ -248,7 +265,7 @@ export function respondToPermissionRequest(
       granted = true
       break
     case 'block':
-      changed = upsertDecision(entry.origin, entry.kind, 'block')
+      changed = upsertDecision(entry.profileId, entry.origin, entry.kind, 'block')
       granted = false
       break
     case 'dismiss':
@@ -257,14 +274,14 @@ export function respondToPermissionRequest(
   }
 
   entry.callback(granted)
-  return { handled: true, changed }
+  return { handled: true, changed, profileId: entry.profileId }
 }
 
 /**
  * Attach browser-level permission handling to a session. Persistent decisions
  * are stored by origin + category; "allow once" grants are scoped to one tab.
  */
-export function attachPermissionHandlers(ses: Session): void {
+export function attachPermissionHandlers(ses: Session, profileId: string): void {
   if (attachedSessions.has(ses)) return
   attachedSessions.add(ses)
 
@@ -277,7 +294,7 @@ export function attachPermissionHandlers(ses: Session): void {
     const origin = originFromRequest(details, webContents, requestingOrigin)
     if (!origin) return false
 
-    const decision = decisionForOrigin(origin, kind)
+    const decision = decisionForOrigin(profileId, origin, kind)
     if (decision) return decision === 'allow'
     return hasTabGrant(webContents, origin, kind)
   })
@@ -295,7 +312,7 @@ export function attachPermissionHandlers(ses: Session): void {
       return
     }
 
-    const decision = decisionForOrigin(origin, kind)
+    const decision = decisionForOrigin(profileId, origin, kind)
     if (decision) {
       callback(decision === 'allow')
       return
@@ -332,6 +349,7 @@ export function attachPermissionHandlers(ses: Session): void {
       webContents,
       origin,
       kind,
+      profileId,
       onDestroyed
     }
     pendingRequests.set(id, entry)

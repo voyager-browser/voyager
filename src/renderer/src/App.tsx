@@ -65,7 +65,7 @@ export default function App(): React.JSX.Element {
   // Keep the chrome in sync with persisted preferences and per-window state.
   useEffect(() => {
     void window.voyager.windows.getState().then((state) => {
-      useBrowserStore.getState().setIncognito(state.incognito)
+      useBrowserStore.getState().applyWindowState(state)
     })
     const applyPreferences = (prefs: UserPreferences): void => {
       const store = useBrowserStore.getState()

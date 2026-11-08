@@ -1,9 +1,6 @@
-import { app, protocol, session } from 'electron'
+import { app, protocol } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { registerIpcHandlers } from './ipc/register'
-import { registerVoyagerProtocol } from './protocol/voyagerProtocol'
-import { attachPermissionHandlers } from './permissions/permissions'
-import { attachContentBlocking, primeContentBlocking } from './contentBlocking/contentBlocking'
 import { flushAllStores, getSettings } from './store'
 
 import { WindowController } from './window/WindowController'
@@ -14,9 +11,10 @@ import {
   windowForAnyWebContents
 } from './window/windowRegistry'
 import { createWindow, createIncognitoWindow } from './window/createWindow'
-import { attachDownloadsTracking } from './downloads/downloads'
-import { IpcChannels } from '../shared/ipc-channels'
 import { findLaunchUrl } from './launch/urlArgument'
+import { DEFAULT_PROFILE_ID } from '../shared/profiles'
+import { lastProfileId } from './profiles/profiles'
+import { ensureProfileSession } from './profiles/session'
 
 app.setName('Voyager')
 
@@ -70,11 +68,11 @@ registerIpcHandlers({
     for (const window of allWindows()) window.sendToChrome(channel, payload)
   },
   getWindow: (event) => windowForAnyWebContents(event?.sender) ?? activeWindow(),
-  openWindow: (url) => {
-    createWindow(url)
+  openWindow: (url, profileId) => {
+    createWindow({ url, profileId })
   },
-  openIncognitoWindow: (url) => {
-    createIncognitoWindow(url)
+  openIncognitoWindow: (url, profileId) => {
+    createIncognitoWindow(url, profileId)
   }
 })
 
@@ -88,22 +86,21 @@ import { createAppMenu } from './menu/menu'
 app.whenReady().then(async (): Promise<void> => {
   if (!hasSingleInstanceLock) return
 
-  registerVoyagerProtocol(protocol)
+  // The default profile's session also backs the settings window, so it is
+  // always prepared even when the app starts in a named profile.
+  ensureProfileSession(DEFAULT_PROFILE_ID)
+  const startupProfileId = lastProfileId()
+  ensureProfileSession(startupProfileId)
 
-  attachPermissionHandlers(session.defaultSession)
-  if (getSettings('contentBlocking', false) === true) {
-    primeContentBlocking(app.getPath('userData'))
-  }
-  attachContentBlocking(session.defaultSession)
-  controller = new WindowController({ incognito: getSettings('incognito', false) === true })
+  controller = new WindowController({
+    profileId: startupProfileId,
+    incognito: getSettings(startupProfileId, 'incognito', false) === true
+  })
   registerWindow(controller)
   createAppMenu(() => activeWindow())
   autoUpdater.checkForUpdatesAndNotify()
   controller.onDestroyed(() => {
     if (controller?.window.isDestroyed()) controller = null
-  })
-  attachDownloadsTracking(session.defaultSession, (state) => {
-    for (const window of allWindows()) window.sendToChrome(IpcChannels.DownloadsStateChanged, state)
   })
   const initialUrl = pendingUrl
   pendingUrl = null

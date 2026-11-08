@@ -3,6 +3,7 @@
  * and the React chrome renderer.
  */
 
+import type { ProfileInfo } from './profiles'
 import type { SearchEngineId } from './search'
 import type { FilterListId } from './filter-lists'
 
@@ -152,8 +153,14 @@ export interface PromptRequest {
 
 /** Optional route passed when opening Settings from a site-info popover. */
 export interface SettingsTarget {
-  page?: 'site-permissions'
+  page?: 'site-permissions' | 'profiles'
   origin?: string
+}
+
+/** Per-window state shown to the chrome renderer. */
+export interface WindowState {
+  incognito: boolean
+  profile: ProfileInfo
 }
 
 export interface NewBookmarkFolderInput {

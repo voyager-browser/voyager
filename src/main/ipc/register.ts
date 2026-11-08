@@ -1,6 +1,7 @@
-import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, session } from 'electron'
+import { app, clipboard, ipcMain, nativeTheme } from 'electron'
 import { IpcChannels } from '../../shared/ipc-channels'
 import { isPermissionKind, isPermissionRequestChoice } from '../../shared/permissions'
+import { DEFAULT_PROFILE_ID, isProfileColor, type CreateProfileInput, type ProfilesState, type RenameProfileInput } from '../../shared/profiles'
 import type {
   AppVersionInfo,
   BookmarkFolderPatch,
@@ -16,9 +17,11 @@ import type {
   PermissionKind,
   PermissionRequestChoice,
   SettingsTarget,
+  SitePermissionsState,
   ThemeMode,
   ThemeState,
-  UserPreferences
+  UserPreferences,
+  WindowState
 } from '../../shared/types'
 import { DEFAULT_SEARCH_ENGINE, isSearchEngineId, type SearchEngineId } from '../../shared/search'
 import {
@@ -53,8 +56,8 @@ import {
 } from '../permissions/permissions'
 import { exportCertificate, getCertificate } from '../certificates/certificates'
 import type { WindowController } from '../window/WindowController'
-import { openSettingsWindow } from '../window/settingsWindow'
-import { allWindows, windowForAnyWebContents, windowForWebContents } from '../window/windowRegistry'
+import { openSettingsWindow, settingsProfileFor } from '../window/settingsWindow'
+import { activeWindow, allWindows, windowForAnyWebContents, windowForWebContents } from '../window/windowRegistry'
 import { consumePendingDragUrl, setPendingDragUrl } from '../bookmarks/drag'
 import { isFilterListId } from '../../shared/filter-lists'
 import {
@@ -64,10 +67,27 @@ import {
   enabledFilterLists,
   importCustomFilterFile,
   normalizeCustomFilterUrl,
+  primeContentBlocking,
   removeCustomFilterFile,
   syncContentBlocking
 } from '../contentBlocking/contentBlocking'
-import { getSettings, setSettings } from '../store'
+import {
+  createProfile,
+  deleteProfile,
+  listProfiles,
+  setLastProfileId,
+  updateProfile
+} from '../profiles/profiles'
+import {
+  broadcastProfiles,
+  broadcastToAll,
+  broadcastToProfile,
+  ensureProfileSession,
+  sessionForProfile
+} from '../profiles/session'
+import { createWindow } from '../window/createWindow'
+import { getSettings, getThemeMode, setSettings, setThemeMode } from '../store'
+
 import { isDefaultBrowser, setDefaultBrowser } from '../defaultBrowser'
 import {
   cancelDownload,
@@ -89,57 +109,64 @@ type SenderEvent =
 export interface IpcContext {
   send(channel: string, payload?: unknown): void
   getWindow(event?: SenderEvent): WindowController | null
-  openWindow?(url?: string): void
-  openIncognitoWindow?(url?: string): void
+  openWindow?(url?: string, profileId?: string): void
+  openIncognitoWindow?(url?: string, profileId?: string): void
 }
 
 function currentThemeState(): ThemeState {
-  return {
-    mode: nativeTheme.themeSource,
-    dark: nativeTheme.shouldUseDarkColors
-  }
+  const mode = getThemeMode()
+  nativeTheme.themeSource = mode
+  return { mode, dark: nativeTheme.shouldUseDarkColors }
 }
 
 function applyThemeMode(mode: ThemeMode): ThemeState {
-  setSettings('themeMode', mode)
+  setThemeMode(mode)
   if (nativeTheme.themeSource !== mode) {
     nativeTheme.themeSource = mode
     // Sites often cache theme-dependent assets such as favicons and media
     // queries, so an explicit mode change refreshes every open page.
     for (const window of allWindows()) window.tabs.reloadAll()
   }
-  return currentThemeState()
+  return { mode, dark: nativeTheme.shouldUseDarkColors }
 }
 
-function userPreferences(): UserPreferences {
+function userPreferences(profileId: string): UserPreferences {
   return {
-    clearHistory: (getSettings('clearHistory', true) as boolean) !== false,
-    clearDownloads: (getSettings('clearDownloads', true) as boolean) !== false,
-    clearBookmarks: getSettings('clearBookmarks', false) === true,
-    clearCookies: (getSettings('clearCookies', true) as boolean) !== false,
-    clearLocalStorage: (getSettings('clearLocalStorage', true) as boolean) !== false,
-    clearIndexedDb: (getSettings('clearIndexedDb', true) as boolean) !== false,
-    clearCache: (getSettings('clearCache', true) as boolean) !== false,
-    clearSitePermissions: (getSettings('clearSitePermissions', true) as boolean) !== false,
-    openDownloadsWhenDone: getSettings('openDownloadsWhenDone', false) === true,
+    clearHistory: (getSettings(profileId, 'clearHistory', true) as boolean) !== false,
+    clearDownloads: (getSettings(profileId, 'clearDownloads', true) as boolean) !== false,
+    clearBookmarks: getSettings(profileId, 'clearBookmarks', false) === true,
+    clearCookies: (getSettings(profileId, 'clearCookies', true) as boolean) !== false,
+    clearLocalStorage: (getSettings(profileId, 'clearLocalStorage', true) as boolean) !== false,
+    clearIndexedDb: (getSettings(profileId, 'clearIndexedDb', true) as boolean) !== false,
+    clearCache: (getSettings(profileId, 'clearCache', true) as boolean) !== false,
+    clearSitePermissions: (getSettings(profileId, 'clearSitePermissions', true) as boolean) !== false,
+    openDownloadsWhenDone: getSettings(profileId, 'openDownloadsWhenDone', false) === true,
     searchEngine: (() => {
-      const stored = getSettings<SearchEngineId>('searchEngine', DEFAULT_SEARCH_ENGINE)
+      const stored = getSettings<SearchEngineId>(profileId, 'searchEngine', DEFAULT_SEARCH_ENGINE)
       return isSearchEngineId(stored) ? stored : DEFAULT_SEARCH_ENGINE
     })(),
-    restoreSession: getSettings('restoreSession', false) === true,
-    verticalTabs: getSettings('verticalTabs', false) === true,
-    contentBlocking: getSettings('contentBlocking', false) !== false,
-    builtinFilterList: builtinFilterListEnabled(),
-    filterLists: enabledFilterLists(),
-    customFilterLists: enabledCustomFilterLists(),
-    customFilterFiles: enabledCustomFilterFiles()
+    restoreSession: getSettings(profileId, 'restoreSession', false) === true,
+    verticalTabs: getSettings(profileId, 'verticalTabs', false) === true,
+    contentBlocking: (getSettings(profileId, 'contentBlocking', true) as boolean) !== false,
+    builtinFilterList: builtinFilterListEnabled(profileId),
+    filterLists: enabledFilterLists(profileId),
+    customFilterLists: enabledCustomFilterLists(profileId),
+    customFilterFiles: enabledCustomFilterFiles(profileId)
   }
 }
 
 export function registerIpcHandlers(context: IpcContext): void {
   // Apply the persisted theme before any renderer starts.
-  const savedMode = (getSettings('themeMode') as ThemeMode | undefined) ?? 'system'
-  nativeTheme.themeSource = savedMode
+  nativeTheme.themeSource = getThemeMode()
+
+  const profileFor = (event?: SenderEvent): string =>
+    context.getWindow(event)?.profile ??
+    (event?.sender ? settingsProfileFor(event.sender) : null) ??
+    activeWindow()?.profile ??
+    DEFAULT_PROFILE_ID
+
+  const sendToProfile = (profileId: string, channel: string, payload?: unknown): void =>
+    broadcastToProfile(profileId, channel, payload)
 
   configurePermissionPromptRouter((webContents) => {
     const window = windowForAnyWebContents(webContents) ?? context.getWindow()
@@ -174,11 +201,10 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IpcChannels.DefaultBrowserSet, (event) => (void event, setDefaultBrowser()))
 
   ipcMain.handle(IpcChannels.SettingsOpen, (event, target?: SettingsTarget) => {
-    void event
-    return openSettingsWindow(target)
+    return openSettingsWindow(target, profileFor(event as any))
   })
 
-  ipcMain.handle(IpcChannels.SettingsGet, (event) => (void event, userPreferences()))
+  ipcMain.handle(IpcChannels.SettingsGet, (event) => userPreferences(profileFor(event as any)))
 
   const supportedSettings = new Set<keyof UserPreferences>([
     'clearHistory',
@@ -205,32 +231,37 @@ export function registerIpcHandlers(context: IpcContext): void {
       if (!supportedSettings.has(key)) {
         throw new Error(`Unsupported setting: ${key}`)
       }
+      const profileId = profileFor(_event as any)
       const respond = (): UserPreferences => {
-        const prefs = userPreferences()
-        context.send(IpcChannels.SettingsChanged, prefs)
+        const prefs = userPreferences(profileId)
+        sendToProfile(profileId, IpcChannels.SettingsChanged, prefs)
         return prefs
       }
       if (key === 'searchEngine') {
         if (!isSearchEngineId(value)) {
           throw new Error(`Unknown search engine: ${String(value)}`)
         }
-        setSettings('searchEngine', value)
+        setSettings(profileId, 'searchEngine', value)
         // Open start pages show the active engine; rebuild them in place.
-        for (const window of allWindows()) window.tabs.refreshStartPages()
+        for (const window of allWindows()) {
+          if (window.profile === profileId) window.tabs.refreshStartPages()
+        }
         return respond()
       }
       if (key === 'verticalTabs') {
         const enabled = value === true
-        setSettings('verticalTabs', enabled)
-        for (const window of allWindows()) window.setVerticalTabs(enabled)
+        setSettings(profileId, 'verticalTabs', enabled)
+        for (const window of allWindows()) {
+          if (window.profile === profileId) window.setVerticalTabs(enabled)
+        }
         return respond()
       }
       if (key === 'builtinFilterList') {
         if (typeof value !== 'boolean') {
           throw new Error('Expected a boolean for setting: builtinFilterList')
         }
-        setSettings('builtinFilterList', value)
-        syncContentBlocking()
+        setSettings(profileId, 'builtinFilterList', value)
+        syncContentBlocking(profileId)
         return respond()
       }
       if (key === 'filterLists') {
@@ -240,8 +271,8 @@ export function registerIpcHandlers(context: IpcContext): void {
         ) {
           throw new Error('Expected an array of filter list ids')
         }
-        setSettings('filterLists', [...new Set(value)])
-        syncContentBlocking()
+        setSettings(profileId, 'filterLists', [...new Set(value)])
+        syncContentBlocking(profileId)
         return respond()
       }
       if (key === 'customFilterLists') {
@@ -251,51 +282,57 @@ export function registerIpcHandlers(context: IpcContext): void {
         const urls = value
           .map((entry) => normalizeCustomFilterUrl(entry))
           .filter((entry): entry is string => entry !== null)
-        setSettings('customFilterLists', [...new Set(urls)])
-        syncContentBlocking()
+        setSettings(profileId, 'customFilterLists', [...new Set(urls)])
+        syncContentBlocking(profileId)
         return respond()
       }
       if (key === 'contentBlocking') {
         if (typeof value !== 'boolean') {
           throw new Error('Expected a boolean for setting: contentBlocking')
         }
-        setSettings(key, value)
-        if (value) syncContentBlocking()
+        setSettings(profileId, key, value)
+        if (value) {
+          primeContentBlocking(profileId)
+          syncContentBlocking(profileId)
+        }
         return respond()
       }
       if (typeof value !== 'boolean') {
         throw new Error(`Expected a boolean for setting: ${key}`)
       }
-      setSettings(key, value)
+      setSettings(profileId, key, value)
       return respond()
     }
   )
 
   ipcMain.handle(
     IpcChannels.ContentBlockingImportFile,
-    (_event, input: { name?: unknown; content?: unknown }) => {
+    (event, input: { name?: unknown; content?: unknown }) => {
+      const profileId = profileFor(event)
       const name = typeof input?.name === 'string' ? input.name : 'Custom hosts list'
       const content = typeof input?.content === 'string' ? input.content : ''
       if (!content) throw new Error('No file content was provided.')
-      const file = importCustomFilterFile(name, content)
-      setSettings('customFilterFiles', [...enabledCustomFilterFiles(), file])
-      syncContentBlocking()
-      const prefs = userPreferences()
-      context.send(IpcChannels.SettingsChanged, prefs)
+      const file = importCustomFilterFile(profileId, name, content)
+      setSettings(profileId, 'customFilterFiles', [...enabledCustomFilterFiles(profileId), file])
+      syncContentBlocking(profileId)
+      const prefs = userPreferences(profileId)
+      sendToProfile(profileId, IpcChannels.SettingsChanged, prefs)
       return prefs
     }
   )
 
-  ipcMain.handle(IpcChannels.ContentBlockingRemoveFile, (_event, id: string) => {
+  ipcMain.handle(IpcChannels.ContentBlockingRemoveFile, (event, id: string) => {
+    const profileId = profileFor(event)
     if (typeof id !== 'string') throw new Error('Invalid filter file id')
-    removeCustomFilterFile(id)
+    removeCustomFilterFile(profileId, id)
     setSettings(
+      profileId,
       'customFilterFiles',
-      enabledCustomFilterFiles().filter((file) => file.id !== id)
+      enabledCustomFilterFiles(profileId).filter((file) => file.id !== id)
     )
-    syncContentBlocking()
-    const prefs = userPreferences()
-    context.send(IpcChannels.SettingsChanged, prefs)
+    syncContentBlocking(profileId)
+    const prefs = userPreferences(profileId)
+    sendToProfile(profileId, IpcChannels.SettingsChanged, prefs)
     return prefs
   })
 
@@ -306,13 +343,13 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IpcChannels.ThemeSet, (event, mode: ThemeMode): ThemeState => {
     void event
     const state = applyThemeMode(mode)
-    context.send(IpcChannels.ThemeChanged, state)
+    broadcastToAll(IpcChannels.ThemeChanged, state)
     return state
   })
 
   // Push live updates when 'system' changes as the OS theme flips.
   nativeTheme.on('updated', () => {
-    context.send(IpcChannels.ThemeChanged, currentThemeState())
+    broadcastToAll(IpcChannels.ThemeChanged, currentThemeState())
   })
 
   /* ---- tabs ------------------------------------------------------------ */
@@ -407,70 +444,72 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   /* ---- bookmarks ------------------------------------------------------ */
 
-  const broadcastBookmarks = (state: BookmarksState): void =>
-    context.send(IpcChannels.BookmarksStateChanged, state)
+  const broadcastBookmarks = (profileId: string) => (state: BookmarksState): void =>
+    sendToProfile(profileId, IpcChannels.BookmarksStateChanged, state)
 
-  ipcMain.handle(IpcChannels.BookmarksGetState, (event) => (void event, currentBookmarksState()))
-
-  ipcMain.handle(
-    IpcChannels.BookmarksAdd,
-    (event, input: NewBookmarkInput) => (
-      void event,
-      addBookmark(input, broadcastBookmarks, (visible) =>
-        context.getWindow(event as any)?.setBookmarksBarVisible(visible)
-      )
-    )
+  ipcMain.handle(IpcChannels.BookmarksGetState, (event) =>
+    currentBookmarksState(profileFor(event as any))
   )
 
-  ipcMain.handle(IpcChannels.BookmarksRemove, (event, id: string) =>
-    removeBookmark(id, broadcastBookmarks, (visible) =>
+  ipcMain.handle(IpcChannels.BookmarksAdd, (event, input: NewBookmarkInput) => {
+    const profileId = profileFor(event as any)
+    return addBookmark(profileId, input, broadcastBookmarks(profileId), (visible) =>
       context.getWindow(event as any)?.setBookmarksBarVisible(visible)
     )
-  )
-
-  ipcMain.handle(IpcChannels.BookmarksUpdate, (event, id: string, patch: BookmarkPatch) => {
-    void event
-    return updateBookmark(id, patch, broadcastBookmarks)
   })
 
-  ipcMain.handle(IpcChannels.BookmarksAddFolder, (event, input: NewBookmarkFolderInput) =>
-    addFolder(input, broadcastBookmarks, (visible) =>
+  ipcMain.handle(IpcChannels.BookmarksRemove, (event, id: string) => {
+    const profileId = profileFor(event as any)
+    return removeBookmark(profileId, id, broadcastBookmarks(profileId), (visible) =>
       context.getWindow(event as any)?.setBookmarksBarVisible(visible)
     )
-  )
+  })
+
+  ipcMain.handle(IpcChannels.BookmarksUpdate, (event, id: string, patch: BookmarkPatch) => {
+    const profileId = profileFor(event as any)
+    return updateBookmark(profileId, id, patch, broadcastBookmarks(profileId))
+  })
+
+  ipcMain.handle(IpcChannels.BookmarksAddFolder, (event, input: NewBookmarkFolderInput) => {
+    const profileId = profileFor(event as any)
+    return addFolder(profileId, input, broadcastBookmarks(profileId), (visible) =>
+      context.getWindow(event as any)?.setBookmarksBarVisible(visible)
+    )
+  })
 
   /* ---- site permissions ------------------------------------------------ */
 
-  const publishPermissions = (): ReturnType<typeof currentSitePermissions> => {
-    const state = currentSitePermissions()
-    context.send(IpcChannels.PermissionsStateChanged, state)
-    for (const window of BrowserWindow.getAllWindows()) {
-      window.webContents.send(IpcChannels.PermissionsStateChanged, state)
-    }
+  const publishPermissions = (profileId: string): SitePermissionsState => {
+    const state = currentSitePermissions(profileId)
+    sendToProfile(profileId, IpcChannels.PermissionsStateChanged, state)
     return state
   }
 
-  ipcMain.handle(IpcChannels.PermissionsGetState, (event) => (void event, currentSitePermissions()))
+  ipcMain.handle(IpcChannels.PermissionsGetState, (event) =>
+    currentSitePermissions(profileFor(event as any))
+  )
 
   ipcMain.handle(IpcChannels.PermissionsGetForOrigin, (event, origin: string) => {
-    void event
-    return typeof origin === 'string' ? sitePermissionsForOrigin(origin) : { decisions: [] }
+    const profileId = profileFor(event as any)
+    return typeof origin === 'string'
+      ? sitePermissionsForOrigin(profileId, origin)
+      : { decisions: [] }
   })
 
   ipcMain.handle(IpcChannels.PermissionsRemove, (event, origin: string, kind?: PermissionKind) => {
-    void event
+    const profileId = profileFor(event as any)
     if (typeof origin !== 'string') throw new Error('Invalid permission origin')
     if (kind !== undefined && !isPermissionKind(kind)) {
       throw new Error(`Invalid permission kind: ${String(kind)}`)
     }
-    const changed = removeSitePermissions(origin, kind)
-    return changed ? publishPermissions() : currentSitePermissions()
+    const changed = removeSitePermissions(profileId, origin, kind)
+    return changed ? publishPermissions(profileId) : currentSitePermissions(profileId)
   })
 
   ipcMain.handle(IpcChannels.PermissionsClear, (event) => {
-    void event
-    const changed = clearSitePermissions()
-    return changed ? publishPermissions() : currentSitePermissions()
+    const profileId = profileFor(event as any)
+    const changed = clearSitePermissions(profileId)
+    return changed ? publishPermissions(profileId) : currentSitePermissions(profileId)
   })
 
   ipcMain.handle(
@@ -480,7 +519,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         throw new Error('Invalid permission response')
       }
       const result = respondToPermissionRequest(id, choice)
-      if (result.changed) publishPermissions()
+      if (result.changed && result.profileId) publishPermissions(result.profileId)
       return result.handled
     }
   )
@@ -501,47 +540,50 @@ export function registerIpcHandlers(context: IpcContext): void {
       if (options.localStorage === true) storages.push('localstorage')
       if (options.indexedDb === true) storages.push('indexdb')
 
+      const profileId = profileFor(_event as any)
+      const ses = sessionForProfile(profileId)
       if (storages.length > 0) {
-        await session.defaultSession.clearStorageData({ storages })
+        await ses.clearStorageData({ storages })
       }
       if (options.cache === true) {
-        await session.defaultSession.clearCache()
+        await ses.clearCache()
       }
-      if (options.sitePermissions === true && clearSitePermissions()) {
-        publishPermissions()
+      if (options.sitePermissions === true && clearSitePermissions(profileId)) {
+        publishPermissions(profileId)
       }
     }
   )
 
-  ipcMain.handle(
-    IpcChannels.BookmarksUpdateFolder,
-    (_event, id: string, patch: BookmarkFolderPatch) => updateFolder(id, patch, broadcastBookmarks)
-  )
+  ipcMain.handle(IpcChannels.BookmarksUpdateFolder, (event, id: string, patch: BookmarkFolderPatch) => {
+    const profileId = profileFor(event as any)
+    return updateFolder(profileId, id, patch, broadcastBookmarks(profileId))
+  })
 
-  ipcMain.handle(IpcChannels.BookmarksRemoveFolder, (event, id: string) =>
-    removeFolder(id, broadcastBookmarks, (visible) =>
+  ipcMain.handle(IpcChannels.BookmarksRemoveFolder, (event, id: string) => {
+    const profileId = profileFor(event as any)
+    return removeFolder(profileId, id, broadcastBookmarks(profileId), (visible) =>
       context.getWindow(event as any)?.setBookmarksBarVisible(visible)
     )
-  )
+  })
 
   ipcMain.handle(IpcChannels.BookmarksMove, (event, input: BookmarkMoveInput) => {
-    void event
-    return moveBookmarkNode(input, broadcastBookmarks)
+    const profileId = profileFor(event as any)
+    return moveBookmarkNode(profileId, input, broadcastBookmarks(profileId))
   })
 
   ipcMain.handle(IpcChannels.BookmarksCopy, (event, kind: BookmarkNodeKind, id: string) => {
-    void event
-    return copyBookmarkNode(kind, id, broadcastBookmarks)
+    const profileId = profileFor(event as any)
+    return copyBookmarkNode(profileId, kind, id, broadcastBookmarks(profileId))
   })
 
   ipcMain.handle(IpcChannels.BookmarksCut, (event, kind: BookmarkNodeKind, id: string) => {
-    void event
-    return cutBookmarkNode(kind, id, broadcastBookmarks)
+    const profileId = profileFor(event as any)
+    return cutBookmarkNode(profileId, kind, id, broadcastBookmarks(profileId))
   })
 
   ipcMain.handle(IpcChannels.BookmarksPaste, (event, parentId: string | null) => {
-    void event
-    return pasteBookmarkNode(parentId, broadcastBookmarks)
+    const profileId = profileFor(event as any)
+    return pasteBookmarkNode(profileId, parentId, broadcastBookmarks(profileId))
   })
 
   ipcMain.handle(
@@ -550,40 +592,48 @@ export function registerIpcHandlers(context: IpcContext): void {
   )
 
   ipcMain.handle(IpcChannels.BookmarksOpenWindow, (event, url: string) => {
-    void event
-    context.openWindow?.(url)
+    context.openWindow?.(url, profileFor(event as any))
   })
 
   ipcMain.handle(IpcChannels.BookmarksOpenIncognitoWindow, (event, url: string) => {
-    void event
-    context.openIncognitoWindow?.(url)
+    context.openIncognitoWindow?.(url, profileFor(event as any))
   })
 
   ipcMain.handle(IpcChannels.WindowsOpen, (event, url?: string) => {
-    void event
-    context.openWindow?.(url)
+    context.openWindow?.(url, profileFor(event as any))
   })
 
   ipcMain.handle(IpcChannels.WindowsOpenIncognito, (event, url?: string) => {
-    void event
-    context.openIncognitoWindow?.(url)
+    context.openIncognitoWindow?.(url, profileFor(event as any))
   })
 
-  ipcMain.handle(IpcChannels.WindowsGetState, (event) => ({
-    incognito: context.getWindow(event as any)?.isIncognito ?? false
-  }))
+  ipcMain.handle(IpcChannels.WindowsGetState, (event): WindowState => {
+    const window = context.getWindow(event as any)
+    return {
+      incognito: window?.isIncognito ?? false,
+      profile: window?.profileInfo ?? {
+        id: DEFAULT_PROFILE_ID,
+        name: 'Default',
+        color: 'blue',
+        createdAt: 0,
+        isDefault: true
+      }
+    }
+  })
 
-  ipcMain.handle(IpcChannels.BookmarksClear, (event) =>
-    clearBookmarks(broadcastBookmarks, (visible) =>
+  ipcMain.handle(IpcChannels.BookmarksClear, (event) => {
+    const profileId = profileFor(event as any)
+    return clearBookmarks(profileId, broadcastBookmarks(profileId), (visible) =>
       context.getWindow(event as any)?.setBookmarksBarVisible(visible)
     )
-  )
+  })
 
-  ipcMain.handle(IpcChannels.BookmarksToggleBar, (event) =>
-    toggleBookmarksBar(broadcastBookmarks, (visible) =>
+  ipcMain.handle(IpcChannels.BookmarksToggleBar, (event) => {
+    const profileId = profileFor(event as any)
+    return toggleBookmarksBar(profileId, broadcastBookmarks(profileId), (visible) =>
       context.getWindow(event as any)?.setBookmarksBarVisible(visible)
     )
-  )
+  })
 
   ipcMain.on(IpcChannels.TabDragStart, (event, url: string) => {
     void event
@@ -612,75 +662,152 @@ export function registerIpcHandlers(context: IpcContext): void {
   )
   /* ---- history --------------------------------------------------------- */
 
-  ipcMain.handle(IpcChannels.HistoryGetState, (event) => (void event, currentHistoryState()))
+  ipcMain.handle(IpcChannels.HistoryGetState, (event) =>
+    currentHistoryState(profileFor(event as any))
+  )
 
   ipcMain.handle(
     IpcChannels.HistoryRecordVisit,
-    (_event, visit: { url: string; title: string }) => {
-      recordVisit(visit)
-      return publishHistory((state) => context.send(IpcChannels.HistoryStateChanged, state))
+    (event, visit: { url: string; title: string }) => {
+      const profileId = profileFor(event as any)
+      recordVisit(profileId, visit)
+      return publishHistory(profileId, (state) =>
+        sendToProfile(profileId, IpcChannels.HistoryStateChanged, state)
+      )
     }
   )
 
   ipcMain.handle(IpcChannels.HistoryRemove, (event, id: string) => {
-    void event
-    removeHistory(id)
-    return publishHistory((state) => context.send(IpcChannels.HistoryStateChanged, state))
+    const profileId = profileFor(event as any)
+    removeHistory(profileId, id)
+    return publishHistory(profileId, (state) =>
+      sendToProfile(profileId, IpcChannels.HistoryStateChanged, state)
+    )
   })
 
   ipcMain.handle(IpcChannels.HistoryClear, (event) => {
-    void event
-    clearHistory()
-    return publishHistory((state) => context.send(IpcChannels.HistoryStateChanged, state))
+    const profileId = profileFor(event as any)
+    clearHistory(profileId)
+    return publishHistory(profileId, (state) =>
+      sendToProfile(profileId, IpcChannels.HistoryStateChanged, state)
+    )
   })
 
   /* ---- downloads ------------------------------------------------------ */
 
-  ipcMain.handle(IpcChannels.DownloadsGetState, (event) => (void event, currentDownloadsState()))
+  ipcMain.handle(IpcChannels.DownloadsGetState, (event) =>
+    currentDownloadsState(profileFor(event as any))
+  )
 
   ipcMain.handle(IpcChannels.DownloadsClear, (event) => {
-    void event
-    clearDownloads()
-    return publishDownloads((state) => context.send(IpcChannels.DownloadsStateChanged, state))
+    const profileId = profileFor(event as any)
+    clearDownloads(profileId)
+    return publishDownloads(profileId, (state) =>
+      sendToProfile(profileId, IpcChannels.DownloadsStateChanged, state)
+    )
   })
 
-  const publishDownloadsState = (): ReturnType<typeof publishDownloads> =>
-    publishDownloads((state) => context.send(IpcChannels.DownloadsStateChanged, state))
+  const publishDownloadsState = (profileId: string): ReturnType<typeof publishDownloads> =>
+    publishDownloads(profileId, (state) =>
+      sendToProfile(profileId, IpcChannels.DownloadsStateChanged, state)
+    )
 
   ipcMain.handle(IpcChannels.DownloadsPause, (event, id: string) => {
-    void event
+    const profileId = profileFor(event as any)
     pauseDownload(id)
-    return publishDownloadsState()
+    return publishDownloadsState(profileId)
   })
 
   ipcMain.handle(IpcChannels.DownloadsResume, (event, id: string) => {
-    void event
+    const profileId = profileFor(event as any)
     resumeDownload(id)
-    return publishDownloadsState()
+    return publishDownloadsState(profileId)
   })
 
   ipcMain.handle(IpcChannels.DownloadsCancel, (event, id: string) => {
-    void event
+    const profileId = profileFor(event as any)
     cancelDownload(id)
-    return publishDownloadsState()
+    return publishDownloadsState(profileId)
   })
 
   ipcMain.handle(IpcChannels.DownloadsRemove, (event, id: string) => {
-    void event
-    removeDownload(id)
-    return publishDownloadsState()
+    const profileId = profileFor(event as any)
+    removeDownload(profileId, id)
+    return publishDownloadsState(profileId)
   })
 
   ipcMain.handle(IpcChannels.DownloadsCopyUrl, (event, id: string) => {
     void event
-    const url = downloadUrl(id)
+    const profileId = profileFor(event as any)
+    const url = downloadUrl(profileId, id)
     if (url) clipboard.writeText(url)
     return url
   })
 
   ipcMain.handle(IpcChannels.DownloadsOpenFolder, (event, id: string) => {
     void event
-    return openDownloadFolder(id)
+    return openDownloadFolder(profileFor(event as any), id)
+  })
+
+
+
+  /* ---- profiles -------------------------------------------------------- */
+
+  const profilesState = (activeProfileId: string): ProfilesState => ({
+    profiles: listProfiles(),
+    activeProfileId
+  })
+
+  ipcMain.handle(IpcChannels.ProfilesGetState, (event) =>
+    profilesState(profileFor(event as any))
+  )
+
+  ipcMain.handle(IpcChannels.ProfilesCreate, (event, input: CreateProfileInput) => {
+    if (!input || typeof input.name !== 'string') throw new Error('Profile name is required')
+    const profile = createProfile({
+      name: input.name,
+      color: isProfileColor(input.color) ? input.color : undefined
+    })
+    ensureProfileSession(profile.id)
+    broadcastProfiles()
+    void event
+    return profile
+  })
+
+  ipcMain.handle(IpcChannels.ProfilesUpdate, (event, input: RenameProfileInput) => {
+    if (!input || typeof input.id !== 'string' || typeof input.name !== 'string') {
+      throw new Error('Invalid profile update')
+    }
+    const profile = updateProfile({
+      id: input.id,
+      name: input.name,
+      color: isProfileColor(input.color) ? input.color : undefined
+    })
+    broadcastProfiles()
+    void event
+    return profile
+  })
+
+  ipcMain.handle(IpcChannels.ProfilesDelete, (event, id: string) => {
+    if (typeof id !== 'string' || id === DEFAULT_PROFILE_ID) {
+      throw new Error('Profile cannot be deleted')
+    }
+    // Close windows using the profile before removing its data.
+    for (const window of allWindows()) {
+      if (window.profile === id && !window.window.isDestroyed()) window.window.close()
+    }
+    deleteProfile(id)
+    setLastProfileId(DEFAULT_PROFILE_ID)
+    broadcastProfiles()
+    void event
+    return profilesState(DEFAULT_PROFILE_ID)
+  })
+
+  ipcMain.handle(IpcChannels.ProfilesOpenWindow, (event, id: string) => {
+    if (typeof id !== 'string') throw new Error('Invalid profile')
+    createWindow({ profileId: id })
+    setLastProfileId(id)
+    void event
   })
 
   /* ---- chrome overlay -------------------------------------------------- */

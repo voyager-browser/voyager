@@ -16,6 +16,13 @@ export const IpcChannels = {
   ContentBlockingImportFile: 'content-blocking:import-file',
   ContentBlockingRemoveFile: 'content-blocking:remove-file',
 
+  ProfilesGetState: 'profiles:get-state',
+  ProfilesCreate: 'profiles:create',
+  ProfilesUpdate: 'profiles:update',
+  ProfilesDelete: 'profiles:delete',
+  ProfilesOpenWindow: 'profiles:open-window',
+  ProfilesStateChanged: 'profiles:state-changed',
+
   ThemeGet: 'theme:get',
   ThemeSet: 'theme:set',
   ThemeChanged: 'theme:changed',
