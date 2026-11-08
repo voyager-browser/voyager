@@ -3,7 +3,11 @@ import { IpcChannels } from '../../shared/ipc-channels'
 import type { ProfilesState } from '../../shared/profiles'
 import { attachContentBlocking, primeContentBlocking } from '../contentBlocking/contentBlocking'
 import { attachDownloadsTracking } from '../downloads/downloads'
-import { attachPermissionHandlers } from '../permissions/permissions'
+import {
+  attachPermissionHandlers,
+  autoRemoveStalePermissions,
+  currentSitePermissions
+} from '../permissions/permissions'
 import { registerVoyagerProtocol } from '../protocol/voyagerProtocol'
 import { applyProxyForProfile } from '../proxy/proxy'
 import { getSettings } from '../store'
@@ -65,6 +69,9 @@ export function ensureProfileSession(profileId: string): Session {
 
   registerVoyagerProtocol(ses.protocol)
   attachPermissionHandlers(ses, profileId)
+  if (autoRemoveStalePermissions(profileId)) {
+    broadcastToProfile(profileId, IpcChannels.PermissionsStateChanged, currentSitePermissions(profileId))
+  }
   void applyProxyForProfile(ses, profileId)
   ses.setSpellCheckerEnabled(getSettings(profileId, 'spellcheck', true) !== false)
   if (getSettings(profileId, 'contentBlocking', false) === true) {

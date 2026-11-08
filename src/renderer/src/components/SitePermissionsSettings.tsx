@@ -20,6 +20,7 @@ export function SitePermissionsSettings({
   onBack
 }: SitePermissionsSettingsProps): React.JSX.Element {
   const decisions = usePermissionsStore((state) => state.decisions)
+  const autoRemovedDecisions = usePermissionsStore((state) => state.autoRemovedDecisions ?? [])
   const [originFilter, setOriginFilter] = useState<string | null>(
     initialOrigin ? permissionOriginForUrl(initialOrigin) : null
   )
@@ -70,6 +71,26 @@ export function SitePermissionsSettings({
             </button>
           )}
         </div>
+
+        {autoRemovedDecisions.length > 0 && (
+          <div className="mb-5 flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-[12.5px] font-medium text-fg">
+                Some site permissions were removed after 1 month without a visit.
+              </p>
+              <p className="text-[11.5px] text-muted">
+                You can restore them if they were removed by mistake.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 rounded-md border border-border bg-bg px-3 py-1.5 text-[12.5px] text-fg transition-colors hover:bg-hover"
+              onClick={() => void usePermissionsStore.getState().undoAutoRemoval()}
+            >
+              Undo
+            </button>
+          </div>
+        )}
 
         {originFilter && (
           <div className="mb-5 flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-3">

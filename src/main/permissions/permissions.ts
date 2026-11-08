@@ -175,6 +175,12 @@ function hasTabGrant(
   return false
 }
 
+const PERMISSION_AUTO_REMOVAL_MS = 30 * 24 * 60 * 60 * 1000
+
+function autoRemovedDecisions(profileId: string): SitePermissionDecision[] {
+  return storesFor(profileId).permissions.get('autoRemovedDecisions') ?? []
+}
+
 function upsertDecision(
   profileId: string,
   origin: string,
@@ -193,7 +199,11 @@ function upsertDecision(
 }
 
 export function currentSitePermissions(profileId: string): SitePermissionsState {
-  return { decisions: [...storesFor(profileId).permissions.get('decisions')] }
+  const store = storesFor(profileId).permissions
+  return {
+    decisions: [...store.get('decisions')],
+    autoRemovedDecisions: [...(store.get('autoRemovedDecisions') ?? [])]
+  }
 }
 
 export function sitePermissionsForOrigin(profileId: string, origin: string): SitePermissionsState {
@@ -201,8 +211,57 @@ export function sitePermissionsForOrigin(profileId: string, origin: string): Sit
   return {
     decisions: storesFor(profileId)
       .permissions.get('decisions')
-      .filter((decision) => decision.origin === normalized)
+      .filter((decision) => decision.origin === normalized),
+    autoRemovedDecisions: []
   }
+}
+
+/**
+ * Auto-remove site permissions for origins not visited within the last month.
+ * Removed decisions are stored so they can be restored from Settings.
+ */
+export function autoRemoveStalePermissions(profileId: string): boolean {
+  const store = storesFor(profileId).permissions
+  const decisions = store.get('decisions')
+  if (decisions.length === 0) return false
+
+  const historyEntries = storesFor(profileId).history.get('entries') ?? []
+  const cutoff = Date.now() - PERMISSION_AUTO_REMOVAL_MS
+  const recentlyVisitedOrigins = new Set<string>()
+  for (const entry of historyEntries) {
+    if (typeof entry?.visitedAt !== 'number' || entry.visitedAt < cutoff) continue
+    const origin = permissionOriginForUrl(entry.url)
+    if (origin) recentlyVisitedOrigins.add(origin)
+  }
+
+  const kept: SitePermissionDecision[] = []
+  const removed: SitePermissionDecision[] = []
+  for (const decision of decisions) {
+    if (recentlyVisitedOrigins.has(decision.origin)) kept.push(decision)
+    else removed.push(decision)
+  }
+  if (removed.length === 0) return false
+
+  store.set('decisions', kept)
+  store.set('autoRemovedDecisions', removed)
+  return true
+}
+
+/** Restore permissions that were auto-removed by the privacy policy. */
+export function undoPermissionAutoRemoval(profileId: string): boolean {
+  const store = storesFor(profileId).permissions
+  const removed = store.get('autoRemovedDecisions') ?? []
+  if (removed.length === 0) return false
+
+  const decisions = [...store.get('decisions')]
+  for (const item of removed) {
+    if (!decisions.some((d) => d.origin === item.origin && d.kind === item.kind)) {
+      decisions.push(item)
+    }
+  }
+  store.set('decisions', decisions)
+  store.set('autoRemovedDecisions', [])
+  return true
 }
 
 /** Remove one site's decision, an entire site, or every saved decision. */
@@ -226,8 +285,11 @@ export function removeSitePermissions(
 
 export function clearSitePermissions(profileId: string): boolean {
   const store = storesFor(profileId).permissions
-  if (store.get('decisions').length === 0) return false
+  if (store.get('decisions').length === 0 && autoRemovedDecisions(profileId).length === 0) {
+    return false
+  }
   store.set('decisions', [])
+  store.set('autoRemovedDecisions', [])
   return true
 }
 

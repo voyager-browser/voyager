@@ -85,6 +85,7 @@ export const IpcChannels = {
   PermissionsGetForOrigin: 'permissions:get-for-origin',
   PermissionsRemove: 'permissions:remove',
   PermissionsClear: 'permissions:clear',
+  PermissionsUndoAutoRemoval: 'permissions:undo-auto-removal',
   PermissionsRespond: 'permissions:respond',
   PermissionsStateChanged: 'permissions:state-changed',
   PermissionsRequest: 'permissions:request',

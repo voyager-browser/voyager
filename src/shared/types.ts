@@ -128,6 +128,8 @@ export interface SitePermissionDecision {
 
 export interface SitePermissionsState {
   decisions: SitePermissionDecision[]
+  /** Decisions recently removed by the auto-removal privacy policy (undoable). */
+  autoRemovedDecisions?: SitePermissionDecision[]
 }
 
 export type PermissionRequestChoice = 'allow-site' | 'allow-once' | 'block' | 'dismiss'

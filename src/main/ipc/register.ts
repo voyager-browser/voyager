@@ -58,7 +58,8 @@ import {
   currentSitePermissions,
   removeSitePermissions,
   respondToPermissionRequest,
-  sitePermissionsForOrigin
+  sitePermissionsForOrigin,
+  undoPermissionAutoRemoval
 } from '../permissions/permissions'
 import { exportCertificate, getCertificate } from '../certificates/certificates'
 import type { WindowController } from '../window/WindowController'
@@ -610,6 +611,12 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IpcChannels.PermissionsClear, (event) => {
     const profileId = profileFor(event as any)
     const changed = clearSitePermissions(profileId)
+    return changed ? publishPermissions(profileId) : currentSitePermissions(profileId)
+  })
+
+  ipcMain.handle(IpcChannels.PermissionsUndoAutoRemoval, (event) => {
+    const profileId = profileFor(event as any)
+    const changed = undoPermissionAutoRemoval(profileId)
     return changed ? publishPermissions(profileId) : currentSitePermissions(profileId)
   })
 
