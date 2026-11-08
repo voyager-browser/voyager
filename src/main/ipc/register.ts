@@ -105,6 +105,8 @@ import {
   normalizeProxyHost,
   normalizeProxyPort
 } from '../proxy/proxy'
+import { applyUserAgentForProfile, userAgentForProfile } from '../userAgent/userAgent'
+import { refreshAppMenu } from '../menu/menu'
 import { DEFAULT_PROXY_CONFIG } from '../../shared/proxy'
 import { DEFAULT_NEW_TAB_URL } from '../../shared/constants'
 import { createWindow } from '../window/createWindow'
@@ -194,7 +196,12 @@ function userPreferences(profileId: string): UserPreferences {
       typeof getSettings(profileId, 'homeUrl', DEFAULT_NEW_TAB_URL) === 'string'
         ? (getSettings(profileId, 'homeUrl', DEFAULT_NEW_TAB_URL) as string)
         : DEFAULT_NEW_TAB_URL,
-    memorySaver: getSettings(profileId, 'memorySaver', false) === true
+    memorySaver: getSettings(profileId, 'memorySaver', false) === true,
+    developerMode: getSettings(profileId, 'developerMode', false) === true,
+    userAgent:
+      typeof getSettings(profileId, 'userAgent', '') === 'string'
+        ? (getSettings(profileId, 'userAgent', '') as string)
+        : '' 
   }
 }
 
@@ -274,7 +281,9 @@ export function registerIpcHandlers(context: IpcContext): void {
     'spellcheck',
     'showHomeButton',
     'homeUrl',
-    'memorySaver'
+    'memorySaver',
+    'developerMode',
+    'userAgent' 
   ])
 
   ipcMain.handle(
@@ -362,6 +371,21 @@ export function registerIpcHandlers(context: IpcContext): void {
         }
         setSettings(profileId, key, value)
         sessionForProfile(profileId).setSpellCheckerEnabled(value)
+        return respond()
+      }
+      if (key === 'developerMode') {
+        if (typeof value !== 'boolean') {
+          throw new Error('Expected a boolean for setting: developerMode')
+        }
+        setSettings(profileId, key, value)
+        refreshAppMenu()
+        return respond()
+      }
+      if (key === 'userAgent') {
+        if (typeof value !== 'string') throw new Error('Invalid user agent')
+        setSettings(profileId, 'userAgent', value)
+        applyUserAgentForProfile(sessionForProfile(profileId), profileId)
+        refreshAppMenu()
         return respond()
       }
       if (key === 'proxyMode') {
@@ -751,6 +775,22 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.on(IpcChannels.TabDragStart, (event, url: string) => {
     void event
     setPendingDragUrl(url)
+  })
+
+  ipcMain.on(IpcChannels.TabGetUserAgent, (event) => {
+    const ses = event.sender.session
+    let profileId = DEFAULT_PROFILE_ID
+    for (const profile of listProfiles()) {
+      try {
+        if (sessionForProfile(profile.id) === ses) {
+          profileId = profile.id
+          break
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    event.returnValue = userAgentForProfile(profileId)
   })
 
   // Tabs block inside sendSync until the chrome UI answers the prompt.

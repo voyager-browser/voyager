@@ -303,6 +303,10 @@ export interface UserPreferences {
   homeUrl: string
   /** Unload inactive tabs to save memory; they reload when activated. */
   memorySaver: boolean
+  /** Show developer-oriented features in the menu. */
+  developerMode: boolean
+  /** Custom User-Agent string; empty uses the default. */
+  userAgent: string
 }
 
 /** Site data categories cleared together from Settings. */

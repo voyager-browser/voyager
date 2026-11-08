@@ -16,6 +16,7 @@ import {
   Trash2,
   Upload,
   UserCircle2,
+  Wrench,
   type LucideIcon
 } from 'lucide-react'
 import { useBookmarksStore } from '../state/bookmarksStore'
@@ -79,7 +80,10 @@ const SETTINGS_NAV_GROUPS: SettingsNavItem[][] = [
     { id: 'clear-browsing-data', label: 'Clear browsing data', icon: Trash2 },
     { id: 'data', label: 'Data', icon: Database }
   ],
-  [{ id: 'about', label: 'About', icon: Info }]
+  [
+    { id: 'developer', label: 'Developer', icon: Wrench },
+    { id: 'about', label: 'About', icon: Info }
+  ]
 ]
 
 const BUG_REPORT_BODY = `# Bug
@@ -154,7 +158,9 @@ export function SettingsPage(): React.JSX.Element {
     spellcheck: true,
     showHomeButton: false,
     homeUrl: DEFAULT_NEW_TAB_URL,
-    memorySaver: false
+    memorySaver: false,
+    developerMode: false,
+    userAgent: '' 
   })
   const [customFilterUrl, setCustomFilterUrl] = useState('')
   const [customFilterError, setCustomFilterError] = useState<string | null>(null)
@@ -1372,6 +1378,39 @@ export function SettingsPage(): React.JSX.Element {
                 <div>History entries: {history.length}</div>
                 <div>Downloads: {downloads.length}</div>
               </div>
+            </section>
+
+            <section
+              data-settings-section="developer"
+              className="rounded-lg border border-border bg-surface p-5"
+            >
+              <h2 className="mb-1 text-[15px] font-semibold text-fg">Developer</h2>
+              <p className="mb-4 text-[12px] text-muted">
+                Developer features are also available from the View menu when Developer Mode is on.
+              </p>
+              <label className="flex items-center gap-2 text-[13px] text-fg">
+                <input
+                  type="checkbox"
+                  checked={preferences.developerMode}
+                  onChange={(event) => void setPreference('developerMode', event.target.checked)}
+                />
+                <span>Developer Mode</span>
+              </label>
+              {preferences.developerMode && (
+                <label className="mt-3 block">
+                  <span className="mb-1 block text-[12px] text-muted">Custom User-Agent</span>
+                  <input
+                    type="text"
+                    className="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-[13px] text-fg"
+                    value={preferences.userAgent}
+                    placeholder="Leave empty to use the default"
+                    onChange={(e) => void setPreference('userAgent', e.target.value)}
+                  />
+                  <span className="mt-1 block text-[11px] text-muted">
+                    You can also choose presets from View → For Developers → User Agent.
+                  </span>
+                </label>
+              )}
             </section>
 
             <section
