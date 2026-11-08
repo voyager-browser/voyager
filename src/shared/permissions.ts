@@ -47,10 +47,7 @@ export function isPermissionKind(value: unknown): value is PermissionKind {
 
 export function isPermissionRequestChoice(value: unknown): value is PermissionRequestChoice {
   return (
-    value === 'allow-site' ||
-    value === 'allow-once' ||
-    value === 'block' ||
-    value === 'dismiss'
+    value === 'allow-site' || value === 'allow-once' || value === 'block' || value === 'dismiss'
   )
 }
 

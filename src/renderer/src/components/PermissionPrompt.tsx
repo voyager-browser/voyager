@@ -11,10 +11,7 @@ import {
   Usb,
   X
 } from 'lucide-react'
-import {
-  PERMISSION_ACTIONS,
-  PERMISSION_LABELS
-} from '../../../shared/permissions'
+import { PERMISSION_ACTIONS, PERMISSION_LABELS } from '../../../shared/permissions'
 import type {
   PermissionKind,
   PermissionPromptRequest,

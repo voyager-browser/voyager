@@ -56,8 +56,8 @@ export function SitePermissionsSettings({
           <div>
             <h1 className="text-[22px] font-semibold text-fg">Site permissions</h1>
             <p className="mt-1 text-[13px] text-muted">
-              Choose how sites may use location, notifications, camera, microphone and
-              other browser features.
+              Choose how sites may use location, notifications, camera, microphone and other browser
+              features.
             </p>
           </div>
           {decisions.length > 0 && (
@@ -121,26 +121,18 @@ export function SitePermissionsSettings({
   )
 }
 
-function PermissionRow({
-  decision
-}: {
-  decision: SitePermissionDecision
-}): React.JSX.Element {
+function PermissionRow({ decision }: { decision: SitePermissionDecision }): React.JSX.Element {
   return (
     <li className="flex items-center justify-between gap-4 border-b border-border px-4 py-2.5 last:border-b-0">
       <div className="min-w-0">
-        <p className="truncate text-[13px] text-fg">
-          {permissionHostForOrigin(decision.origin)}
-        </p>
+        <p className="truncate text-[13px] text-fg">{permissionHostForOrigin(decision.origin)}</p>
         <p className="truncate text-[11.5px] text-muted">{decision.origin}</p>
       </div>
       <div className="flex shrink-0 items-center gap-3">
         <span
           className={cn(
             'rounded-full px-2 py-0.5 text-[11px] font-medium',
-            decision.decision === 'allow'
-              ? 'bg-accent/10 text-accent'
-              : 'bg-danger/10 text-danger'
+            decision.decision === 'allow' ? 'bg-accent/10 text-accent' : 'bg-danger/10 text-danger'
           )}
         >
           {decision.decision === 'allow' ? 'Allowed' : 'Blocked'}
@@ -149,11 +141,7 @@ function PermissionRow({
           type="button"
           aria-label={`Remove ${PERMISSION_LABELS[decision.kind]} permission for ${permissionHostForOrigin(decision.origin)}`}
           className="text-[12px] text-muted transition-colors hover:text-danger hover:underline"
-          onClick={() =>
-            void usePermissionsStore
-              .getState()
-              .remove(decision.origin, decision.kind)
-          }
+          onClick={() => void usePermissionsStore.getState().remove(decision.origin, decision.kind)}
         >
           Remove
         </button>

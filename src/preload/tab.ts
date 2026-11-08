@@ -34,9 +34,7 @@ window.addEventListener(
   'dragstart',
   (event) => {
     const path = event.composedPath()
-    const anchor = path.find(
-      (node): node is HTMLAnchorElement => node instanceof HTMLAnchorElement
-    )
+    const anchor = path.find((node): node is HTMLAnchorElement => node instanceof HTMLAnchorElement)
     const url = anchor?.href ?? ''
     if (url.length > 0) ipcRenderer.send(IpcChannels.TabDragStart, url)
   },

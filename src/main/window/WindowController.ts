@@ -55,9 +55,7 @@ export class WindowController {
   constructor(options: { incognito?: boolean } = {}) {
     this.incognito = options.incognito ?? false
     // Incognito profiles live in an in-memory session and are never persisted.
-    this.incognitoPartition = this.incognito
-      ? `${INCOGNITO_PARTITION_PREFIX}${randomUUID()}`
-      : null
+    this.incognitoPartition = this.incognito ? `${INCOGNITO_PARTITION_PREFIX}${randomUUID()}` : null
     this.verticalTabs = getSettings('verticalTabs', false) === true
     this.attachIncognitoSession()
     this.layout = computeLayout(1280, 800)

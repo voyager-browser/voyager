@@ -421,7 +421,9 @@ export function SettingsPage(): React.JSX.Element {
                     type="checkbox"
                     className="mt-0.5"
                     checked={preferences.builtinFilterList}
-                    onChange={(event) => void setPreference('builtinFilterList', event.target.checked)}
+                    onChange={(event) =>
+                      void setPreference('builtinFilterList', event.target.checked)
+                    }
                   />
                   <span>
                     <span className="block">Voyager built-in list</span>
@@ -479,7 +481,10 @@ export function SettingsPage(): React.JSX.Element {
                           setCustomFilterError('That list has already been added.')
                           return
                         }
-                        void setPreference('customFilterLists', [...preferences.customFilterLists, url])
+                        void setPreference('customFilterLists', [
+                          ...preferences.customFilterLists,
+                          url
+                        ])
                         setCustomFilterUrl('')
                         setCustomFilterError(null)
                       }}
@@ -497,7 +502,10 @@ export function SettingsPage(): React.JSX.Element {
                           setCustomFilterError('That list has already been added.')
                           return
                         }
-                        void setPreference('customFilterLists', [...preferences.customFilterLists, url])
+                        void setPreference('customFilterLists', [
+                          ...preferences.customFilterLists,
+                          url
+                        ])
                         setCustomFilterUrl('')
                         setCustomFilterError(null)
                       }}
@@ -551,14 +559,18 @@ export function SettingsPage(): React.JSX.Element {
                     <p className="mt-1.5 text-[11.5px] text-danger">{customFilterError}</p>
                   )}
 
-                  {(preferences.customFilterLists.length > 0 || preferences.customFilterFiles.length > 0) && (
+                  {(preferences.customFilterLists.length > 0 ||
+                    preferences.customFilterFiles.length > 0) && (
                     <ul className="mt-2 space-y-1.5">
                       {preferences.customFilterLists.map((url) => (
                         <li
                           key={url}
                           className="flex items-center gap-2 rounded-md border border-border bg-bg px-2 py-1.5"
                         >
-                          <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg" title={url}>
+                          <span
+                            className="min-w-0 flex-1 truncate text-[11.5px] text-fg"
+                            title={url}
+                          >
                             {url}
                           </span>
                           <button
@@ -581,7 +593,10 @@ export function SettingsPage(): React.JSX.Element {
                           key={file.id}
                           className="flex items-center gap-2 rounded-md border border-border bg-bg px-2 py-1.5"
                         >
-                          <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg" title={file.name}>
+                          <span
+                            className="min-w-0 flex-1 truncate text-[11.5px] text-fg"
+                            title={file.name}
+                          >
                             {file.name}
                             <span className="ml-1.5 text-muted">(uploaded file)</span>
                           </span>
@@ -591,7 +606,9 @@ export function SettingsPage(): React.JSX.Element {
                             aria-label={`Remove uploaded filter list ${file.name}`}
                             onClick={async () => {
                               try {
-                                const prefs = await window.voyager.settings.removeFilterFile(file.id)
+                                const prefs = await window.voyager.settings.removeFilterFile(
+                                  file.id
+                                )
                                 setPreferences(prefs)
                               } catch (error: unknown) {
                                 setCustomFilterError(

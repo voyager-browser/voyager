@@ -2,22 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Globe, Search } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { useOverlaySignal } from '../lib/overlay'
-import {
-  SEARCH_ENGINES,
-  buildSearchUrl,
-  parseSuggestions
-} from '../../../shared/search'
+import { SEARCH_ENGINES, buildSearchUrl, parseSuggestions } from '../../../shared/search'
 import { displayUrl, isNewTab } from '../../../shared/url'
 import { useActiveTab, useBrowserStore, useScopedSearchEngine } from '../state/browserStore'
 import type { SearchEngineId } from '../../../shared/search'
 import { PageInfoPopover } from './PageInfoPopover'
 import { SecurityBadge } from './SecurityBadge'
 
-function useSuggestions(
-  query: string,
-  active: boolean,
-  engine: SearchEngineId
-): string[] {
+function useSuggestions(query: string, active: boolean, engine: SearchEngineId): string[] {
   const [suggestions, setSuggestions] = useState<string[]>([])
 
   useEffect(() => {
@@ -108,11 +100,7 @@ export function Omnibox(): React.JSX.Element {
     if (focused) inputRef.current?.select()
   }, [focused])
 
-  const suggestions = useSuggestions(
-    value,
-    focused && value.trim().length > 0,
-    searchEngine
-  )
+  const suggestions = useSuggestions(value, focused && value.trim().length > 0, searchEngine)
   const showDropdown = focused && value.trim() !== '' && !pageInfoOpen
   const rowCount = suggestions.length + 1 // index 0 is "search for ..."
 

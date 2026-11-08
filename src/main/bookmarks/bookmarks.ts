@@ -111,7 +111,9 @@ export function addBookmark(
   if (!folderExists(folderId)) throw new Error('Folder not found')
 
   const items = storedItems()
-  const existing = items.find((item) => item.url === input.url && (item.folderId ?? null) === folderId)
+  const existing = items.find(
+    (item) => item.url === input.url && (item.folderId ?? null) === folderId
+  )
   let added = false
 
   if (existing) {

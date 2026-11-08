@@ -53,9 +53,7 @@ export interface PermissionPromptRoute {
   send(channel: string, payload?: unknown): void
 }
 
-type PermissionPromptRouter = (
-  webContents: WebContents | null
-) => PermissionPromptRoute | null
+type PermissionPromptRouter = (webContents: WebContents | null) => PermissionPromptRoute | null
 
 interface PendingPermissionRequest {
   request: PermissionPromptRequest
@@ -82,10 +80,7 @@ export function configurePermissionPromptRouter(router: PermissionPromptRouter):
   resolvePromptRoute = router
 }
 
-function permissionKind(
-  permission: string,
-  details: PermissionDetails
-): PermissionKind | null {
+function permissionKind(permission: string, details: PermissionDetails): PermissionKind | null {
   switch (permission) {
     case 'geolocation':
     case 'geolocation-approximate':
@@ -93,8 +88,7 @@ function permissionKind(
     case 'notifications':
       return 'notifications'
     case 'media': {
-      const mediaTypes =
-        details.mediaTypes ?? (details.mediaType ? [details.mediaType] : [])
+      const mediaTypes = details.mediaTypes ?? (details.mediaType ? [details.mediaType] : [])
       const video = mediaTypes.includes('video')
       const audio = mediaTypes.includes('audio')
       if (video && audio) return 'camera-microphone'
@@ -127,15 +121,10 @@ function originFromRequest(
   )
 }
 
-function decisionForOrigin(
-  origin: string,
-  kind: PermissionKind
-): PermissionDecision | undefined {
+function decisionForOrigin(origin: string, kind: PermissionKind): PermissionDecision | undefined {
   const decisions = permissionsStore.get('decisions')
   const find = (candidate: PermissionKind): SitePermissionDecision | undefined =>
-    decisions.find(
-      (decision) => decision.origin === origin && decision.kind === candidate
-    )
+    decisions.find((decision) => decision.origin === origin && decision.kind === candidate)
 
   const exact = find(kind)
   if (exact) return exact.decision
@@ -154,11 +143,7 @@ function decisionForOrigin(
   return undefined
 }
 
-function tabGrantKey(
-  webContentsId: number,
-  origin: string,
-  kind: PermissionKind
-): string {
+function tabGrantKey(webContentsId: number, origin: string, kind: PermissionKind): string {
   return `${webContentsId}\n${origin}\n${kind}`
 }
 
@@ -190,14 +175,10 @@ function upsertDecision(
   decision: PermissionDecision
 ): boolean {
   const current = permissionsStore.get('decisions')
-  const existing = current.find(
-    (item) => item.origin === origin && item.kind === kind
-  )
+  const existing = current.find((item) => item.origin === origin && item.kind === kind)
   if (existing?.decision === decision) return false
 
-  const next = current.filter(
-    (item) => !(item.origin === origin && item.kind === kind)
-  )
+  const next = current.filter((item) => !(item.origin === origin && item.kind === kind))
   next.push({ origin, kind, decision, updatedAt: Date.now() })
   permissionsStore.set('decisions', next)
   return true
@@ -217,10 +198,7 @@ export function sitePermissionsForOrigin(origin: string): SitePermissionsState {
 }
 
 /** Remove one site's decision, an entire site, or every saved decision. */
-export function removeSitePermissions(
-  origin?: string,
-  kind?: PermissionKind
-): boolean {
+export function removeSitePermissions(origin?: string, kind?: PermissionKind): boolean {
   const current = permissionsStore.get('decisions')
   const normalized = origin === undefined ? undefined : (permissionOriginForUrl(origin) ?? origin)
   const next = current.filter((decision) => {

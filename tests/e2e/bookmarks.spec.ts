@@ -155,20 +155,22 @@ test('bookmarks manager adds folders and bookmarks and allows duplicates per fol
   const folder = state.folders.find((candidate) => candidate.title === 'Research')
   expect(folder).toBeTruthy()
   await expect
-    .poll(
-      async () => (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).folders.some(
+    .poll(async () =>
+      (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).folders.some(
         (folder: { title: string }) => folder.title === 'Research'
       )
     )
     .toBe(true)
-  await expect(manager.getByRole('button', { name: 'Research' }).first()).toBeVisible({ timeout: 15000 })
+  await expect(manager.getByRole('button', { name: 'Research' }).first()).toBeVisible({
+    timeout: 15000
+  })
   await manager.getByRole('button', { name: 'Research' }).first().click()
 
   await manager.getByRole('button', { name: 'Add Page' }).click()
   await expect
     .poll(
-      async () => (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).items
-        .length
+      async () =>
+        (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).items.length
     )
     .toBe(1)
 
@@ -204,7 +206,10 @@ test.skip('bookmark context menu opens, edits, copies and deletes a bookmark (pe
     )
     .toBe(1)
 
-  await voyager.chrome.locator('nav button').first().click({ modifiers: ['Control'] })
+  await voyager.chrome
+    .locator('nav button')
+    .first()
+    .click({ modifiers: ['Control'] })
   const menu = voyager.chrome.getByRole('menu')
   await expect(menu).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: 'Open in New Tab' })).toBeVisible()
@@ -217,13 +222,14 @@ test.skip('bookmark context menu opens, edits, copies and deletes a bookmark (pe
 
   // Opening in a new tab closes the menu and spins up a secondary tab.
   await menu.getByRole('menuitem', { name: 'Open in New Tab' }).click()
-  await expect
-    .poll(async () => (await voyager.state()).tabs.length)
-    .toBe(2)
+  await expect.poll(async () => (await voyager.state()).tabs.length).toBe(2)
   await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/home'))
 
   // Reopen the context menu for the remaining actions.
-  await voyager.chrome.locator('nav button').first().click({ modifiers: ['Control'] })
+  await voyager.chrome
+    .locator('nav button')
+    .first()
+    .click({ modifiers: ['Control'] })
   const editMenu = voyager.chrome.getByRole('menu')
   await expect(editMenu.getByRole('menuitem', { name: 'Edit…' })).toBeVisible()
   await editMenu.getByRole('menuitem', { name: 'Edit…' }).click()
@@ -234,12 +240,14 @@ test.skip('bookmark context menu opens, edits, copies and deletes a bookmark (pe
   await expect
     .poll(
       async () =>
-        (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).items[0]
-          ?.title
+        (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).items[0]?.title
     )
     .toBe('Renamed Page')
 
-  await voyager.chrome.locator('nav button').first().click({ modifiers: ['Control'] })
+  await voyager.chrome
+    .locator('nav button')
+    .first()
+    .click({ modifiers: ['Control'] })
   const copyMenu = voyager.chrome.getByRole('menu')
   await expect(copyMenu.getByRole('menuitem', { name: 'Copy' })).toBeVisible()
   await copyMenu.getByRole('menuitem', { name: 'Copy' }).click()
@@ -250,7 +258,10 @@ test.skip('bookmark context menu opens, edits, copies and deletes a bookmark (pe
     )
     .toBe('copy')
 
-  await voyager.chrome.locator('nav button').first().click({ modifiers: ['Control'] })
+  await voyager.chrome
+    .locator('nav button')
+    .first()
+    .click({ modifiers: ['Control'] })
   const deleteMenu = voyager.chrome.getByRole('menu')
   await expect(deleteMenu.getByRole('menuitem', { name: 'Delete' })).toBeVisible()
   await deleteMenu.getByRole('menuitem', { name: 'Delete' }).click()
@@ -271,11 +282,14 @@ test('moves a bookmark into another position', async ({ voyager, server }) => {
     )
     .toBe(0)
 
-  await voyager.chrome.evaluate(async (urls: string[]) => {
-    for (const url of urls) {
-      await window.voyager.bookmarks.add({ title: url, url })
-    }
-  }, [server.url('/home'), server.url('/second')])
+  await voyager.chrome.evaluate(
+    async (urls: string[]) => {
+      for (const url of urls) {
+        await window.voyager.bookmarks.add({ title: url, url })
+      }
+    },
+    [server.url('/home'), server.url('/second')]
+  )
   await expect
     .poll(
       async () =>
@@ -292,17 +306,14 @@ test('moves a bookmark into another position', async ({ voyager, server }) => {
     parentId: null,
     beforeId: first.id
   }
-  await voyager.chrome.evaluate(
-    async (input: BookmarkMoveInput) => {
-      await window.voyager.bookmarks.move(input)
-    },
-    moveInput
-  )
+  await voyager.chrome.evaluate(async (input: BookmarkMoveInput) => {
+    await window.voyager.bookmarks.move(input)
+  }, moveInput)
   await expect
     .poll(
       async () =>
-        (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).items[0]
-          ?.id === second.id
+        (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).items[0]?.id ===
+        second.id
     )
     .toBe(true)
 })
