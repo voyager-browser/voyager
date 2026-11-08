@@ -4,6 +4,7 @@
  */
 
 import type { ProfileInfo } from './profiles'
+import type { ProxyMode, ProxyScheme } from './proxy'
 import type { SearchEngineId } from './search'
 import type { FilterListId } from './filter-lists'
 
@@ -280,6 +281,16 @@ export interface UserPreferences {
   customFilterLists: string[]
   /** Imported hosts-format files stored locally. */
   customFilterFiles: CustomFilterFile[]
+  /** Proxy mode for this profile. */
+  proxyMode: ProxyMode
+  /** Proxy scheme when using a fixed proxy server. */
+  proxyScheme: ProxyScheme
+  /** Proxy host when using a fixed proxy server. */
+  proxyHost: string
+  /** Proxy port when using a fixed proxy server. */
+  proxyPort: number
+  /** Comma/newline-separated bypass rules for fixed proxy mode. */
+  proxyBypassRules: string
 }
 
 /** Site data categories cleared together from Settings. */

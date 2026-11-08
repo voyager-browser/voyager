@@ -5,6 +5,7 @@ import { attachContentBlocking, primeContentBlocking } from '../contentBlocking/
 import { attachDownloadsTracking } from '../downloads/downloads'
 import { attachPermissionHandlers } from '../permissions/permissions'
 import { registerVoyagerProtocol } from '../protocol/voyagerProtocol'
+import { applyProxyForProfile } from '../proxy/proxy'
 import { getSettings } from '../store'
 import {
   sendToSettingsWindow,
@@ -64,6 +65,7 @@ export function ensureProfileSession(profileId: string): Session {
 
   registerVoyagerProtocol(ses.protocol)
   attachPermissionHandlers(ses, profileId)
+  void applyProxyForProfile(ses, profileId)
   if (getSettings(profileId, 'contentBlocking', false) === true) {
     primeContentBlocking(profileId)
   }

@@ -21,4 +21,9 @@ export interface SettingsShape {
   filterLists?: string[]
   customFilterLists?: string[]
   customFilterFiles?: { id: string; name: string; addedAt: number }[]
+  proxyMode?: 'system' | 'direct' | 'fixed_servers'
+  proxyScheme?: 'http' | 'https' | 'socks4' | 'socks5'
+  proxyHost?: string
+  proxyPort?: number
+  proxyBypassRules?: string
 }

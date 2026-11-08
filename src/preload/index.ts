@@ -79,7 +79,7 @@ const api = {
       ipcRenderer.invoke(IpcChannels.SettingsOpen, target),
     set: (
       key: keyof UserPreferences,
-      value: boolean | string | string[]
+      value: boolean | string | string[] | number
     ): Promise<UserPreferences> => ipcRenderer.invoke(IpcChannels.SettingsSet, key, value),
     importFilterFile: (name: string, content: string): Promise<UserPreferences> =>
       ipcRenderer.invoke(IpcChannels.ContentBlockingImportFile, { name, content }),
