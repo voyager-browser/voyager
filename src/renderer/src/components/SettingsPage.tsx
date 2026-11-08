@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ChevronRight,
+  CreditCard,
   Database,
   Download,
   ExternalLink,
+  FileText,
   Globe,
   Info,
+  MapPin,
   Palette,
   Pencil,
   Plus,
@@ -15,6 +18,7 @@ import {
   ShieldCheck,
   Trash2,
   Upload,
+  User,
   UserCircle2,
   Wrench,
   type LucideIcon
@@ -28,7 +32,15 @@ import { DEFAULT_SEARCH_ENGINE, SEARCH_ENGINES, type SearchEngineId } from '../.
 import { DEFAULT_FILTER_LISTS, FILTER_LISTS } from '../../../shared/filter-lists'
 import { DEFAULT_NEW_TAB_URL } from '../../../shared/constants'
 import { DEFAULT_PROXY_CONFIG, type ProxyMode, type ProxyScheme } from '../../../shared/proxy'
-import type { AppVersionInfo, ThemeMode, UserPreferences } from '../../../shared/types'
+import type {
+  AppVersionInfo,
+  AutofillAddress,
+  AutofillContact,
+  AutofillPaymentMethod,
+  AutofillState,
+  ThemeMode,
+  UserPreferences
+} from '../../../shared/types'
 import { BUILTIN_BLOCKED_DOMAINS } from '../../../shared/content-blocking'
 import {
   DEFAULT_PROFILE_ID,
@@ -75,6 +87,7 @@ const SETTINGS_NAV_GROUPS: SettingsNavItem[][] = [
   ],
   [
     { id: 'content-blocking', label: 'Content blocking', icon: Shield },
+    { id: 'autofill', label: 'Autofill', icon: FileText },
     { id: 'proxy', label: 'Proxy', icon: Globe },
     { id: 'downloads', label: 'Downloads', icon: Download },
     { id: 'clear-browsing-data', label: 'Clear browsing data', icon: Trash2 },
@@ -188,6 +201,18 @@ export function SettingsPage(): React.JSX.Element {
   const [editingColor, setEditingColor] = useState<ProfileColor>('blue')
   const [editingPicture, setEditingPicture] = useState<string | null>(null)
   const [editingBackground, setEditingBackground] = useState('')
+  const [autofill, setAutofill] = useState<AutofillState>({
+    addresses: [],
+    contacts: [],
+    paymentMethods: [],
+    formHistory: []
+  })
+  const [showAddressForm, setShowAddressForm] = useState(false)
+  const [addressDraft, setAddressDraft] = useState<Partial<AutofillAddress>>({})
+  const [showContactForm, setShowContactForm] = useState(false)
+  const [contactDraft, setContactDraft] = useState<Partial<AutofillContact>>({})
+  const [showPaymentForm, setShowPaymentForm] = useState(false)
+  const [paymentDraft, setPaymentDraft] = useState<Partial<AutofillPaymentMethod>>({})
 
   useEffect(() => {
     const bookmarks = useBookmarksStore.getState()
@@ -204,12 +229,14 @@ export function SettingsPage(): React.JSX.Element {
     void window.voyager.appInfo().then(setAppInfo)
     void window.voyager.defaultBrowser.isDefault().then(setIsDefaultBrowser)
     void window.voyager.profiles.getState().then(setProfiles)
+    void window.voyager.autofill.getState().then(setAutofill)
 
     const unsubscribes = [
       window.voyager.profiles.onStateChanged(setProfiles),
       window.voyager.bookmarks.onStateChanged(bookmarks.applyState),
       window.voyager.history.onStateChanged(history.applyState),
-      window.voyager.downloads.onStateChanged(downloads.applyState)
+      window.voyager.downloads.onStateChanged(downloads.applyState),
+      window.voyager.autofill.onStateChanged(setAutofill)
     ]
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe())
   }, [])
@@ -249,9 +276,60 @@ export function SettingsPage(): React.JSX.Element {
       void window.voyager.history.getState().then(useHistoryStore.getState().applyState)
       void window.voyager.downloads.getState().then(useDownloadsStore.getState().applyState)
       void window.voyager.bookmarks.getState().then(useBookmarksStore.getState().applyState)
+      void window.voyager.autofill.getState().then(setAutofill)
     } finally {
       setClearing(false)
     }
+  }
+
+  const saveNewAddress = async (): Promise<void> => {
+    if (!addressDraft.name || !addressDraft.streetAddress || !addressDraft.city || !addressDraft.postalCode || !addressDraft.country) return
+    setAutofill(
+      await window.voyager.autofill.saveAddress({
+        label: addressDraft.label || '',
+        name: addressDraft.name,
+        organization: addressDraft.organization || '',
+        streetAddress: addressDraft.streetAddress,
+        streetAddress2: addressDraft.streetAddress2 || '',
+        city: addressDraft.city,
+        region: addressDraft.region || '',
+        postalCode: addressDraft.postalCode,
+        country: addressDraft.country,
+        phone: addressDraft.phone || '',
+        email: addressDraft.email || ''
+      })
+    )
+    setAddressDraft({})
+    setShowAddressForm(false)
+  }
+
+  const saveNewContact = async (): Promise<void> => {
+    if (!contactDraft.name) return
+    setAutofill(
+      await window.voyager.autofill.saveContact({
+        name: contactDraft.name,
+        email: contactDraft.email || '',
+        phone: contactDraft.phone || '',
+        organization: contactDraft.organization || ''
+      })
+    )
+    setContactDraft({})
+    setShowContactForm(false)
+  }
+
+  const saveNewPayment = async (): Promise<void> => {
+    if (!paymentDraft.nameOnCard || !paymentDraft.cardNumber || !paymentDraft.expiryMonth || !paymentDraft.expiryYear) return
+    setAutofill(
+      await window.voyager.autofill.savePayment({
+        nameOnCard: paymentDraft.nameOnCard,
+        cardNumber: paymentDraft.cardNumber,
+        expiryMonth: paymentDraft.expiryMonth,
+        expiryYear: paymentDraft.expiryYear,
+        cardType: paymentDraft.cardType || ''
+      })
+    )
+    setPaymentDraft({})
+    setShowPaymentForm(false)
   }
 
   const contentRef = useRef<HTMLDivElement>(null)
@@ -1176,6 +1254,213 @@ export function SettingsPage(): React.JSX.Element {
             </section>
 
             <section
+              data-settings-section="autofill"
+              className="rounded-lg border border-border bg-surface p-5"
+            >
+              <h2 className="mb-1 text-[15px] font-semibold text-fg">Autofill</h2>
+              <p className="mb-4 text-[12px] text-muted">
+                Save and fill addresses, contacts, payment methods, and form history for this profile.
+              </p>
+
+              <label className="flex items-start gap-2 text-[13px] text-fg">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={preferences.autofillProfiles}
+                  onChange={(event) => void setPreference('autofillProfiles', event.target.checked)}
+                />
+                <span>
+                  <span className="block">Save and fill addresses and contacts</span>
+                  <span className="mt-0.5 block text-[11.5px] text-muted">
+                    Offer saved address and contact information on forms.
+                  </span>
+                </span>
+              </label>
+
+              <label className="mt-3 flex items-start gap-2 text-[13px] text-fg">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={preferences.autofillPayments}
+                  onChange={(event) => void setPreference('autofillPayments', event.target.checked)}
+                />
+                <span>
+                  <span className="block">Save and fill payment methods</span>
+                  <span className="mt-0.5 block text-[11.5px] text-muted">
+                    Offer saved payment methods on checkout forms.
+                  </span>
+                </span>
+              </label>
+
+              <label className="mt-3 flex items-start gap-2 text-[13px] text-fg">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={preferences.saveFormHistory}
+                  onChange={(event) => void setPreference('saveFormHistory', event.target.checked)}
+                />
+                <span>
+                  <span className="block">Save form history</span>
+                  <span className="mt-0.5 block text-[11.5px] text-muted">
+                    Remember text you enter in forms and offer autocomplete suggestions.
+                  </span>
+                </span>
+              </label>
+
+              <div className="mt-6 border-t border-border pt-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="flex items-center gap-2 text-[13px] font-medium text-fg">
+                    <MapPin className="h-4 w-4" /> Addresses
+                  </h3>
+                  <button
+                    type="button"
+                    className="rounded-md border border-border px-2 py-1 text-[12px] text-fg hover:bg-surface-hover"
+                    onClick={() => setShowAddressForm((v) => !v)}
+                  >
+                    {showAddressForm ? 'Cancel' : 'Add address'}
+                  </button>
+                </div>
+                {showAddressForm && (
+                  <div className="mb-3 grid gap-2 rounded-md border border-border p-3 text-[12px]">
+                    <input className="rounded border border-border bg-base px-2 py-1" placeholder="Name" value={addressDraft.name ?? ''} onChange={(e) => setAddressDraft((d) => ({ ...d, name: e.target.value }))} />
+                    <input className="rounded border border-border bg-base px-2 py-1" placeholder="Street address" value={addressDraft.streetAddress ?? ''} onChange={(e) => setAddressDraft((d) => ({ ...d, streetAddress: e.target.value }))} />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="City" value={addressDraft.city ?? ''} onChange={(e) => setAddressDraft((d) => ({ ...d, city: e.target.value }))} />
+                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Region/State" value={addressDraft.region ?? ''} onChange={(e) => setAddressDraft((d) => ({ ...d, region: e.target.value }))} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Postal code" value={addressDraft.postalCode ?? ''} onChange={(e) => setAddressDraft((d) => ({ ...d, postalCode: e.target.value }))} />
+                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Country" value={addressDraft.country ?? ''} onChange={(e) => setAddressDraft((d) => ({ ...d, country: e.target.value }))} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Email (optional)" value={addressDraft.email ?? ''} onChange={(e) => setAddressDraft((d) => ({ ...d, email: e.target.value }))} />
+                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Phone (optional)" value={addressDraft.phone ?? ''} onChange={(e) => setAddressDraft((d) => ({ ...d, phone: e.target.value }))} />
+                    </div>
+                    <button type="button" className="rounded-md bg-accent px-2 py-1.5 text-[12px] text-accent-foreground" onClick={() => void saveNewAddress()}>Save address</button>
+                  </div>
+                )}
+                {autofill.addresses.length === 0 ? (
+                  <p className="text-[12px] text-muted">No saved addresses.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {autofill.addresses.map((a) => (
+                      <li key={a.id} className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1 text-[12px]">
+                        <span className="truncate text-fg">{a.name} — {a.streetAddress}, {a.city}</span>
+                        <button type="button" className="shrink-0 text-muted hover:text-fg" onClick={() => void window.voyager.autofill.deleteAddress(a.id).then(setAutofill)}>Delete</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="mt-5 border-t border-border pt-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="flex items-center gap-2 text-[13px] font-medium text-fg">
+                    <User className="h-4 w-4" /> Contacts
+                  </h3>
+                  <button
+                    type="button"
+                    className="rounded-md border border-border px-2 py-1 text-[12px] text-fg hover:bg-surface-hover"
+                    onClick={() => setShowContactForm((v) => !v)}
+                  >
+                    {showContactForm ? 'Cancel' : 'Add contact'}
+                  </button>
+                </div>
+                {showContactForm && (
+                  <div className="mb-3 grid gap-2 rounded-md border border-border p-3 text-[12px]">
+                    <input className="rounded border border-border bg-base px-2 py-1" placeholder="Name" value={contactDraft.name ?? ''} onChange={(e) => setContactDraft((d) => ({ ...d, name: e.target.value }))} />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Email (optional)" value={contactDraft.email ?? ''} onChange={(e) => setContactDraft((d) => ({ ...d, email: e.target.value }))} />
+                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Phone (optional)" value={contactDraft.phone ?? ''} onChange={(e) => setContactDraft((d) => ({ ...d, phone: e.target.value }))} />
+                    </div>
+                    <input className="rounded border border-border bg-base px-2 py-1" placeholder="Organization (optional)" value={contactDraft.organization ?? ''} onChange={(e) => setContactDraft((d) => ({ ...d, organization: e.target.value }))} />
+                    <button type="button" className="rounded-md bg-accent px-2 py-1.5 text-[12px] text-accent-foreground" onClick={() => void saveNewContact()}>Save contact</button>
+                  </div>
+                )}
+                {autofill.contacts.length === 0 ? (
+                  <p className="text-[12px] text-muted">No saved contacts.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {autofill.contacts.map((c) => (
+                      <li key={c.id} className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1 text-[12px]">
+                        <span className="truncate text-fg">{c.name}{c.email ? ` — ${c.email}` : ''}</span>
+                        <button type="button" className="shrink-0 text-muted hover:text-fg" onClick={() => void window.voyager.autofill.deleteContact(c.id).then(setAutofill)}>Delete</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="mt-5 border-t border-border pt-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="flex items-center gap-2 text-[13px] font-medium text-fg">
+                    <CreditCard className="h-4 w-4" /> Payment methods
+                  </h3>
+                  <button
+                    type="button"
+                    className="rounded-md border border-border px-2 py-1 text-[12px] text-fg hover:bg-surface-hover"
+                    onClick={() => setShowPaymentForm((v) => !v)}
+                  >
+                    {showPaymentForm ? 'Cancel' : 'Add payment method'}
+                  </button>
+                </div>
+                {showPaymentForm && (
+                  <div className="mb-3 grid gap-2 rounded-md border border-border p-3 text-[12px]">
+                    <input className="rounded border border-border bg-base px-2 py-1" placeholder="Name on card" value={paymentDraft.nameOnCard ?? ''} onChange={(e) => setPaymentDraft((d) => ({ ...d, nameOnCard: e.target.value }))} />
+                    <input className="rounded border border-border bg-base px-2 py-1" placeholder="Card number" value={paymentDraft.cardNumber ?? ''} onChange={(e) => setPaymentDraft((d) => ({ ...d, cardNumber: e.target.value }))} />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Expiry month (MM)" value={paymentDraft.expiryMonth ?? ''} onChange={(e) => setPaymentDraft((d) => ({ ...d, expiryMonth: e.target.value }))} />
+                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Expiry year (YYYY)" value={paymentDraft.expiryYear ?? ''} onChange={(e) => setPaymentDraft((d) => ({ ...d, expiryYear: e.target.value }))} />
+                    </div>
+                    <button type="button" className="rounded-md bg-accent px-2 py-1.5 text-[12px] text-accent-foreground" onClick={() => void saveNewPayment()}>Save payment method</button>
+                  </div>
+                )}
+                {autofill.paymentMethods.length === 0 ? (
+                  <p className="text-[12px] text-muted">No saved payment methods.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {autofill.paymentMethods.map((p) => (
+                      <li key={p.id} className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1 text-[12px]">
+                        <span className="truncate text-fg">
+                          {p.nameOnCard} — •••• {p.cardNumber.replace(/\s+/g, '').slice(-4) || '••••'}
+                        </span>
+                        <button type="button" className="shrink-0 text-muted hover:text-fg" onClick={() => void window.voyager.autofill.deletePayment(p.id).then(setAutofill)}>Delete</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="mt-5 border-t border-border pt-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="flex items-center gap-2 text-[13px] font-medium text-fg">
+                    <FileText className="h-4 w-4" /> Form history
+                  </h3>
+                  <button
+                    type="button"
+                    className="rounded-md border border-border px-2 py-1 text-[12px] text-fg hover:bg-surface-hover disabled:opacity-50"
+                    disabled={autofill.formHistory.length === 0}
+                    onClick={() => void window.voyager.autofill.clearFormHistory().then(setAutofill)}
+                  >
+                    Clear form history
+                  </button>
+                </div>
+                {autofill.formHistory.length === 0 ? (
+                  <p className="text-[12px] text-muted">No saved form history.</p>
+                ) : (
+                  <ul className="max-h-48 space-y-1 overflow-auto">
+                    {autofill.formHistory.slice(0, 50).map((e) => (
+                      <li key={e.id} className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1 text-[12px]">
+                        <span className="truncate text-fg" title={`${e.field}: ${e.value}`}>{e.field}: {e.value}</span>
+                        <button type="button" className="shrink-0 text-muted hover:text-fg" onClick={() => void window.voyager.autofill.deleteFormHistoryEntry(e.id).then(setAutofill)}>Delete</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </section>
+
+            <section
               data-settings-section="proxy"
               className="rounded-lg border border-border bg-surface p-5"
             >
@@ -1396,6 +1681,10 @@ export function SettingsPage(): React.JSX.Element {
                 <div>Bookmarks: {bookmarks.length}</div>
                 <div>History entries: {history.length}</div>
                 <div>Downloads: {downloads.length}</div>
+                <div>Saved addresses: {autofill.addresses.length}</div>
+                <div>Saved contacts: {autofill.contacts.length}</div>
+                <div>Saved payment methods: {autofill.paymentMethods.length}</div>
+                <div>Form history entries: {autofill.formHistory.length}</div>
               </div>
             </section>
 
