@@ -5,6 +5,8 @@
  */
 export const IpcChannels = {
   AppGetInfo: 'app:get-info',
+  CertificateGet: 'certificates:get',
+  CertificateExport: 'certificates:export',
   DefaultBrowserGet: 'app:default-browser-get',
   DefaultBrowserSet: 'app:default-browser-set',
   SettingsOpen: 'settings:open',

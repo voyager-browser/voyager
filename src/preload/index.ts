@@ -8,6 +8,8 @@ import type {
   BookmarkPatch,
   BookmarksState,
   BrowserState,
+  CertificateDetails,
+  CertificateExportFormat,
   ClearBrowsingDataOptions,
   DownloadsState,
   HistoryState,
@@ -51,6 +53,13 @@ const api = {
 
   /** Read-only platform/version info resolved in the main process. */
   appInfo: (): Promise<AppVersionInfo> => ipcRenderer.invoke(IpcChannels.AppGetInfo),
+
+  certificates: {
+    get: (url: string): Promise<CertificateDetails | null> =>
+      ipcRenderer.invoke(IpcChannels.CertificateGet, url),
+    export: (url: string, format: CertificateExportFormat): Promise<string | null> =>
+      ipcRenderer.invoke(IpcChannels.CertificateExport, url, format)
+  },
 
   defaultBrowser: {
     isDefault: (): Promise<boolean> => ipcRenderer.invoke(IpcChannels.DefaultBrowserGet),
