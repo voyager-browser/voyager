@@ -48,7 +48,11 @@ export function storesFor(profileId: string): ProfileStores {
     bookmarks: new Store<BookmarksShape>('bookmarks.json', { items: [], folders: [] }, directory),
     history: new Store<HistoryShape>('history.json', { entries: [] }, directory),
     downloads: new Store<DownloadsShape>('downloads.json', { items: [] }, directory),
-    permissions: new Store<PermissionsShape>('permissions.json', { decisions: [] }, directory)
+    permissions: new Store<PermissionsShape>(
+      'permissions.json',
+      { decisions: [], autoRemovedDecisions: [] },
+      directory
+    )
   }
   bundles.set(profileId, bundle)
   return bundle

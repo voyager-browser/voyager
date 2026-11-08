@@ -181,6 +181,8 @@ const api = {
     remove: (origin: string, kind?: PermissionKind): Promise<SitePermissionsState> =>
       ipcRenderer.invoke(IpcChannels.PermissionsRemove, origin, kind),
     clear: (): Promise<SitePermissionsState> => ipcRenderer.invoke(IpcChannels.PermissionsClear),
+    undoAutoRemoval: (): Promise<SitePermissionsState> =>
+      ipcRenderer.invoke(IpcChannels.PermissionsUndoAutoRemoval),
     respond: (id: string, choice: PermissionRequestChoice): Promise<boolean> =>
       ipcRenderer.invoke(IpcChannels.PermissionsRespond, id, choice),
     onRequest: (listener: (request: PermissionPromptRequest) => void): Unsubscribe =>
