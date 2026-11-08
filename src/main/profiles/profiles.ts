@@ -31,13 +31,10 @@ function builtinProfile(): ProfileInfo {
   return { id: DEFAULT_PROFILE_ID, name: 'Default', color: 'blue', createdAt: 0, isDefault: true }
 }
 
-const MAX_PICTURE_CHARS = 700_000 // ~512KB data URL guardrail
-
 function normalizePicture(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
   const trimmed = value.trim()
-  if (!trimmed || trimmed.length > MAX_PICTURE_CHARS) return undefined
-  if (!trimmed.startsWith('data:image/')) return undefined
+  if (!trimmed || !trimmed.startsWith('data:image/')) return undefined
   return trimmed
 }
 
