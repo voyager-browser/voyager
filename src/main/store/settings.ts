@@ -26,4 +26,5 @@ export interface SettingsShape {
   proxyHost?: string
   proxyPort?: number
   proxyBypassRules?: string
+  spellcheck?: boolean
 }
