@@ -227,3 +227,39 @@ test('opens settings from the titlebar gear', async ({ voyager }) => {
   await voyager.chrome.getByRole('button', { name: 'Settings' }).click()
   await expect.poll(async () => windowCount(voyager.app), { timeout: 10_000 }).toBe(before + 1)
 })
+
+
+test('proxy settings default to system and persist per profile', async ({ voyager }) => {
+  const settings = await openSettings(voyager)
+
+  await expect(settings.getByRole('heading', { name: 'Proxy' })).toBeVisible()
+  await expect(settings.getByLabel('Use system proxy settings')).toBeChecked()
+
+  const initial = await settings.evaluate(() => window.voyager.settings.get())
+  expect(initial.proxyMode).toBe('system')
+  expect(initial.proxyScheme).toBe('http')
+  expect(initial.proxyPort).toBe(8080)
+
+  await settings.getByLabel('Manual proxy configuration').check()
+  await settings.getByLabel('Host').fill('127.0.0.1')
+  await settings.getByLabel('Port').fill('1080')
+  await settings.getByLabel('Type').selectOption('socks5')
+
+  await expect
+    .poll(async () => (await settings.evaluate(() => window.voyager.settings.get())).proxyMode)
+    .toBe('fixed_servers')
+  await expect
+    .poll(async () => (await settings.evaluate(() => window.voyager.settings.get())).proxyScheme)
+    .toBe('socks5')
+  await expect
+    .poll(async () => (await settings.evaluate(() => window.voyager.settings.get())).proxyHost)
+    .toBe('127.0.0.1')
+  await expect
+    .poll(async () => (await settings.evaluate(() => window.voyager.settings.get())).proxyPort)
+    .toBe(1080)
+
+  await settings.getByLabel('No proxy (direct connection)').check()
+  await expect
+    .poll(async () => (await settings.evaluate(() => window.voyager.settings.get())).proxyMode)
+    .toBe('direct')
+})
