@@ -29,4 +29,5 @@ export interface SettingsShape {
   spellcheck?: boolean
   showHomeButton?: boolean
   homeUrl?: string
+  memorySaver?: boolean
 }
