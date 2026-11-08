@@ -157,7 +157,8 @@ export function Toolbar(): React.JSX.Element {
         <button
           type="button"
           className={cn(
-            'no-drag ml-0.5 flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full text-[11px] font-semibold text-white transition-opacity hover:opacity-90',
+            'no-drag ml-0.5 flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden text-[11px] font-semibold text-white transition-opacity hover:opacity-90',
+            profile.picture ? 'rounded-full' : 'rounded-lg',
             !profile.picture && (PROFILE_COLOR_CLASSES[profile.color] ?? PROFILE_COLOR_CLASSES.blue)
           )}
           style={profile.backgroundColor && !profile.picture ? { backgroundColor: profile.backgroundColor } : undefined}

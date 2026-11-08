@@ -43,8 +43,7 @@ function normalizeBackgroundColor(value: unknown): string | undefined {
   const trimmed = value.trim()
   if (!trimmed || trimmed.length > 64) return undefined
   // allow hex/rgb/hsl and simple named colors; reject obvious injection
-  if (!/^(#[0-9a-fA-F]{3,8}|rgba?\([^\)]+\)|hsla?\([^\)]+\)|[a-zA-Z]{1,32})$/.test(trimmed))
-    return undefined
+  if (!/^(#[0-9a-fA-F]{3,8}|rgba?\([^\)]+\)|hsla?\([^\)]+\)|[a-zA-Z]{1,32})$/.test(trimmed)) return undefined
   return trimmed
 }
 

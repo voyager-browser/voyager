@@ -23,16 +23,15 @@ import { getSettings, setSettings, storesFor } from '../store'
 
 type Broadcast = (state: BookmarksState) => void
 
-/** Internal clipboard is per profile so cut/copy never crosses profiles. */
-const bookmarkClipboards = new Map<string, BookmarkClipboard>()
+/** Internal clipboard is shared across profiles so bookmarks can be transferred. */
+let bookmarkClipboard: BookmarkClipboard | null = null
 
-function clipboardFor(profileId: string): BookmarkClipboard | null {
-  return bookmarkClipboards.get(profileId) ?? null
+function clipboardFor(_profileId: string): BookmarkClipboard | null {
+  return bookmarkClipboard
 }
 
-function setClipboard(profileId: string, clipboard: BookmarkClipboard | null): void {
-  if (clipboard) bookmarkClipboards.set(profileId, clipboard)
-  else bookmarkClipboards.delete(profileId)
+function setClipboard(_profileId: string, clipboard: BookmarkClipboard | null): void {
+  bookmarkClipboard = clipboard
 }
 
 function storedItems(profileId: string): BookmarkItem[] {
