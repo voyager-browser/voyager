@@ -55,7 +55,13 @@ import { openSettingsWindow } from '../window/settingsWindow'
 import { allWindows, windowForAnyWebContents, windowForWebContents } from '../window/windowRegistry'
 import { consumePendingDragUrl, setPendingDragUrl } from '../bookmarks/drag'
 import { isFilterListId } from '../../shared/filter-lists'
-import { enabledFilterLists, syncContentBlocking } from '../contentBlocking/contentBlocking'
+import {
+  builtinFilterListEnabled,
+  enabledCustomFilterLists,
+  enabledFilterLists,
+  normalizeCustomFilterUrl,
+  syncContentBlocking
+} from '../contentBlocking/contentBlocking'
 import { getSettings, setSettings } from '../store'
 import { isDefaultBrowser, setDefaultBrowser } from '../defaultBrowser'
 import {
@@ -118,7 +124,9 @@ function userPreferences(): UserPreferences {
     restoreSession: getSettings('restoreSession', false) === true,
     verticalTabs: getSettings('verticalTabs', false) === true,
     contentBlocking: getSettings('contentBlocking', false) !== false,
-    filterLists: enabledFilterLists()
+    builtinFilterList: builtinFilterListEnabled(),
+    filterLists: enabledFilterLists(),
+    customFilterLists: enabledCustomFilterLists()
   }
 }
 
@@ -167,7 +175,9 @@ export function registerIpcHandlers(context: IpcContext): void {
     'restoreSession',
     'verticalTabs',
     'contentBlocking',
-    'filterLists'
+    'builtinFilterList',
+    'filterLists',
+    'customFilterLists'
   ])
 
   ipcMain.handle(
@@ -196,6 +206,14 @@ export function registerIpcHandlers(context: IpcContext): void {
         for (const window of allWindows()) window.setVerticalTabs(enabled)
         return respond()
       }
+      if (key === 'builtinFilterList') {
+        if (typeof value !== 'boolean') {
+          throw new Error('Expected a boolean for setting: builtinFilterList')
+        }
+        setSettings('builtinFilterList', value)
+        syncContentBlocking()
+        return respond()
+      }
       if (key === 'filterLists') {
         if (
           !Array.isArray(value) ||
@@ -204,6 +222,17 @@ export function registerIpcHandlers(context: IpcContext): void {
           throw new Error('Expected an array of filter list ids')
         }
         setSettings('filterLists', [...new Set(value)])
+        syncContentBlocking()
+        return respond()
+      }
+      if (key === 'customFilterLists') {
+        if (!Array.isArray(value) || !value.every((entry) => typeof entry === 'string')) {
+          throw new Error('Expected an array of custom filter list URLs')
+        }
+        const urls = value
+          .map((entry) => normalizeCustomFilterUrl(entry))
+          .filter((entry): entry is string => entry !== null)
+        setSettings('customFilterLists', [...new Set(urls)])
         syncContentBlocking()
         return respond()
       }

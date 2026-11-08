@@ -120,8 +120,12 @@ export function SettingsPage(): React.JSX.Element {
     restoreSession: false,
     verticalTabs: false,
     contentBlocking: false,
-    filterLists: [...DEFAULT_FILTER_LISTS]
+    builtinFilterList: true,
+    filterLists: [...DEFAULT_FILTER_LISTS],
+    customFilterLists: []
   })
+  const [customFilterUrl, setCustomFilterUrl] = useState('')
+  const [customFilterError, setCustomFilterError] = useState<string | null>(null)
   const [clearing, setClearing] = useState(false)
   const [initialRoute] = useState(sitePermissionsRoute)
   const [sitePermissionsOpen, setSitePermissionsOpen] = useState(initialRoute.open)
@@ -410,11 +414,16 @@ export function SettingsPage(): React.JSX.Element {
               <div className="mt-3 space-y-2">
                 <p className="text-[12px] font-medium text-fg">Filter lists</p>
                 <label className="flex items-start gap-2 text-[12.5px] text-fg">
-                  <input type="checkbox" checked disabled className="mt-0.5" />
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={preferences.builtinFilterList}
+                    onChange={(event) => void setPreference('builtinFilterList', event.target.checked)}
+                  />
                   <span>
-                    Voyager built-in list{' '}
-                    <span className="text-[11.5px] text-muted">
-                      ({BUILTIN_BLOCKED_DOMAINS.length} domains, always on)
+                    <span className="block">Voyager built-in list</span>
+                    <span className="block text-[11.5px] text-muted">
+                      {BUILTIN_BLOCKED_DOMAINS.length} bundled domains
                     </span>
                   </span>
                 </label>
@@ -437,8 +446,96 @@ export function SettingsPage(): React.JSX.Element {
                     </span>
                   </label>
                 ))}
+
+                <div className="border-t border-border pt-3">
+                  <p className="text-[12px] font-medium text-fg">Custom hosts list URL</p>
+                  <p className="mt-0.5 text-[11.5px] text-muted">
+                    Add a hosts-format list from an http or https URL. Raw hosts file uploads are not
+                    supported.
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      type="url"
+                      value={customFilterUrl}
+                      onChange={(event) => {
+                        setCustomFilterUrl(event.target.value)
+                        if (customFilterError) setCustomFilterError(null)
+                      }}
+                      placeholder="https://example.com/hosts.txt"
+                      aria-label="Custom hosts list URL"
+                      className="min-w-0 flex-1 rounded-md border border-border bg-bg px-2.5 py-1.5 text-[12.5px] text-fg placeholder:text-muted"
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter') return
+                        event.preventDefault()
+                        const url = customFilterUrl.trim()
+                        if (!/^https?:\/\//i.test(url)) {
+                          setCustomFilterError('Enter a valid http or https URL.')
+                          return
+                        }
+                        if (preferences.customFilterLists.includes(url)) {
+                          setCustomFilterError('That list has already been added.')
+                          return
+                        }
+                        void setPreference('customFilterLists', [...preferences.customFilterLists, url])
+                        setCustomFilterUrl('')
+                        setCustomFilterError(null)
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-md border border-border bg-bg px-3 py-1.5 text-[12.5px] text-fg hover:bg-hover"
+                      onClick={() => {
+                        const url = customFilterUrl.trim()
+                        if (!/^https?:\/\//i.test(url)) {
+                          setCustomFilterError('Enter a valid http or https URL.')
+                          return
+                        }
+                        if (preferences.customFilterLists.includes(url)) {
+                          setCustomFilterError('That list has already been added.')
+                          return
+                        }
+                        void setPreference('customFilterLists', [...preferences.customFilterLists, url])
+                        setCustomFilterUrl('')
+                        setCustomFilterError(null)
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                  {customFilterError && (
+                    <p className="mt-1.5 text-[11.5px] text-danger">{customFilterError}</p>
+                  )}
+                  {preferences.customFilterLists.length > 0 && (
+                    <ul className="mt-2 space-y-1.5">
+                      {preferences.customFilterLists.map((url) => (
+                        <li
+                          key={url}
+                          className="flex items-center gap-2 rounded-md border border-border bg-bg px-2 py-1.5"
+                        >
+                          <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg" title={url}>
+                            {url}
+                          </span>
+                          <button
+                            type="button"
+                            className="shrink-0 rounded p-1 text-muted hover:bg-hover hover:text-fg"
+                            aria-label={`Remove custom filter list ${url}`}
+                            onClick={() =>
+                              void setPreference(
+                                'customFilterLists',
+                                preferences.customFilterLists.filter((entry) => entry !== url)
+                              )
+                            }
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
                 <p className="text-[11.5px] text-muted">
-                  Selected lists are downloaded when content blocking is on and refreshed every 7
+                  Enabled lists are downloaded when content blocking is on and refreshed every 7
                   days. Until a list finishes downloading, the built-in and cached domains are used.
                 </p>
               </div>
