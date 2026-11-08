@@ -73,6 +73,10 @@ export default function App(): React.JSX.Element {
         isSearchEngineId(prefs.searchEngine) ? prefs.searchEngine : DEFAULT_SEARCH_ENGINE
       )
       store.setVerticalTabs(Boolean(prefs.verticalTabs))
+      store.setShowHomeButton(Boolean(prefs.showHomeButton))
+      if (typeof prefs.homeUrl === 'string' && prefs.homeUrl.trim()) {
+        store.setHomeUrl(prefs.homeUrl)
+      }
     }
     void window.voyager.settings.get().then(applyPreferences)
     return window.voyager.settings.onChanged(applyPreferences)

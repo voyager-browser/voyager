@@ -105,6 +105,7 @@ import {
   normalizeProxyPort
 } from '../proxy/proxy'
 import { DEFAULT_PROXY_CONFIG } from '../../shared/proxy'
+import { DEFAULT_NEW_TAB_URL } from '../../shared/constants'
 import { createWindow } from '../window/createWindow'
 import { getSettings, getThemeMode, setSettings, setThemeMode } from '../store'
 
@@ -186,7 +187,12 @@ function userPreferences(profileId: string): UserPreferences {
     proxyBypassRules: normalizeProxyBypassRules(
       getSettings(profileId, 'proxyBypassRules', DEFAULT_PROXY_CONFIG.bypassRules)
     ),
-    spellcheck: getSettings(profileId, 'spellcheck', true) !== false
+    spellcheck: getSettings(profileId, 'spellcheck', true) !== false,
+    showHomeButton: getSettings(profileId, 'showHomeButton', false) === true,
+    homeUrl:
+      typeof getSettings(profileId, 'homeUrl', DEFAULT_NEW_TAB_URL) === 'string'
+        ? (getSettings(profileId, 'homeUrl', DEFAULT_NEW_TAB_URL) as string)
+        : DEFAULT_NEW_TAB_URL
   }
 }
 
@@ -263,7 +269,9 @@ export function registerIpcHandlers(context: IpcContext): void {
     'proxyHost',
     'proxyPort',
     'proxyBypassRules',
-    'spellcheck'
+    'spellcheck',
+    'showHomeButton',
+    'homeUrl'
   ])
 
   ipcMain.handle(
@@ -380,6 +388,12 @@ export function registerIpcHandlers(context: IpcContext): void {
         if (typeof value !== 'string') throw new Error('Invalid proxy bypass rules')
         setSettings(profileId, 'proxyBypassRules', normalizeProxyBypassRules(value))
         await applyProxy()
+        return respond()
+      }
+      if (key === 'homeUrl') {
+        if (typeof value !== 'string') throw new Error('Invalid home URL')
+        const trimmed = value.trim()
+        setSettings(profileId, 'homeUrl', trimmed || DEFAULT_NEW_TAB_URL)
         return respond()
       }
       if (typeof value !== 'boolean') {

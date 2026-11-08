@@ -27,4 +27,6 @@ export interface SettingsShape {
   proxyPort?: number
   proxyBypassRules?: string
   spellcheck?: boolean
+  showHomeButton?: boolean
+  homeUrl?: string
 }
