@@ -160,7 +160,8 @@ export function SettingsPage(): React.JSX.Element {
     homeUrl: DEFAULT_NEW_TAB_URL,
     memorySaver: false,
     developerMode: false,
-    userAgent: '' 
+    userAgent: '',
+    preloadTopSites: false
   })
   const [customFilterUrl, setCustomFilterUrl] = useState('')
   const [customFilterError, setCustomFilterError] = useState<string | null>(null)
@@ -1151,6 +1152,21 @@ export function SettingsPage(): React.JSX.Element {
                   <span className="block">Memory Saver</span>
                   <span className="mt-0.5 block text-[11.5px] text-muted">
                     Unload inactive tabs to save memory. They reload when you open them.
+                  </span>
+                </span>
+              </label>
+
+              <label className="mt-4 flex items-start gap-2 text-[13px] text-fg">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={preferences.preloadTopSites}
+                  onChange={(event) => void setPreference('preloadTopSites', event.target.checked)}
+                />
+                <span>
+                  <span className="block">Preload top sites</span>
+                  <span className="mt-0.5 block text-[11.5px] text-muted">
+                    Prefetch DNS and load frequently visited sites in the background to warm the cache (uses network).
                   </span>
                 </span>
               </label>

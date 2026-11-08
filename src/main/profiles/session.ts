@@ -11,6 +11,7 @@ import {
 import { registerVoyagerProtocol } from '../protocol/voyagerProtocol'
 import { applyProxyForProfile } from '../proxy/proxy'
 import { applyUserAgentForProfile } from '../userAgent/userAgent'
+import { runTopSitesPreload } from '../preload/preloadTopSites'
 import { getSettings } from '../store'
 import {
   sendToSettingsWindow,
@@ -83,5 +84,6 @@ export function ensureProfileSession(profileId: string): Session {
   attachDownloadsTracking(ses, profileId, (state) =>
     broadcastToProfile(profileId, IpcChannels.DownloadsStateChanged, state)
   )
+  void runTopSitesPreload(ses, profileId)
   return ses
 }
