@@ -5,8 +5,7 @@ import {
   DEFAULT_FILTER_LISTS,
   filterListFor,
   isFilterListId,
-  type FilterListId,
-  type FilterListInfo
+  type FilterListId
 } from '../../shared/filter-lists'
 import { getSettings } from '../store'
 import { readJsonFile, writeJsonFile } from '../store/jsonFile'
@@ -40,6 +39,8 @@ export function isBlockedHost(hostname: string): boolean {
 interface RemoteBlocklistCacheEntry {
   fetchedAt: number
   domains: string[]
+  /** Source URL, stored for custom lists so cache keys remain meaningful. */
+  url?: string
 }
 
 interface RemoteBlocklistCacheFile {
@@ -52,9 +53,10 @@ interface RemoteBlocklistCacheFile {
 const BLOCKLIST_CACHE_FILE = 'blocklists-cache.json'
 const REFRESH_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000
 const MIN_REMOTE_DOMAINS = 100
+const CUSTOM_CACHE_PREFIX = 'custom:'
 
 let primeStarted = false
-const refreshInProgress = new Set<FilterListId>()
+const refreshInProgress = new Set<string>()
 
 function normalizeDomain(value: string): string | null {
   const domain = value.trim().toLowerCase().replace(/\.$/, '')
@@ -82,19 +84,38 @@ function parseHostsBlocklist(text: string): string[] {
   return [...domains]
 }
 
+/** Normalize a user-provided custom hosts list URL; http/https only. */
+export function normalizeCustomFilterUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  try {
+    const url = new URL(trimmed)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+    return url.toString()
+  } catch {
+    return null
+  }
+}
+
+function customCacheKey(url: string): string {
+  return `${CUSTOM_CACHE_PREFIX}${url}`
+}
+
 function cachePathFor(userDataPath: string): string {
   return join(userDataPath, BLOCKLIST_CACHE_FILE)
 }
 
-function readCachedLists(userDataPath: string): Map<FilterListId, RemoteBlocklistCacheEntry> {
+function readCachedLists(userDataPath: string): Map<string, RemoteBlocklistCacheEntry> {
   const raw = readJsonFile<RemoteBlocklistCacheFile>(cachePathFor(userDataPath), {})
-  const lists = new Map<FilterListId, RemoteBlocklistCacheEntry>()
+  const lists = new Map<string, RemoteBlocklistCacheEntry>()
   for (const [id, entry] of Object.entries(raw.lists ?? {})) {
-    if (!isFilterListId(id)) continue
     if (!entry || !Array.isArray(entry.domains)) continue
+    if (!isFilterListId(id) && !id.startsWith(CUSTOM_CACHE_PREFIX)) continue
     lists.set(id, {
       fetchedAt: typeof entry.fetchedAt === 'number' ? entry.fetchedAt : 0,
-      domains: entry.domains
+      domains: entry.domains,
+      ...(typeof entry.url === 'string' ? { url: entry.url } : {})
     })
   }
   // Migrate the old single-list cache into the AdAway slot.
@@ -109,14 +130,14 @@ function readCachedLists(userDataPath: string): Map<FilterListId, RemoteBlocklis
 
 function writeCachedLists(
   userDataPath: string,
-  lists: Map<FilterListId, RemoteBlocklistCacheEntry>
+  lists: Map<string, RemoteBlocklistCacheEntry>
 ): void {
   const serialized: Record<string, RemoteBlocklistCacheEntry> = {}
   for (const [id, entry] of lists) serialized[id] = entry
   writeJsonFile(cachePathFor(userDataPath), { lists: serialized })
 }
 
-/** Filter lists selected in Settings, falling back to the previous default. */
+/** Catalog filter lists selected in Settings, falling back to the previous default. */
 export function enabledFilterLists(): FilterListId[] {
   const stored = getSettings<unknown>('filterLists')
   if (!Array.isArray(stored)) return [...DEFAULT_FILTER_LISTS]
@@ -127,8 +148,24 @@ export function enabledFilterLists(): FilterListId[] {
   return [...unique]
 }
 
-function mergeDomainSet(domains: string[]): void {
-  const next = new Set<string>(BLOCKED_DOMAINS)
+export function builtinFilterListEnabled(): boolean {
+  return getSettings('builtinFilterList', true) !== false
+}
+
+/** Custom hosts-list URLs configured by the user (http/https only). */
+export function enabledCustomFilterLists(): string[] {
+  const stored = getSettings<unknown>('customFilterLists')
+  if (!Array.isArray(stored)) return []
+  const unique = new Set<string>()
+  for (const value of stored) {
+    const url = normalizeCustomFilterUrl(value)
+    if (url) unique.add(url)
+  }
+  return [...unique]
+}
+
+function mergeDomainSet(builtinEnabled: boolean, domains: string[]): void {
+  const next = builtinEnabled ? new Set<string>(BLOCKED_DOMAINS) : new Set<string>()
   for (const domain of domains) {
     const normalized = normalizeDomain(domain)
     if (normalized) next.add(normalized)
@@ -136,53 +173,85 @@ function mergeDomainSet(domains: string[]): void {
   blockedExact = next
 }
 
-/** Rebuild the active block set from the built-in list + enabled cached lists. */
-function mergeEnabledLists(userDataPath: string, enabled: FilterListId[]): void {
-  if (enabled.length === 0) {
-    blockedExact = new Set<string>(BLOCKED_DOMAINS)
-    return
-  }
+/** Rebuild the active block set from enabled built-in + catalog + custom lists. */
+function mergeEnabledLists(
+  userDataPath: string,
+  builtinEnabled: boolean,
+  catalogIds: FilterListId[],
+  customUrls: string[]
+): void {
   const cached = readCachedLists(userDataPath)
   const domains: string[] = []
-  for (const id of enabled) {
+  for (const id of catalogIds) {
     const entry = cached.get(id)
     if (entry) domains.push(...entry.domains)
   }
-  mergeDomainSet(domains)
+  for (const url of customUrls) {
+    const entry = cached.get(customCacheKey(url))
+    if (entry) domains.push(...entry.domains)
+  }
+  mergeDomainSet(builtinEnabled, domains)
 }
 
-async function refreshRemoteBlocklist(userDataPath: string, list: FilterListInfo): Promise<void> {
-  if (refreshInProgress.has(list.id)) return
-  refreshInProgress.add(list.id)
+interface RefreshTarget {
+  key: string
+  url: string
+}
+
+async function refreshRemoteBlocklist(userDataPath: string, target: RefreshTarget): Promise<void> {
+  if (refreshInProgress.has(target.key)) return
+  refreshInProgress.add(target.key)
   try {
-    const response = await fetch(list.url, {
+    const response = await fetch(target.url, {
       signal: AbortSignal.timeout(15_000)
     })
     if (!response.ok) return
     const domains = parseHostsBlocklist(await response.text())
     if (domains.length < MIN_REMOTE_DOMAINS) return
     const cached = readCachedLists(userDataPath)
-    cached.set(list.id, { fetchedAt: Date.now(), domains })
+    cached.set(target.key, { fetchedAt: Date.now(), domains, url: target.url })
     writeCachedLists(userDataPath, cached)
     // The selection may have changed while the request was in flight.
-    mergeEnabledLists(userDataPath, enabledFilterLists())
+    mergeEnabledLists(
+      userDataPath,
+      builtinFilterListEnabled(),
+      enabledFilterLists(),
+      enabledCustomFilterLists()
+    )
   } catch {
     // Network or storage failures fall back to whatever is already cached.
   } finally {
-    refreshInProgress.delete(list.id)
+    refreshInProgress.delete(target.key)
   }
 }
 
-function refreshIfNeeded(userDataPath: string, enabled: FilterListId[]): void {
+function refreshIfNeeded(
+  userDataPath: string,
+  catalogIds: FilterListId[],
+  customUrls: string[]
+): void {
   const cached = readCachedLists(userDataPath)
   const now = Date.now()
-  for (const id of enabled) {
-    const entry = cached.get(id)
+  const targets: RefreshTarget[] = []
+  for (const id of catalogIds) {
+    const list = filterListFor(id)
+    if (list) targets.push({ key: id, url: list.url })
+  }
+  for (const url of customUrls) targets.push({ key: customCacheKey(url), url })
+  for (const target of targets) {
+    const entry = cached.get(target.key)
     const stale = now - (entry?.fetchedAt ?? 0) > REFRESH_INTERVAL_MS
     if (!entry || entry.domains.length === 0 || stale) {
-      const list = filterListFor(id)
-      if (list) void refreshRemoteBlocklist(userDataPath, list)
+      void refreshRemoteBlocklist(userDataPath, target)
     }
+  }
+}
+
+function currentConfig(): { builtin: boolean; catalogIds: FilterListId[]; customUrls: string[] } {
+  return {
+    builtin: builtinFilterListEnabled(),
+    catalogIds: enabledFilterLists(),
+    customUrls: enabledCustomFilterLists()
   }
 }
 
@@ -195,9 +264,9 @@ export function primeContentBlocking(userDataPath?: string): void {
   if (primeStarted) return
   primeStarted = true
   const directory = userDataPath ?? app.getPath('userData')
-  const enabled = enabledFilterLists()
-  mergeEnabledLists(directory, enabled)
-  refreshIfNeeded(directory, enabled)
+  const config = currentConfig()
+  mergeEnabledLists(directory, config.builtin, config.catalogIds, config.customUrls)
+  refreshIfNeeded(directory, config.catalogIds, config.customUrls)
 }
 
 /**
@@ -206,9 +275,9 @@ export function primeContentBlocking(userDataPath?: string): void {
  */
 export function syncContentBlocking(userDataPath?: string): void {
   const directory = userDataPath ?? app.getPath('userData')
-  const enabled = enabledFilterLists()
-  mergeEnabledLists(directory, enabled)
-  refreshIfNeeded(directory, enabled)
+  const config = currentConfig()
+  mergeEnabledLists(directory, config.builtin, config.catalogIds, config.customUrls)
+  refreshIfNeeded(directory, config.catalogIds, config.customUrls)
 }
 
 const attachedSessions = new WeakSet<Session>()

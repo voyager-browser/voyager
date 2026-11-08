@@ -258,8 +258,12 @@ export interface UserPreferences {
   verticalTabs: boolean
   /** Cancel requests to known ad/tracker domains before they hit the network. */
   contentBlocking: boolean
-  /** Optional hosts-format filter lists enabled in addition to the bundled list. */
+  /** Include Voyager's bundled domain list when content blocking is enabled. */
+  builtinFilterList: boolean
+  /** Optional hosts-format catalog filter lists enabled by the user. */
   filterLists: FilterListId[]
+  /** Custom hosts-format list URLs (http/https) added by the user. */
+  customFilterLists: string[]
 }
 
 /** Site data categories cleared together from Settings. */
