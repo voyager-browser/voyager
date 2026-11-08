@@ -276,7 +276,7 @@ export function SettingsPage(): React.JSX.Element {
       const profile = await window.voyager.profiles.create({ name, color: newProfileColor })
       setProfiles((current) => ({ ...current, profiles: [...current.profiles, profile] }))
       setNewProfileName('')
-      await window.voyager.profiles.openWindow(profile.id)
+      setProfileError(null)
     } catch (error) {
       setProfileError(error instanceof Error ? error.message : 'Could not create profile.')
     }
