@@ -89,7 +89,7 @@ test('theme changes broadcast to the chrome window', async ({ voyager }) => {
     .toBe(true)
 
   // Revert.
-  await settings.getByLabel('system').click()
+  await settings.locator('[data-settings-section="appearance"]').getByLabel(/^system$/i).click()
   await expect
     .poll(async () => {
       const chromeTheme = await voyager.chrome.evaluate(() => window.voyager.theme.get())
@@ -240,10 +240,11 @@ test('proxy settings default to system and persist per profile', async ({ voyage
   expect(initial.proxyScheme).toBe('http')
   expect(initial.proxyPort).toBe(8080)
 
-  await settings.getByLabel('Manual proxy configuration').check()
-  await settings.getByLabel('Host').fill('127.0.0.1')
-  await settings.getByLabel('Port').fill('1080')
-  await settings.getByLabel('Type').selectOption('socks5')
+  const proxy = settings.locator('[data-settings-section="proxy"]')
+  await proxy.getByLabel('Manual proxy configuration').check()
+  await proxy.getByLabel('Host').fill('127.0.0.1')
+  await proxy.getByLabel('Port').fill('1080')
+  await proxy.getByLabel('Type').selectOption('socks5')
 
   await expect
     .poll(async () => (await settings.evaluate(() => window.voyager.settings.get())).proxyMode)
