@@ -3,6 +3,7 @@ import { ThemeProvider } from './components/providers/ThemeProvider'
 import { BookmarksBar } from './components/BookmarksBar'
 import { BookmarksManager } from './components/BookmarksManager'
 import { DownloadsPanel } from './components/DownloadsPanel'
+import { MainMenu } from './components/MainMenu'
 import { FindBar } from './components/FindBar'
 import { HistoryPanel } from './components/HistoryPanel'
 import { PermissionPrompt } from './components/PermissionPrompt'
@@ -25,6 +26,7 @@ export default function App(): React.JSX.Element {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyClearPrompt, setHistoryClearPrompt] = useState(0)
   const [downloadsOpen, setDownloadsOpen] = useState(false)
+  const [mainMenuOpen, setMainMenuOpen] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
   const bookmarksManagerOpen = useUiStore((state) => state.bookmarksManagerOpen)
   const verticalTabs = useBrowserStore((state) => state.verticalTabs)
@@ -87,6 +89,7 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     const openHistory = (): void => setHistoryOpen(true)
     const openDownloads = (): void => setDownloadsOpen(true)
+    const openMainMenu = (): void => setMainMenuOpen(true)
     const openFind = (): void => setFindOpen(true)
     const openHistoryClear = (): void => {
       setHistoryOpen(true)
@@ -95,6 +98,7 @@ export default function App(): React.JSX.Element {
 
     window.addEventListener('voyager:open-history', openHistory)
     window.addEventListener('voyager:open-downloads', openDownloads)
+    window.addEventListener('voyager:open-main-menu', openMainMenu)
     window.addEventListener('voyager:open-find', openFind)
     window.addEventListener('voyager:open-history-clear', openHistoryClear)
 
@@ -112,6 +116,7 @@ export default function App(): React.JSX.Element {
     return () => {
       window.removeEventListener('voyager:open-history', openHistory)
       window.removeEventListener('voyager:open-downloads', openDownloads)
+      window.removeEventListener('voyager:open-main-menu', openMainMenu)
       window.removeEventListener('voyager:open-find', openFind)
       window.removeEventListener('voyager:open-history-clear', openHistoryClear)
       unsubFocus()
@@ -154,6 +159,7 @@ export default function App(): React.JSX.Element {
           void window.voyager.downloads.clear()
         }}
       />
+      <MainMenu open={mainMenuOpen} onClose={() => setMainMenuOpen(false)} />
       <FindBar open={findOpen} onClose={() => setFindOpen(false)} />
       <PermissionPrompt />
       <PromptDialog />
