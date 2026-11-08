@@ -161,7 +161,11 @@ export function Toolbar(): React.JSX.Element {
             profile.picture ? 'rounded-full' : 'rounded-lg',
             !profile.picture && (PROFILE_COLOR_CLASSES[profile.color] ?? PROFILE_COLOR_CLASSES.blue)
           )}
-          style={profile.backgroundColor && !profile.picture ? { backgroundColor: profile.backgroundColor } : undefined}
+          style={
+            profile.backgroundColor && !profile.picture
+              ? { backgroundColor: profile.backgroundColor }
+              : undefined
+          }
           title={`${profile.name} profile`}
           aria-label={`Profile: ${profile.name}. Manage profiles.`}
           onClick={() => void window.voyager.settings.open({ page: 'profiles' })}

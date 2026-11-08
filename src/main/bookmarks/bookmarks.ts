@@ -107,10 +107,7 @@ function revealBarIfNeeded(
  * Hide the bar once the last bookmark or folder is gone, so an empty bar never
  * lingers after the user removes their bookmarks.
  */
-function hideBarIfEmpty(
-  profileId: string,
-  setBarExtent?: (visible: boolean) => void
-): void {
+function hideBarIfEmpty(profileId: string, setBarExtent?: (visible: boolean) => void): void {
   if (storedItems(profileId).length > 0 || storedFolders(profileId).length > 0) return
   if (getSettings(profileId, 'bookmarksBarVisible') === true) {
     setSettings(profileId, 'bookmarksBarVisible', false)
@@ -168,9 +165,7 @@ export function removeBookmark(
   broadcast: Broadcast,
   setBarExtent?: (visible: boolean) => void
 ): BookmarksState {
-  storesFor(profileId).bookmarks.update('items', (list) =>
-    list.filter((item) => item.id !== id)
-  )
+  storesFor(profileId).bookmarks.update('items', (list) => list.filter((item) => item.id !== id))
   hideBarIfEmpty(profileId, setBarExtent)
   return publish(profileId, broadcast)
 }
@@ -331,9 +326,7 @@ function cloneFolder(profileId: string, folder: BookmarkFolder, parentId: string
     createdAt: Date.now()
   }
   store.update('folders', (folders) => [...(folders ?? []), clone])
-  const children = storedFolders(profileId).filter(
-    (candidate) => candidate.parentId === folder.id
-  )
+  const children = storedFolders(profileId).filter((candidate) => candidate.parentId === folder.id)
   for (const child of children) cloneFolder(profileId, child, newId)
   store.update('items', (items) => [
     ...items,
@@ -349,11 +342,7 @@ function cloneFolder(profileId: string, folder: BookmarkFolder, parentId: string
   return newId
 }
 
-function cloneBookmark(
-  profileId: string,
-  item: BookmarkItem,
-  folderId: string | null
-): void {
+function cloneBookmark(profileId: string, item: BookmarkItem, folderId: string | null): void {
   storesFor(profileId).bookmarks.update('items', (items) => [
     ...items,
     { ...item, id: randomUUID(), folderId, createdAt: Date.now() }

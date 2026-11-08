@@ -1,7 +1,13 @@
 import { app, clipboard, ipcMain, nativeTheme } from 'electron'
 import { IpcChannels } from '../../shared/ipc-channels'
 import { isPermissionKind, isPermissionRequestChoice } from '../../shared/permissions'
-import { DEFAULT_PROFILE_ID, isProfileColor, type CreateProfileInput, type ProfilesState, type RenameProfileInput } from '../../shared/profiles'
+import {
+  DEFAULT_PROFILE_ID,
+  isProfileColor,
+  type CreateProfileInput,
+  type ProfilesState,
+  type RenameProfileInput
+} from '../../shared/profiles'
 import type {
   AppVersionInfo,
   BookmarkFolderPatch,
@@ -57,7 +63,12 @@ import {
 import { exportCertificate, getCertificate } from '../certificates/certificates'
 import type { WindowController } from '../window/WindowController'
 import { openSettingsWindow, settingsProfileFor } from '../window/settingsWindow'
-import { activeWindow, allWindows, windowForAnyWebContents, windowForWebContents } from '../window/windowRegistry'
+import {
+  activeWindow,
+  allWindows,
+  windowForAnyWebContents,
+  windowForWebContents
+} from '../window/windowRegistry'
 import { consumePendingDragUrl, setPendingDragUrl } from '../bookmarks/drag'
 import { isFilterListId } from '../../shared/filter-lists'
 import {
@@ -139,7 +150,8 @@ function userPreferences(profileId: string): UserPreferences {
     clearLocalStorage: (getSettings(profileId, 'clearLocalStorage', true) as boolean) !== false,
     clearIndexedDb: (getSettings(profileId, 'clearIndexedDb', true) as boolean) !== false,
     clearCache: (getSettings(profileId, 'clearCache', true) as boolean) !== false,
-    clearSitePermissions: (getSettings(profileId, 'clearSitePermissions', true) as boolean) !== false,
+    clearSitePermissions:
+      (getSettings(profileId, 'clearSitePermissions', true) as boolean) !== false,
     openDownloadsWhenDone: getSettings(profileId, 'openDownloadsWhenDone', false) === true,
     searchEngine: (() => {
       const stored = getSettings<SearchEngineId>(profileId, 'searchEngine', DEFAULT_SEARCH_ENGINE)
@@ -444,8 +456,10 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   /* ---- bookmarks ------------------------------------------------------ */
 
-  const broadcastBookmarks = (profileId: string) => (state: BookmarksState): void =>
-    sendToProfile(profileId, IpcChannels.BookmarksStateChanged, state)
+  const broadcastBookmarks =
+    (profileId: string) =>
+    (state: BookmarksState): void =>
+      sendToProfile(profileId, IpcChannels.BookmarksStateChanged, state)
 
   ipcMain.handle(IpcChannels.BookmarksGetState, (event) =>
     currentBookmarksState(profileFor(event as any))
@@ -554,10 +568,13 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(IpcChannels.BookmarksUpdateFolder, (event, id: string, patch: BookmarkFolderPatch) => {
-    const profileId = profileFor(event as any)
-    return updateFolder(profileId, id, patch, broadcastBookmarks(profileId))
-  })
+  ipcMain.handle(
+    IpcChannels.BookmarksUpdateFolder,
+    (event, id: string, patch: BookmarkFolderPatch) => {
+      const profileId = profileFor(event as any)
+      return updateFolder(profileId, id, patch, broadcastBookmarks(profileId))
+    }
+  )
 
   ipcMain.handle(IpcChannels.BookmarksRemoveFolder, (event, id: string) => {
     const profileId = profileFor(event as any)
@@ -666,16 +683,13 @@ export function registerIpcHandlers(context: IpcContext): void {
     currentHistoryState(profileFor(event as any))
   )
 
-  ipcMain.handle(
-    IpcChannels.HistoryRecordVisit,
-    (event, visit: { url: string; title: string }) => {
-      const profileId = profileFor(event as any)
-      recordVisit(profileId, visit)
-      return publishHistory(profileId, (state) =>
-        sendToProfile(profileId, IpcChannels.HistoryStateChanged, state)
-      )
-    }
-  )
+  ipcMain.handle(IpcChannels.HistoryRecordVisit, (event, visit: { url: string; title: string }) => {
+    const profileId = profileFor(event as any)
+    recordVisit(profileId, visit)
+    return publishHistory(profileId, (state) =>
+      sendToProfile(profileId, IpcChannels.HistoryStateChanged, state)
+    )
+  })
 
   ipcMain.handle(IpcChannels.HistoryRemove, (event, id: string) => {
     const profileId = profileFor(event as any)
@@ -749,8 +763,6 @@ export function registerIpcHandlers(context: IpcContext): void {
     return openDownloadFolder(profileFor(event as any), id)
   })
 
-
-
   /* ---- profiles -------------------------------------------------------- */
 
   const profilesState = (activeProfileId: string): ProfilesState => ({
@@ -758,9 +770,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     activeProfileId
   })
 
-  ipcMain.handle(IpcChannels.ProfilesGetState, (event) =>
-    profilesState(profileFor(event as any))
-  )
+  ipcMain.handle(IpcChannels.ProfilesGetState, (event) => profilesState(profileFor(event as any)))
 
   ipcMain.handle(IpcChannels.ProfilesCreate, (event, input: CreateProfileInput) => {
     if (!input || typeof input.name !== 'string') throw new Error('Profile name is required')

@@ -118,10 +118,7 @@ export function createAppMenu(getController?: () => WindowController | null): vo
         label: 'Show Bookmarks Bar',
         type: 'checkbox',
         checked:
-          getSettings(
-            controller()?.profile ?? DEFAULT_PROFILE_ID,
-            'bookmarksBarVisible'
-          ) === true,
+          getSettings(controller()?.profile ?? DEFAULT_PROFILE_ID, 'bookmarksBarVisible') === true,
         accelerator: 'CmdOrCtrl+Shift+B',
         click: () => {
           const window = getController?.() ?? null

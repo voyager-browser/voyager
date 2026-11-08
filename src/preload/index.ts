@@ -204,8 +204,10 @@ const api = {
       ipcRenderer.invoke(IpcChannels.ProfilesCreate, input),
     update: (input: RenameProfileInput): Promise<ProfileInfo> =>
       ipcRenderer.invoke(IpcChannels.ProfilesUpdate, input),
-    delete: (id: string): Promise<ProfilesState> => ipcRenderer.invoke(IpcChannels.ProfilesDelete, id),
-    openWindow: (id: string): Promise<void> => ipcRenderer.invoke(IpcChannels.ProfilesOpenWindow, id),
+    delete: (id: string): Promise<ProfilesState> =>
+      ipcRenderer.invoke(IpcChannels.ProfilesDelete, id),
+    openWindow: (id: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannels.ProfilesOpenWindow, id),
     onStateChanged: (listener: (state: ProfilesState) => void): Unsubscribe =>
       subscribe<ProfilesState>(IpcChannels.ProfilesStateChanged, listener)
   },

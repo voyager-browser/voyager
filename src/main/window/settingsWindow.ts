@@ -80,11 +80,7 @@ export function settingsTargetProfileId(): string | null {
 }
 
 /** Push a profile-scoped update to the settings window when it matches. */
-export function sendToSettingsWindow(
-  profileId: string,
-  channel: string,
-  payload?: unknown
-): void {
+export function sendToSettingsWindow(profileId: string, channel: string, payload?: unknown): void {
   if (!settingsWindow || settingsWindow.isDestroyed()) return
   if (settingsProfileId !== profileId) return
   settingsWindow.webContents.send(channel, payload)

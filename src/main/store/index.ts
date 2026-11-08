@@ -45,11 +45,7 @@ export function storesFor(profileId: string): ProfileStores {
   const bundle: ProfileStores = {
     settings: new Store<SettingsShape>('settings.json', {}, directory),
     session: new Store<SessionShape>('session.json', { tabs: [], activeIndex: 0 }, directory),
-    bookmarks: new Store<BookmarksShape>(
-      'bookmarks.json',
-      { items: [], folders: [] },
-      directory
-    ),
+    bookmarks: new Store<BookmarksShape>('bookmarks.json', { items: [], folders: [] }, directory),
     history: new Store<HistoryShape>('history.json', { entries: [] }, directory),
     downloads: new Store<DownloadsShape>('downloads.json', { items: [] }, directory),
     permissions: new Store<PermissionsShape>('permissions.json', { decisions: [] }, directory)

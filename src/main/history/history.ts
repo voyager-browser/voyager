@@ -38,20 +38,14 @@ export function recordVisit(
 }
 
 export function removeHistory(profileId: string, id: string): void {
-  storesFor(profileId).history.update('entries', (list) =>
-    list.filter((item) => item.id !== id)
-  )
+  storesFor(profileId).history.update('entries', (list) => list.filter((item) => item.id !== id))
 }
 
 export function clearHistory(profileId: string): void {
   storesFor(profileId).history.set('entries', [])
 }
 
-export function updateHistoryTitle(
-  profileId: string,
-  url: string,
-  title: string
-): boolean {
+export function updateHistoryTitle(profileId: string, url: string, title: string): boolean {
   const nextTitle = title.trim()
   if (!url || !nextTitle) return false
   const store = storesFor(profileId).history

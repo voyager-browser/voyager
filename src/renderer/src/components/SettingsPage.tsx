@@ -268,8 +268,6 @@ export function SettingsPage(): React.JSX.Element {
     return () => observer.disconnect()
   }, [sitePermissionsOpen])
 
-
-
   const readProfilePicture = async (file: File): Promise<string | null> => {
     if (!file.type.startsWith('image/')) {
       setProfileError('Choose an image file.')
@@ -329,7 +327,9 @@ export function SettingsPage(): React.JSX.Element {
       })
       setProfiles((current) => ({
         ...current,
-        profiles: current.profiles.map((candidate) => (candidate.id === profile.id ? profile : candidate))
+        profiles: current.profiles.map((candidate) =>
+          candidate.id === profile.id ? profile : candidate
+        )
       }))
       setEditingProfileId(null)
     } catch (error) {
@@ -339,7 +339,12 @@ export function SettingsPage(): React.JSX.Element {
 
   const deleteProfile = async (id: string): Promise<void> => {
     if (id === DEFAULT_PROFILE_ID) return
-    if (!window.confirm('Delete this profile? Its bookmarks, history, and browsing data will be removed.')) return
+    if (
+      !window.confirm(
+        'Delete this profile? Its bookmarks, history, and browsing data will be removed.'
+      )
+    )
+      return
     try {
       const state = await window.voyager.profiles.delete(id)
       setProfiles(state)
@@ -348,7 +353,6 @@ export function SettingsPage(): React.JSX.Element {
       setProfileError(error instanceof Error ? error.message : 'Could not delete profile.')
     }
   }
-
 
   if (sitePermissionsOpen) {
     return (
@@ -485,7 +489,11 @@ export function SettingsPage(): React.JSX.Element {
                           </div>
                           <div className="flex items-center gap-2">
                             {editingPicture ? (
-                              <img src={editingPicture} alt="" className="h-10 w-10 rounded-full object-cover" />
+                              <img
+                                src={editingPicture}
+                                alt=""
+                                className="h-10 w-10 rounded-full object-cover"
+                              />
                             ) : (
                               <span className="text-[12px] text-muted">No picture</span>
                             )}
@@ -657,7 +665,11 @@ export function SettingsPage(): React.JSX.Element {
                 </div>
                 <div className="mt-2 flex items-center gap-2">
                   {newProfilePicture ? (
-                    <img src={newProfilePicture} alt="" className="h-8 w-8 rounded-full object-cover" />
+                    <img
+                      src={newProfilePicture}
+                      alt=""
+                      className="h-8 w-8 rounded-full object-cover"
+                    />
                   ) : null}
                   <label className="cursor-pointer rounded-md border border-border px-2 py-1 text-[12px] text-fg hover:bg-hover">
                     {newProfilePicture ? 'Change picture' : 'Add picture'}
