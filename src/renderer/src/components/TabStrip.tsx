@@ -83,9 +83,7 @@ export function TabStrip(): React.JSX.Element {
           // Decorative separators make adjacent tabs easier to tell apart, but
           // the active tab already has its own surface and border.
           const showSeparator =
-            previous !== undefined &&
-            previous.id !== activeTabId &&
-            tab.id !== activeTabId
+            previous !== undefined && previous.id !== activeTabId && tab.id !== activeTabId
 
           return (
             <Fragment key={tab.id}>

@@ -27,7 +27,9 @@ test('toggles vertical tabs from the tab context menu', async ({ voyager }) => {
   const rail = voyager.chrome.locator('aside[aria-label="Tabs"]')
   await expect(rail).toBeVisible()
   await expect
-    .poll(async () => (await voyager.chrome.evaluate(() => window.voyager.settings.get())).verticalTabs)
+    .poll(
+      async () => (await voyager.chrome.evaluate(() => window.voyager.settings.get())).verticalTabs
+    )
     .toBe(true)
 
   await rail.getByRole('tab').first().click({ button: 'right' })
@@ -35,6 +37,8 @@ test('toggles vertical tabs from the tab context menu', async ({ voyager }) => {
 
   await expect(rail).toHaveCount(0)
   await expect
-    .poll(async () => (await voyager.chrome.evaluate(() => window.voyager.settings.get())).verticalTabs)
+    .poll(
+      async () => (await voyager.chrome.evaluate(() => window.voyager.settings.get())).verticalTabs
+    )
     .toBe(false)
 })

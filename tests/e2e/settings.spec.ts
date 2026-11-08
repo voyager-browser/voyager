@@ -44,7 +44,8 @@ test('settings exposes default browser controls', async ({ voyager }) => {
 test('settings page shows stats and lets theme change apply to itself', async ({
   voyager,
   server
-}) => {  await voyager.navigate(server.url('/home'))
+}) => {
+  await voyager.navigate(server.url('/home'))
   const settings = await openSettings(voyager)
 
   await expect(settings.getByRole('heading', { name: 'Settings' })).toBeVisible()

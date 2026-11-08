@@ -5,9 +5,7 @@ import { interceptSearch, pressPageShortcut, searchRequests } from './helpers/vo
 
 test('condenses the scheme, www prefix and site-root slash', () => {
   expect(displayUrl('https://www.example.com/')).toBe('example.com')
-  expect(displayUrl('https://www.example.com/path?q=1#top')).toBe(
-    'example.com/path?q=1#top'
-  )
+  expect(displayUrl('https://www.example.com/path?q=1#top')).toBe('example.com/path?q=1#top')
   expect(displayUrl('http://localhost:4321/')).toBe('localhost:4321')
   expect(displayUrl('about:blank')).toBe('')
   expect(displayUrl('voyager://start?engine=duckduckgo')).toBe('')

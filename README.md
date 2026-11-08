@@ -21,13 +21,13 @@ A modern, pretty web browser built with Electron.
 
 Read [CONTRIBUTING.md](./CONTRIBUTING.md) to get started contributing to Voyager!
 
-
 ## Performance
-This is a table of how Voyager performs on a MDN page:  
 
-| Resource | Amount |
-| -------- | ------ |
-| Memory | 265.5 MB |
-| CPU | ~0.6% |
-| Disk (write, after 5 minutes) | 14.2 MB |
-| Disk (read, after 5 minutes) | 957.55 MB |
+This is a table of how Voyager performs on a MDN page:
+
+| Resource                      | Amount    |
+| ----------------------------- | --------- |
+| Memory                        | 265.5 MB  |
+| CPU                           | ~0.6%     |
+| Disk (write, after 5 minutes) | 14.2 MB   |
+| Disk (read, after 5 minutes)  | 957.55 MB |

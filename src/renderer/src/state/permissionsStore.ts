@@ -39,10 +39,7 @@ export const usePermissionsStore = create<PermissionsStore>()((set) => ({
 export function useOriginPermissions(origin: string | null): SitePermissionDecision[] {
   const decisions = usePermissionsStore((state) => state.decisions)
   return useMemo(
-    () =>
-      origin === null
-        ? []
-        : decisions.filter((decision) => decision.origin === origin),
+    () => (origin === null ? [] : decisions.filter((decision) => decision.origin === origin)),
     [decisions, origin]
   )
 }

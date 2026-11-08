@@ -61,8 +61,8 @@ test('allows a site persistently and manages the decision in Settings', async ({
   await expect
     .poll(
       async () =>
-        (await voyager.chrome.evaluate(() => window.voyager.permissions.getState()))
-          .decisions.length
+        (await voyager.chrome.evaluate(() => window.voyager.permissions.getState())).decisions
+          .length
     )
     .toBe(1)
 
@@ -76,8 +76,8 @@ test('allows a site persistently and manages the decision in Settings', async ({
   await expect
     .poll(
       async () =>
-        (await voyager.chrome.evaluate(() => window.voyager.permissions.getState()))
-          .decisions.length
+        (await voyager.chrome.evaluate(() => window.voyager.permissions.getState())).decisions
+          .length
     )
     .toBe(0)
   await expect(settings.getByText('No saved site permissions yet.')).toBeVisible()

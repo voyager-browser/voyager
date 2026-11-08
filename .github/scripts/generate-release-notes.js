@@ -50,7 +50,9 @@ function parseArgs(argv) {
     options.to = options.tag
   }
   if (!options.tag) {
-    throw new Error('A release tag is required (pass it as the first argument or set GITHUB_REF_NAME)')
+    throw new Error(
+      'A release tag is required (pass it as the first argument or set GITHUB_REF_NAME)'
+    )
   }
   return options
 }
@@ -113,7 +115,10 @@ async function githubFetchPaginated(pathFactory, token) {
 
 async function resolveTagCommitSha(repository, tag, token) {
   const { owner, name } = repositoryParts(repository)
-  const commit = await githubFetch(`/repos/${owner}/${name}/commits/${encodeURIComponent(tag)}`, token)
+  const commit = await githubFetch(
+    `/repos/${owner}/${name}/commits/${encodeURIComponent(tag)}`,
+    token
+  )
   return commit && commit.sha ? commit.sha : null
 }
 
@@ -133,10 +138,7 @@ async function fetchTagDescription(repository, tag, token) {
     if (!ref || !ref.object || ref.object.type !== 'tag' || !ref.object.sha) {
       return null
     }
-    const annotated = await githubFetch(
-      `/repos/${owner}/${name}/git/tags/${ref.object.sha}`,
-      token
-    )
+    const annotated = await githubFetch(`/repos/${owner}/${name}/git/tags/${ref.object.sha}`, token)
     if (!annotated || typeof annotated.message !== 'string') {
       return null
     }
@@ -149,7 +151,9 @@ async function fetchTagDescription(repository, tag, token) {
 }
 
 async function getCommitsForRange(repository, previousTag, currentTag, token) {
-  const previousCommitSha = previousTag ? await resolveTagCommitSha(repository, previousTag, token) : null
+  const previousCommitSha = previousTag
+    ? await resolveTagCommitSha(repository, previousTag, token)
+    : null
   const commitsNewestFirst = []
 
   for (let page = 1; ; page += 1) {
@@ -190,7 +194,11 @@ async function findPreviousTag(repository, currentTag, token) {
     )
     const previous = releases
       .filter((release) => release && release.tag_name && release.tag_name !== currentTag)
-      .sort((a, b) => Date.parse(b.created_at || b.published_at || '') - Date.parse(a.created_at || a.published_at || ''))
+      .sort(
+        (a, b) =>
+          Date.parse(b.created_at || b.published_at || '') -
+          Date.parse(a.created_at || a.published_at || '')
+      )
     if (previous.length > 0) {
       return previous[0].tag_name
     }
@@ -220,7 +228,6 @@ async function findPreviousTag(repository, currentTag, token) {
   }
 }
 
-
 function associatedPullsPath(owner, name, sha) {
   return `/repos/${owner}/${name}/commits/${sha}/pulls?per_page=100`
 }
@@ -238,7 +245,9 @@ function firstAssociatedPull(pulls, commitSha) {
 }
 
 function parseConventionalSubject(subject) {
-  const match = String(subject || '').trim().match(/^(\w+)(?:\(([^)]*)\))?(!)?\s*:\s*(.+)$/)
+  const match = String(subject || '')
+    .trim()
+    .match(/^(\w+)(?:\(([^)]*)\))?(!)?\s*:\s*(.+)$/)
   if (!match) {
     return null
   }
@@ -270,7 +279,8 @@ function formatCommitType(type, scope) {
 }
 
 function renderGroupLine(group) {
-  const parsed = parseConventionalSubject(group.subject) || parseConventionalSubject(group.commitSubject)
+  const parsed =
+    parseConventionalSubject(group.subject) || parseConventionalSubject(group.commitSubject)
   if (!parsed) {
     return null
   }
@@ -296,7 +306,7 @@ function renderGroupLine(group) {
 
 async function collectReleaseGroups(options) {
   const token = tokenFromEnvironment()
-  const previousTag = options.from || await findPreviousTag(options.repository, options.to, token)
+  const previousTag = options.from || (await findPreviousTag(options.repository, options.to, token))
   const commits = await getCommitsForRange(options.repository, previousTag, options.to, token)
 
   const { owner, name } = repositoryParts(options.repository)
@@ -304,10 +314,19 @@ async function collectReleaseGroups(options) {
 
   for (const commit of commits) {
     const sha = commit.sha
-    const parents = Array.isArray(commit.parents) ? commit.parents : (commit.commit && commit.commit.parents ? commit.commit.parents : [])
-    const commitSubject = String((commit.commit && commit.commit.message) || '').split(/\r?\n/)[0].trim()
+    const parents = Array.isArray(commit.parents)
+      ? commit.parents
+      : commit.commit && commit.commit.parents
+        ? commit.commit.parents
+        : []
+    const commitSubject = String((commit.commit && commit.commit.message) || '')
+      .split(/\r?\n/)[0]
+      .trim()
     const commitAuthorLogin = commit.author && commit.author.login ? commit.author.login : null
-    const commitAuthorName = commit.commit && commit.commit.author && commit.commit.author.name ? commit.commit.author.name : null
+    const commitAuthorName =
+      commit.commit && commit.commit.author && commit.commit.author.name
+        ? commit.commit.author.name
+        : null
 
     let pull = null
     try {
@@ -321,7 +340,10 @@ async function collectReleaseGroups(options) {
     if (!groups.has(groupKey)) {
       groups.set(groupKey, {
         prNumber: pull && pull.number ? pull.number : null,
-        author: pull && pull.user && pull.user.login ? pull.user.login : (commitAuthorLogin || commitAuthorName),
+        author:
+          pull && pull.user && pull.user.login
+            ? pull.user.login
+            : commitAuthorLogin || commitAuthorName,
         subject: pull && pull.title ? pull.title : commitSubject,
         commitSubject,
         commits: []

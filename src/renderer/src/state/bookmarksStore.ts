@@ -63,7 +63,13 @@ export const useBookmarksStore = create<BookmarksStore>()((set, get) => ({
       apply(window.voyager.bookmarks.remove(existing.id))
       return
     }
-    apply(window.voyager.bookmarks.add({ title: tab.title || tab.url, url: tab.url, favicon: tab.favicon }))
+    apply(
+      window.voyager.bookmarks.add({
+        title: tab.title || tab.url,
+        url: tab.url,
+        favicon: tab.favicon
+      })
+    )
   },
   removeBookmark: (id) => {
     apply(window.voyager.bookmarks.remove(id))

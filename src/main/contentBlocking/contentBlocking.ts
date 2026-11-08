@@ -111,7 +111,9 @@ function cachePathFor(userDataPath: string): string {
 }
 
 function isKnownCacheKey(id: string): boolean {
-  return isFilterListId(id) || id.startsWith(CUSTOM_CACHE_PREFIX) || id.startsWith(FILE_CACHE_PREFIX)
+  return (
+    isFilterListId(id) || id.startsWith(CUSTOM_CACHE_PREFIX) || id.startsWith(FILE_CACHE_PREFIX)
+  )
 }
 
 function readCachedLists(userDataPath: string): Map<string, RemoteBlocklistCacheEntry> {

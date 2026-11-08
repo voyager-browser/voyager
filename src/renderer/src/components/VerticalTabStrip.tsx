@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react'
 import { PanelLeft, Plus, Volume2, VolumeX, X } from 'lucide-react'
 import type { TabState } from '../../../shared/types'
-import {
-  VERTICAL_TAB_RAIL_COMPACT_WIDTH,
-  VERTICAL_TAB_RAIL_WIDTH
-} from '../../../shared/constants'
+import { VERTICAL_TAB_RAIL_COMPACT_WIDTH, VERTICAL_TAB_RAIL_WIDTH } from '../../../shared/constants'
 import { cn } from '../lib/cn'
 import { useBrowserStore } from '../state/browserStore'
 import { reorderTabs } from './TabStrip'

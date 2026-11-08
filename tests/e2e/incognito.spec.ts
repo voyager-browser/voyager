@@ -38,9 +38,7 @@ test('opens an incognito window from the Settings page', async ({ voyager }) => 
     )
     .not.toBeNull()
 
-  const settings = voyager.app
-    .windows()
-    .find((page) => page.url().startsWith('voyager://settings'))
+  const settings = voyager.app.windows().find((page) => page.url().startsWith('voyager://settings'))
   if (!settings) throw new Error('Settings window not found')
 
   await settings.getByRole('button', { name: /Open Incognito Window/ }).click()

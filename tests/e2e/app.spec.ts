@@ -81,9 +81,7 @@ test('adds a gear icon to the macOS Settings application-menu item', async ({ vo
       .find((menuItem) => menuItem.label === 'Settings…')
     return {
       found: item !== undefined,
-      hasIcon:
-        item?.icon !== undefined &&
-        (typeof item.icon === 'string' || !item.icon.isEmpty())
+      hasIcon: item?.icon !== undefined && (typeof item.icon === 'string' || !item.icon.isEmpty())
     }
   })
 
