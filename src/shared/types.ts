@@ -4,6 +4,7 @@
  */
 
 import type { SearchEngineId } from './search'
+import type { FilterListId } from './filter-lists'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 
@@ -257,6 +258,8 @@ export interface UserPreferences {
   verticalTabs: boolean
   /** Cancel requests to known ad/tracker domains before they hit the network. */
   contentBlocking: boolean
+  /** Optional hosts-format filter lists enabled in addition to the bundled list. */
+  filterLists: FilterListId[]
 }
 
 /** Site data categories cleared together from Settings. */

@@ -18,6 +18,7 @@ import { useDownloadsStore } from '../state/downloadsStore'
 import { useTheme } from './providers/theme-context'
 import { useBrowserStore } from '../state/browserStore'
 import { DEFAULT_SEARCH_ENGINE, SEARCH_ENGINES, type SearchEngineId } from '../../../shared/search'
+import { DEFAULT_FILTER_LISTS, FILTER_LISTS } from '../../../shared/filter-lists'
 import type { AppVersionInfo, ThemeMode, UserPreferences } from '../../../shared/types'
 import { BUILTIN_BLOCKED_DOMAINS } from '../../../shared/content-blocking'
 import { SitePermissionsSettings } from './SitePermissionsSettings'
@@ -118,7 +119,8 @@ export function SettingsPage(): React.JSX.Element {
     openDownloadsWhenDone: false,
     restoreSession: false,
     verticalTabs: false,
-    contentBlocking: false
+    contentBlocking: false,
+    filterLists: [...DEFAULT_FILTER_LISTS]
   })
   const [clearing, setClearing] = useState(false)
   const [initialRoute] = useState(sitePermissionsRoute)
@@ -153,7 +155,7 @@ export function SettingsPage(): React.JSX.Element {
     document.title = 'Settings - Voyager'
   }, [])
 
-  const setPreference = async (key: keyof UserPreferences, value: boolean) => {
+  const setPreference = async (key: keyof UserPreferences, value: boolean | string | string[]) => {
     setPreferences((current) => ({ ...current, [key]: value }))
     const prefs = await window.voyager.settings.set(key, value)
     setPreferences(prefs)
@@ -189,19 +191,19 @@ export function SettingsPage(): React.JSX.Element {
       setSitePermissionsOpen(true)
       return
     }
-    contentRef.current?.querySelector<HTMLElement>(`[data-settings-section="${id}"]`)?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start'
-    })
+    contentRef.current
+      ?.querySelector<HTMLElement>(`[data-settings-section="${id}"]`)
+      ?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      })
   }
 
   // Keep the sidebar highlight in sync while the content pane scrolls.
   useEffect(() => {
     const container = contentRef.current
     if (!container || sitePermissionsOpen) return
-    const sections = Array.from(
-      container.querySelectorAll<HTMLElement>('[data-settings-section]')
-    )
+    const sections = Array.from(container.querySelectorAll<HTMLElement>('[data-settings-section]'))
     if (sections.length === 0) return
     const observer = new IntersectionObserver(
       (entries) => {
@@ -299,281 +301,336 @@ export function SettingsPage(): React.JSX.Element {
       <div ref={contentRef} className="min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-6 py-8">
           <div className="space-y-8">
-          <section data-settings-section="appearance" className="rounded-lg border border-border bg-surface p-5">
-            <h2 className="mb-4 text-[15px] font-semibold text-fg">Appearance</h2>
-            <div className="space-y-2">
-              {(['system', 'light', 'dark'] as ThemeMode[]).map((m) => (
-                <label key={m} className="flex items-center gap-2 text-[13px] text-fg">
+            <section
+              data-settings-section="appearance"
+              className="rounded-lg border border-border bg-surface p-5"
+            >
+              <h2 className="mb-4 text-[15px] font-semibold text-fg">Appearance</h2>
+              <div className="space-y-2">
+                {(['system', 'light', 'dark'] as ThemeMode[]).map((m) => (
+                  <label key={m} className="flex items-center gap-2 text-[13px] text-fg">
+                    <input
+                      type="radio"
+                      name="theme"
+                      checked={mode === m}
+                      onChange={() => setMode(m)}
+                    />
+                    <span className="capitalize">{m}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="mt-4 border-t border-border pt-4">
+                <label className="flex items-center gap-2 text-[13px] text-fg">
                   <input
-                    type="radio"
-                    name="theme"
-                    checked={mode === m}
-                    onChange={() => setMode(m)}
+                    type="checkbox"
+                    checked={preferences.verticalTabs}
+                    onChange={(event) => setPreference('verticalTabs', event.target.checked)}
                   />
-                  <span className="capitalize">{m}</span>
+                  <span>Use vertical tabs (compact favicon rail that expands on hover)</span>
                 </label>
-              ))}
-            </div>
-            <div className="mt-4 border-t border-border pt-4">
-              <label className="flex items-center gap-2 text-[13px] text-fg">
-                <input
-                  type="checkbox"
-                  checked={preferences.verticalTabs}
-                  onChange={(event) => setPreference('verticalTabs', event.target.checked)}
-                />
-                <span>Use vertical tabs (compact favicon rail that expands on hover)</span>
-              </label>
-            </div>
-            <div className="mt-4 flex items-center justify-between gap-4 border-t border-border pt-4">
-              <div>
-                <div className="text-[13px] text-fg">Default browser</div>
-                <div className="mt-0.5 text-[11.5px] text-muted">
-                  {isDefaultBrowser === null
-                    ? 'Checking…'
-                    : isDefaultBrowser
-                      ? 'Voyager opens web links by default.'
-                      : 'Voyager is not your default browser yet.'}
+              </div>
+              <div className="mt-4 flex items-center justify-between gap-4 border-t border-border pt-4">
+                <div>
+                  <div className="text-[13px] text-fg">Default browser</div>
+                  <div className="mt-0.5 text-[11.5px] text-muted">
+                    {isDefaultBrowser === null
+                      ? 'Checking…'
+                      : isDefaultBrowser
+                        ? 'Voyager opens web links by default.'
+                        : 'Voyager is not your default browser yet.'}
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  disabled={isDefaultBrowser === true}
+                  onClick={() => {
+                    void window.voyager.defaultBrowser.setDefault().then(setIsDefaultBrowser)
+                  }}
+                  className="shrink-0 rounded-md bg-accent px-3 py-1.5 text-[13px] text-accent-foreground disabled:opacity-50"
+                >
+                  {isDefaultBrowser === true ? 'Default' : 'Set as default'}
+                </button>
               </div>
-              <button
-                type="button"
-                disabled={isDefaultBrowser === true}
-                onClick={() => {
-                  void window.voyager.defaultBrowser.setDefault().then(setIsDefaultBrowser)
+            </section>
+
+            <section
+              data-settings-section="startup"
+              className="rounded-lg border border-border bg-surface p-5"
+            >
+              <h2 className="mb-4 text-[15px] font-semibold text-fg">On startup</h2>
+              <label className="flex items-center gap-2 text-[13px] text-fg">
+                <input
+                  type="checkbox"
+                  checked={preferences.restoreSession}
+                  onChange={(event) => setPreference('restoreSession', event.target.checked)}
+                />
+                <span>Continue where you left off (reopen tabs from the previous session)</span>
+              </label>
+            </section>
+
+            <section
+              data-settings-section="search"
+              className="rounded-lg border border-border bg-surface p-5"
+            >
+              <h2 className="mb-4 text-[15px] font-semibold text-fg">Search</h2>
+              <select
+                className="rounded-md border border-border bg-bg px-2 py-1 text-[13px] text-fg"
+                value={searchEngine}
+                onChange={(e) => {
+                  const engine = e.target.value as SearchEngineId
+                  setSearchEngine(engine)
+                  void window.voyager.settings.set('searchEngine', engine)
                 }}
-                className="shrink-0 rounded-md bg-accent px-3 py-1.5 text-[13px] text-accent-foreground disabled:opacity-50"
               >
-                {isDefaultBrowser === true ? 'Default' : 'Set as default'}
-              </button>
-            </div>
-          </section>
+                {Object.entries(SEARCH_ENGINES).map(([id, engine]) => (
+                  <option key={id} value={id}>
+                    {engine.name}
+                  </option>
+                ))}
+              </select>
+            </section>
 
-          <section data-settings-section="startup" className="rounded-lg border border-border bg-surface p-5">
-            <h2 className="mb-4 text-[15px] font-semibold text-fg">On startup</h2>
-            <label className="flex items-center gap-2 text-[13px] text-fg">
-              <input
-                type="checkbox"
-                checked={preferences.restoreSession}
-                onChange={(event) => setPreference('restoreSession', event.target.checked)}
-              />
-              <span>Continue where you left off (reopen tabs from the previous session)</span>
-            </label>
-          </section>
-
-          <section data-settings-section="search" className="rounded-lg border border-border bg-surface p-5">
-            <h2 className="mb-4 text-[15px] font-semibold text-fg">Search</h2>
-            <select
-              className="rounded-md border border-border bg-bg px-2 py-1 text-[13px] text-fg"
-              value={searchEngine}
-              onChange={(e) => {
-                const engine = e.target.value as SearchEngineId
-                setSearchEngine(engine)
-                void window.voyager.settings.set('searchEngine', engine)
-              }}
+            <section
+              data-settings-section="content-blocking"
+              className="rounded-lg border border-border bg-surface p-5"
             >
-              {Object.entries(SEARCH_ENGINES).map(([id, engine]) => (
-                <option key={id} value={id}>
-                  {engine.name}
-                </option>
-              ))}
-            </select>
-          </section>
-
-          <section data-settings-section="content-blocking" className="rounded-lg border border-border bg-surface p-5">
-            <h2 className="mb-4 text-[15px] font-semibold text-fg">Content blocking</h2>
-            <label className="mb-2 flex items-center gap-2 text-[13px] text-fg">
-              <input
-                type="checkbox"
-                checked={preferences.contentBlocking}
-                onChange={(event) => setPreference('contentBlocking', event.target.checked)}
-              />
-              <span>Block ads and trackers</span>
-            </label>
-            <p className="text-[11.5px] text-muted">
-              Blocks requests to known advertising and tracking domains using built-in and remote
-              filter lists. Off by default.
-            </p>
-            <div className="mt-2 space-y-1 text-[12px] text-muted">
-              <div>
-                Built-in filter list: {BUILTIN_BLOCKED_DOMAINS.length} domains (bundled fallback)
+              <h2 className="mb-4 text-[15px] font-semibold text-fg">Content blocking</h2>
+              <label className="mb-2 flex items-center gap-2 text-[13px] text-fg">
+                <input
+                  type="checkbox"
+                  checked={preferences.contentBlocking}
+                  onChange={(event) => setPreference('contentBlocking', event.target.checked)}
+                />
+                <span>Block ads and trackers</span>
+              </label>
+              <p className="text-[11.5px] text-muted">
+                Blocks requests to known advertising and tracking domains using the built-in list
+                plus any remote lists you enable below. Off by default.
+              </p>
+              <div className="mt-3 space-y-2">
+                <p className="text-[12px] font-medium text-fg">Filter lists</p>
+                <label className="flex items-start gap-2 text-[12.5px] text-fg">
+                  <input type="checkbox" checked disabled className="mt-0.5" />
+                  <span>
+                    Voyager built-in list{' '}
+                    <span className="text-[11.5px] text-muted">
+                      ({BUILTIN_BLOCKED_DOMAINS.length} domains, always on)
+                    </span>
+                  </span>
+                </label>
+                {FILTER_LISTS.map((list) => (
+                  <label key={list.id} className="flex items-start gap-2 text-[12.5px] text-fg">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={preferences.filterLists.includes(list.id)}
+                      onChange={(event) => {
+                        const next = event.target.checked
+                          ? [...preferences.filterLists, list.id]
+                          : preferences.filterLists.filter((id) => id !== list.id)
+                        void setPreference('filterLists', next)
+                      }}
+                    />
+                    <span className="min-w-0">
+                      <span className="block">{list.name}</span>
+                      <span className="block text-[11.5px] text-muted">{list.description}</span>
+                    </span>
+                  </label>
+                ))}
+                <p className="text-[11.5px] text-muted">
+                  Selected lists are downloaded when content blocking is on and refreshed every 7
+                  days. Until a list finishes downloading, the built-in and cached domains are used.
+                </p>
               </div>
-              <div>
-                Remote filter list: AdAway hosts from https://adaway.org/hosts.txt (cached on first
-                run; refreshed automatically every 7 days)
-              </div>
-            </div>
-          </section>
+            </section>
 
-          <section data-settings-section="privacy" className="rounded-lg border border-border bg-surface p-5">
-            <h2 className="mb-4 text-[15px] font-semibold text-fg">Privacy and security</h2>
-
-            <button
-              type="button"
-              className="flex w-full items-center justify-between gap-4 rounded-md border border-border bg-bg px-3 py-2.5 text-left transition-colors hover:bg-hover"
-              onClick={() => {
-                void window.voyager.windows.openIncognito()
-              }}
+            <section
+              data-settings-section="privacy"
+              className="rounded-lg border border-border bg-surface p-5"
             >
-              <span>
-                <span className="block text-[13px] text-fg">Open Incognito Window</span>
-                <span className="mt-0.5 block text-[11.5px] text-muted">
-                  Browse in a separate in-memory profile that is not saved.
-                </span>
-              </span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
-            </button>
+              <h2 className="mb-4 text-[15px] font-semibold text-fg">Privacy and security</h2>
 
-            <button
-              type="button"
-              className="mt-2 flex w-full items-center justify-between gap-4 rounded-md border border-border bg-bg px-3 py-2.5 text-left transition-colors hover:bg-hover"
-              onClick={() => setSitePermissionsOpen(true)}
-            >
-              <span>
-                <span className="block text-[13px] text-fg">Site permissions</span>
-                <span className="mt-0.5 block text-[11.5px] text-muted">
-                  Manage location, notifications, camera, microphone and more.
-                </span>
-              </span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
-            </button>
-          </section>
-
-          <section data-settings-section="downloads" className="rounded-lg border border-border bg-surface p-5">
-            <h2 className="mb-4 text-[15px] font-semibold text-fg">Downloads</h2>
-            <label className="flex items-center gap-2 text-[13px] text-fg">
-              <input
-                type="checkbox"
-                checked={preferences.openDownloadsWhenDone}
-                onChange={(event) => setPreference('openDownloadsWhenDone', event.target.checked)}
-              />
-              <span>Open files automatically when downloads finish</span>
-            </label>
-          </section>
-
-          <section data-settings-section="clear-browsing-data" className="rounded-lg border border-border bg-surface p-5">
-            <h2 className="mb-4 text-[15px] font-semibold text-fg">Clear browsing data</h2>
-            <p className="mb-4 text-[13px] text-fg">
-              Choose what Voyager includes when clearing data.
-            </p>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-[13px] text-fg">
-                <input
-                  type="checkbox"
-                  checked={preferences.clearHistory}
-                  onChange={(event) => setPreference('clearHistory', event.target.checked)}
-                />
-                <span>Browsing history</span>
-              </label>
-              <label className="flex items-center gap-2 text-[13px] text-fg">
-                <input
-                  type="checkbox"
-                  checked={preferences.clearDownloads}
-                  onChange={(event) => setPreference('clearDownloads', event.target.checked)}
-                />
-                <span>Download history</span>
-              </label>
-              <label className="flex items-center gap-2 text-[13px] text-fg">
-                <input
-                  type="checkbox"
-                  checked={preferences.clearBookmarks}
-                  onChange={(event) => setPreference('clearBookmarks', event.target.checked)}
-                />
-                <span>Bookmarks</span>
-              </label>
-              <label className="flex items-center gap-2 text-[13px] text-fg">
-                <input
-                  type="checkbox"
-                  checked={preferences.clearCookies}
-                  onChange={(event) => setPreference('clearCookies', event.target.checked)}
-                />
-                <span>Cookies</span>
-              </label>
-              <label className="flex items-center gap-2 text-[13px] text-fg">
-                <input
-                  type="checkbox"
-                  checked={preferences.clearLocalStorage}
-                  onChange={(event) => setPreference('clearLocalStorage', event.target.checked)}
-                />
-                <span>Local storage</span>
-              </label>
-              <label className="flex items-center gap-2 text-[13px] text-fg">
-                <input
-                  type="checkbox"
-                  checked={preferences.clearIndexedDb}
-                  onChange={(event) => setPreference('clearIndexedDb', event.target.checked)}
-                />
-                <span>IndexedDB</span>
-              </label>
-              <label className="flex items-center gap-2 text-[13px] text-fg">
-                <input
-                  type="checkbox"
-                  checked={preferences.clearCache}
-                  onChange={(event) => setPreference('clearCache', event.target.checked)}
-                />
-                <span>Cached images and files</span>
-              </label>
-              <label className="flex items-center gap-2 text-[13px] text-fg">
-                <input
-                  type="checkbox"
-                  checked={preferences.clearSitePermissions}
-                  onChange={(event) => setPreference('clearSitePermissions', event.target.checked)}
-                />
-                <span>Site permissions</span>
-              </label>
-            </div>
-            <button
-              type="button"
-              className="mt-4 rounded-md bg-accent px-3 py-1.5 text-[13px] text-accent-foreground disabled:opacity-50"
-              disabled={
-                clearing ||
-                !(
-                  preferences.clearHistory ||
-                  preferences.clearDownloads ||
-                  preferences.clearBookmarks ||
-                  preferences.clearCookies ||
-                  preferences.clearLocalStorage ||
-                  preferences.clearIndexedDb ||
-                  preferences.clearCache ||
-                  preferences.clearSitePermissions
-                )
-              }
-              onClick={clearSelected}
-            >
-              {clearing ? 'Clearing...' : 'Clear selected data'}
-            </button>
-          </section>
-
-          <section data-settings-section="data" className="rounded-lg border border-border bg-surface p-5">
-            <h2 className="mb-4 text-[15px] font-semibold text-fg">Data</h2>
-            <div className="space-y-2 text-[13px] text-fg">
-              <div>Bookmarks: {bookmarks.length}</div>
-              <div>History entries: {history.length}</div>
-              <div>Downloads: {downloads.length}</div>
-            </div>
-          </section>
-
-          <section data-settings-section="about" className="rounded-lg border border-border bg-surface p-5">
-            <h2 className="mb-4 text-[15px] font-semibold text-fg">About</h2>
-            <div className="space-y-1 text-[13px] text-fg">
-              <div>Version {appInfo?.app ?? '1.0.0'}</div>
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
               <button
                 type="button"
-                onClick={() =>
-                  void window.voyager.tabs.create({ url: reportBugUrl(), active: true })
-                }
-                className="rounded-md bg-accent px-3 py-1.5 text-[13px] text-accent-foreground"
+                className="flex w-full items-center justify-between gap-4 rounded-md border border-border bg-bg px-3 py-2.5 text-left transition-colors hover:bg-hover"
+                onClick={() => {
+                  void window.voyager.windows.openIncognito()
+                }}
               >
-                Report a bug
+                <span>
+                  <span className="block text-[13px] text-fg">Open Incognito Window</span>
+                  <span className="mt-0.5 block text-[11.5px] text-muted">
+                    Browse in a separate in-memory profile that is not saved.
+                  </span>
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
               </button>
-              <span className="text-[11.5px] text-muted">
-                Opens a pre-filled GitHub issue in a new Voyager tab.
-              </span>
-            </div>
-          </section>
+
+              <button
+                type="button"
+                className="mt-2 flex w-full items-center justify-between gap-4 rounded-md border border-border bg-bg px-3 py-2.5 text-left transition-colors hover:bg-hover"
+                onClick={() => setSitePermissionsOpen(true)}
+              >
+                <span>
+                  <span className="block text-[13px] text-fg">Site permissions</span>
+                  <span className="mt-0.5 block text-[11.5px] text-muted">
+                    Manage location, notifications, camera, microphone and more.
+                  </span>
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
+              </button>
+            </section>
+
+            <section
+              data-settings-section="downloads"
+              className="rounded-lg border border-border bg-surface p-5"
+            >
+              <h2 className="mb-4 text-[15px] font-semibold text-fg">Downloads</h2>
+              <label className="flex items-center gap-2 text-[13px] text-fg">
+                <input
+                  type="checkbox"
+                  checked={preferences.openDownloadsWhenDone}
+                  onChange={(event) => setPreference('openDownloadsWhenDone', event.target.checked)}
+                />
+                <span>Open files automatically when downloads finish</span>
+              </label>
+            </section>
+
+            <section
+              data-settings-section="clear-browsing-data"
+              className="rounded-lg border border-border bg-surface p-5"
+            >
+              <h2 className="mb-4 text-[15px] font-semibold text-fg">Clear browsing data</h2>
+              <p className="mb-4 text-[13px] text-fg">
+                Choose what Voyager includes when clearing data.
+              </p>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-[13px] text-fg">
+                  <input
+                    type="checkbox"
+                    checked={preferences.clearHistory}
+                    onChange={(event) => setPreference('clearHistory', event.target.checked)}
+                  />
+                  <span>Browsing history</span>
+                </label>
+                <label className="flex items-center gap-2 text-[13px] text-fg">
+                  <input
+                    type="checkbox"
+                    checked={preferences.clearDownloads}
+                    onChange={(event) => setPreference('clearDownloads', event.target.checked)}
+                  />
+                  <span>Download history</span>
+                </label>
+                <label className="flex items-center gap-2 text-[13px] text-fg">
+                  <input
+                    type="checkbox"
+                    checked={preferences.clearBookmarks}
+                    onChange={(event) => setPreference('clearBookmarks', event.target.checked)}
+                  />
+                  <span>Bookmarks</span>
+                </label>
+                <label className="flex items-center gap-2 text-[13px] text-fg">
+                  <input
+                    type="checkbox"
+                    checked={preferences.clearCookies}
+                    onChange={(event) => setPreference('clearCookies', event.target.checked)}
+                  />
+                  <span>Cookies</span>
+                </label>
+                <label className="flex items-center gap-2 text-[13px] text-fg">
+                  <input
+                    type="checkbox"
+                    checked={preferences.clearLocalStorage}
+                    onChange={(event) => setPreference('clearLocalStorage', event.target.checked)}
+                  />
+                  <span>Local storage</span>
+                </label>
+                <label className="flex items-center gap-2 text-[13px] text-fg">
+                  <input
+                    type="checkbox"
+                    checked={preferences.clearIndexedDb}
+                    onChange={(event) => setPreference('clearIndexedDb', event.target.checked)}
+                  />
+                  <span>IndexedDB</span>
+                </label>
+                <label className="flex items-center gap-2 text-[13px] text-fg">
+                  <input
+                    type="checkbox"
+                    checked={preferences.clearCache}
+                    onChange={(event) => setPreference('clearCache', event.target.checked)}
+                  />
+                  <span>Cached images and files</span>
+                </label>
+                <label className="flex items-center gap-2 text-[13px] text-fg">
+                  <input
+                    type="checkbox"
+                    checked={preferences.clearSitePermissions}
+                    onChange={(event) =>
+                      setPreference('clearSitePermissions', event.target.checked)
+                    }
+                  />
+                  <span>Site permissions</span>
+                </label>
+              </div>
+              <button
+                type="button"
+                className="mt-4 rounded-md bg-accent px-3 py-1.5 text-[13px] text-accent-foreground disabled:opacity-50"
+                disabled={
+                  clearing ||
+                  !(
+                    preferences.clearHistory ||
+                    preferences.clearDownloads ||
+                    preferences.clearBookmarks ||
+                    preferences.clearCookies ||
+                    preferences.clearLocalStorage ||
+                    preferences.clearIndexedDb ||
+                    preferences.clearCache ||
+                    preferences.clearSitePermissions
+                  )
+                }
+                onClick={clearSelected}
+              >
+                {clearing ? 'Clearing...' : 'Clear selected data'}
+              </button>
+            </section>
+
+            <section
+              data-settings-section="data"
+              className="rounded-lg border border-border bg-surface p-5"
+            >
+              <h2 className="mb-4 text-[15px] font-semibold text-fg">Data</h2>
+              <div className="space-y-2 text-[13px] text-fg">
+                <div>Bookmarks: {bookmarks.length}</div>
+                <div>History entries: {history.length}</div>
+                <div>Downloads: {downloads.length}</div>
+              </div>
+            </section>
+
+            <section
+              data-settings-section="about"
+              className="rounded-lg border border-border bg-surface p-5"
+            >
+              <h2 className="mb-4 text-[15px] font-semibold text-fg">About</h2>
+              <div className="space-y-1 text-[13px] text-fg">
+                <div>Version {appInfo?.app ?? '1.0.0'}</div>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
+                <button
+                  type="button"
+                  onClick={() =>
+                    void window.voyager.tabs.create({ url: reportBugUrl(), active: true })
+                  }
+                  className="rounded-md bg-accent px-3 py-1.5 text-[13px] text-accent-foreground"
+                >
+                  Report a bug
+                </button>
+                <span className="text-[11.5px] text-muted">
+                  Opens a pre-filled GitHub issue in a new Voyager tab.
+                </span>
+              </div>
+            </section>
+          </div>
         </div>
-      </div>
       </div>
     </div>
   )

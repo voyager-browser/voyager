@@ -56,6 +56,8 @@ import type { WindowController } from '../window/WindowController'
 import { openSettingsWindow } from '../window/settingsWindow'
 import { allWindows, windowForAnyWebContents, windowForWebContents } from '../window/windowRegistry'
 import { consumePendingDragUrl, setPendingDragUrl } from '../bookmarks/drag'
+import { isFilterListId } from '../../shared/filter-lists'
+import { enabledFilterLists, syncContentBlocking } from '../contentBlocking/contentBlocking'
 import { getSettings, setSettings } from '../store'
 import { isDefaultBrowser, setDefaultBrowser } from '../defaultBrowser'
 import {
@@ -117,7 +119,8 @@ function userPreferences(): UserPreferences {
     })(),
     restoreSession: getSettings('restoreSession', false) === true,
     verticalTabs: getSettings('verticalTabs', false) === true,
-    contentBlocking: getSettings('contentBlocking', false) !== false
+    contentBlocking: getSettings('contentBlocking', false) !== false,
+    filterLists: enabledFilterLists()
   }
 }
 
@@ -178,12 +181,13 @@ export function registerIpcHandlers(context: IpcContext): void {
     'searchEngine',
     'restoreSession',
     'verticalTabs',
-    'contentBlocking'
+    'contentBlocking',
+    'filterLists'
   ])
 
   ipcMain.handle(
     IpcChannels.SettingsSet,
-    (_event, key: keyof UserPreferences, value: boolean | string) => {
+    (_event, key: keyof UserPreferences, value: boolean | string | string[]) => {
       if (!supportedSettings.has(key)) {
         throw new Error(`Unsupported setting: ${key}`)
       }
@@ -205,6 +209,25 @@ export function registerIpcHandlers(context: IpcContext): void {
         const enabled = value === true
         setSettings('verticalTabs', enabled)
         for (const window of allWindows()) window.setVerticalTabs(enabled)
+        return respond()
+      }
+      if (key === 'filterLists') {
+        if (
+          !Array.isArray(value) ||
+          !value.every((id) => typeof id === 'string' && isFilterListId(id))
+        ) {
+          throw new Error('Expected an array of filter list ids')
+        }
+        setSettings('filterLists', [...new Set(value)])
+        syncContentBlocking()
+        return respond()
+      }
+      if (key === 'contentBlocking') {
+        if (typeof value !== 'boolean') {
+          throw new Error('Expected a boolean for setting: contentBlocking')
+        }
+        setSettings(key, value)
+        if (value) syncContentBlocking()
         return respond()
       }
       if (typeof value !== 'boolean') {
