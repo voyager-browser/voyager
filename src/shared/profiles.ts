@@ -26,6 +26,10 @@ export interface ProfileInfo {
   name: string
   color: ProfileColor
   createdAt: number
+  /** Optional profile picture (data URL). */
+  picture?: string
+  /** Optional custom background color (CSS color) for the avatar. */
+  backgroundColor?: string
   /** The built-in profile cannot be renamed or deleted. */
   isDefault?: boolean
 }
@@ -39,12 +43,16 @@ export interface ProfilesState {
 export interface CreateProfileInput {
   name: string
   color?: ProfileColor
+  picture?: string | null
+  backgroundColor?: string | null
 }
 
 export interface RenameProfileInput {
   id: string
   name: string
   color?: ProfileColor
+  picture?: string | null
+  backgroundColor?: string | null
 }
 
 export function isProfileColor(value: unknown): value is ProfileColor {
