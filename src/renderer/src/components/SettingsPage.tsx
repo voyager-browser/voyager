@@ -275,10 +275,7 @@ export function SettingsPage(): React.JSX.Element {
       setProfileError('Choose an image file.')
       return null
     }
-    if (file.size > 500_000) {
-      setProfileError('Profile picture is too large (max 500 KB).')
-      return null
-    }
+
     return await new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
