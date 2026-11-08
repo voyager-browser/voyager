@@ -147,7 +147,7 @@ function userPreferences(profileId: string): UserPreferences {
     })(),
     restoreSession: getSettings(profileId, 'restoreSession', false) === true,
     verticalTabs: getSettings(profileId, 'verticalTabs', false) === true,
-    contentBlocking: (getSettings(profileId, 'contentBlocking', true) as boolean) !== false,
+    contentBlocking: (getSettings(profileId, 'contentBlocking', false) as boolean) === true,
     builtinFilterList: builtinFilterListEnabled(profileId),
     filterLists: enabledFilterLists(profileId),
     customFilterLists: enabledCustomFilterLists(profileId),
