@@ -271,13 +271,6 @@ function categoryName(type) {
   return null
 }
 
-function formatCommitType(type, scope) {
-  if (scope) {
-    return `${type}(${scope})`
-  }
-  return type
-}
-
 function renderGroupLine(group) {
   const parsed =
     parseConventionalSubject(group.subject) || parseConventionalSubject(group.commitSubject)
@@ -314,11 +307,6 @@ async function collectReleaseGroups(options) {
 
   for (const commit of commits) {
     const sha = commit.sha
-    const parents = Array.isArray(commit.parents)
-      ? commit.parents
-      : commit.commit && commit.commit.parents
-        ? commit.commit.parents
-        : []
     const commitSubject = String((commit.commit && commit.commit.message) || '')
       .split(/\r?\n/)[0]
       .trim()
