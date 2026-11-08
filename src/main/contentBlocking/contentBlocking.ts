@@ -193,13 +193,11 @@ export function enabledCustomFilterFiles(): CustomFilterFile[] {
   return files
 }
 
-function mergeDomainSet(builtinEnabled: boolean, domains: string[]): void {
-  const next = builtinEnabled ? new Set<string>(BLOCKED_DOMAINS) : new Set<string>()
-  for (const domain of domains) {
-    const normalized = normalizeDomain(domain)
-    if (normalized) next.add(normalized)
+function addDomains(target: Set<string>, domains: readonly string[]): void {
+  for (let i = 0; i < domains.length; i += 1) {
+    const normalized = normalizeDomain(domains[i])
+    if (normalized) target.add(normalized)
   }
-  blockedExact = next
 }
 
 /** Rebuild the active block set from enabled built-in + catalog + custom lists/files. */
@@ -210,21 +208,21 @@ function mergeEnabledLists(
   customUrls: string[],
   customFiles: CustomFilterFile[]
 ): void {
+  const next = builtinEnabled ? new Set<string>(BLOCKED_DOMAINS) : new Set<string>()
   const cached = readCachedLists(userDataPath)
-  const domains: string[] = []
   for (const id of catalogIds) {
     const entry = cached.get(id)
-    if (entry) domains.push(...entry.domains)
+    if (entry) addDomains(next, entry.domains)
   }
   for (const url of customUrls) {
     const entry = cached.get(customCacheKey(url))
-    if (entry) domains.push(...entry.domains)
+    if (entry) addDomains(next, entry.domains)
   }
   for (const file of customFiles) {
     const entry = cached.get(`${FILE_CACHE_PREFIX}${file.id}`)
-    if (entry) domains.push(...entry.domains)
+    if (entry) addDomains(next, entry.domains)
   }
-  mergeDomainSet(builtinEnabled, domains)
+  blockedExact = next
 }
 
 interface RefreshTarget {
