@@ -1,11 +1,10 @@
+import { useState } from 'react'
 import { Globe, Lock, ShieldCheck, TriangleAlert } from 'lucide-react'
-import {
-  PERMISSION_LABELS,
-  permissionOriginForUrl
-} from '../../../shared/permissions'
+import { PERMISSION_LABELS, permissionOriginForUrl } from '../../../shared/permissions'
 import { safeParseUrl, securityLevelFor } from '../../../shared/url'
 import { cn } from '../lib/cn'
 import { useOriginPermissions, usePermissionsStore } from '../state/permissionsStore'
+import { CertificateDialog } from './CertificateDialog'
 
 interface PageInfoPopoverProps {
   url: string
@@ -17,9 +16,11 @@ export function PageInfoPopover({ url, title }: PageInfoPopoverProps): React.JSX
   const parsed = safeParseUrl(url)
   const origin = permissionOriginForUrl(url)
   const sitePermissions = useOriginPermissions(origin)
+  const [certificateOpen, setCertificateOpen] = useState(false)
 
   return (
     <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-border bg-surface shadow-xl shadow-black/15">
+      {certificateOpen && <CertificateDialog url={url} onClose={() => setCertificateOpen(false)} />}
       <div className="border-b border-border px-3.5 py-3">
         <p className="truncate text-[13px] font-medium text-fg">{title || 'Untitled'}</p>
         <p className="truncate text-[11.5px] text-muted">{parsed?.host ?? 'Local tab'}</p>
@@ -64,6 +65,26 @@ export function PageInfoPopover({ url, title }: PageInfoPopoverProps): React.JSX
         </p>
       )}
 
+      {level === 'secure' && (
+        <div className="border-t border-border px-3.5 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[12.5px] font-medium text-fg">Certificate</p>
+              <p className="mt-0.5 text-[11.5px] text-muted">
+                View the TLS certificate and export it.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 text-[11.5px] text-accent hover:underline"
+              onClick={() => setCertificateOpen(true)}
+            >
+              View certificate
+            </button>
+          </div>
+        </div>
+      )}
+
       {origin && (
         <div className="border-t border-border px-3.5 py-3">
           <div className="flex items-center justify-between gap-3">
@@ -80,9 +101,7 @@ export function PageInfoPopover({ url, title }: PageInfoPopoverProps): React.JSX
           </div>
 
           {sitePermissions.length === 0 ? (
-            <p className="mt-1.5 text-[11.5px] text-muted">
-              No saved permissions for this site.
-            </p>
+            <p className="mt-1.5 text-[11.5px] text-muted">No saved permissions for this site.</p>
           ) : (
             <ul className="mt-1.5 space-y-1">
               {sitePermissions.map((permission) => (
@@ -106,9 +125,7 @@ export function PageInfoPopover({ url, title }: PageInfoPopoverProps): React.JSX
                     aria-label={`Remove ${PERMISSION_LABELS[permission.kind]} permission`}
                     className="shrink-0 text-muted hover:text-fg hover:underline"
                     onClick={() =>
-                      void usePermissionsStore
-                        .getState()
-                        .remove(origin, permission.kind)
+                      void usePermissionsStore.getState().remove(origin, permission.kind)
                     }
                   >
                     Remove

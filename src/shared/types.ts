@@ -49,6 +49,44 @@ export interface NewTabRequest {
   active?: boolean
 }
 
+/* ---- TLS certificates -------------------------------------------------- */
+
+export interface CertificateChainEntry {
+  subject: string
+  issuer: string
+  validFrom: string
+  validTo: string
+  fingerprint256: string
+  isCA: boolean
+}
+
+/** Details of the leaf certificate served by an HTTPS site. */
+export interface CertificateDetails {
+  url: string
+  host: string
+  subject: string
+  issuer: string
+  validFrom: string
+  validTo: string
+  serialNumber: string
+  /** SHA-1 fingerprint. */
+  fingerprint: string
+  /** SHA-256 fingerprint. */
+  fingerprint256: string
+  /** SHA-512 fingerprint. */
+  fingerprint512: string
+  publicKey: string
+  subjectAltName: string
+  keyUsage: string
+  isCA: boolean
+  /** Leaf-to-root chain reported by the TLS handshake. */
+  chain: CertificateChainEntry[]
+  /** PEM-encoded leaf certificate. */
+  pem: string
+}
+
+export type CertificateExportFormat = 'pem' | 'der'
+
 export interface NewBookmarkInput {
   title: string
   url: string

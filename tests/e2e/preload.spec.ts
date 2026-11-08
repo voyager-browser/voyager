@@ -23,6 +23,7 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
     'appInfo',
     'bookmarks',
     'browsingData',
+    'certificates',
     'defaultBrowser',
     'downloads',
     'history',

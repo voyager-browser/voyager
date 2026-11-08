@@ -8,6 +8,7 @@ import type {
   BookmarkNodeKind,
   BookmarkPatch,
   BookmarksState,
+  CertificateExportFormat,
   ClearBrowsingDataOptions,
   NewBookmarkFolderInput,
   NewBookmarkInput,
@@ -50,6 +51,7 @@ import {
   respondToPermissionRequest,
   sitePermissionsForOrigin
 } from '../permissions/permissions'
+import { exportCertificate, getCertificate } from '../certificates/certificates'
 import type { WindowController } from '../window/WindowController'
 import { openSettingsWindow } from '../window/settingsWindow'
 import { allWindows, windowForAnyWebContents, windowForWebContents } from '../window/windowRegistry'
@@ -139,6 +141,19 @@ export function registerIpcHandlers(context: IpcContext): void {
     chrome: process.versions.chrome ?? '',
     node: process.versions.node ?? ''
   }))
+
+  ipcMain.handle(IpcChannels.CertificateGet, (event, url: string) => {
+    void event
+    return getCertificate(url)
+  })
+
+  ipcMain.handle(
+    IpcChannels.CertificateExport,
+    (event, url: string, format: CertificateExportFormat) => {
+      void event
+      return exportCertificate(url, format)
+    }
+  )
 
   ipcMain.handle(IpcChannels.DefaultBrowserGet, (event) => (void event, isDefaultBrowser()))
   ipcMain.handle(IpcChannels.DefaultBrowserSet, (event) => (void event, setDefaultBrowser()))
