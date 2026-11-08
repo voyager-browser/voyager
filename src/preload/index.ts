@@ -65,6 +65,10 @@ const api = {
       key: keyof UserPreferences,
       value: boolean | string | string[]
     ): Promise<UserPreferences> => ipcRenderer.invoke(IpcChannels.SettingsSet, key, value),
+    importFilterFile: (name: string, content: string): Promise<UserPreferences> =>
+      ipcRenderer.invoke(IpcChannels.ContentBlockingImportFile, { name, content }),
+    removeFilterFile: (id: string): Promise<UserPreferences> =>
+      ipcRenderer.invoke(IpcChannels.ContentBlockingRemoveFile, id),
     onChanged: (listener: (preferences: UserPreferences) => void): Unsubscribe =>
       subscribe(IpcChannels.SettingsChanged, listener)
   },

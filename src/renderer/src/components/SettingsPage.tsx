@@ -10,6 +10,7 @@ import {
   Shield,
   ShieldCheck,
   Trash2,
+  Upload,
   type LucideIcon
 } from 'lucide-react'
 import { useBookmarksStore } from '../state/bookmarksStore'
@@ -122,10 +123,12 @@ export function SettingsPage(): React.JSX.Element {
     contentBlocking: false,
     builtinFilterList: true,
     filterLists: [...DEFAULT_FILTER_LISTS],
-    customFilterLists: []
+    customFilterLists: [],
+    customFilterFiles: []
   })
   const [customFilterUrl, setCustomFilterUrl] = useState('')
   const [customFilterError, setCustomFilterError] = useState<string | null>(null)
+  const [importingFilterFile, setImportingFilterFile] = useState(false)
   const [clearing, setClearing] = useState(false)
   const [initialRoute] = useState(sitePermissionsRoute)
   const [sitePermissionsOpen, setSitePermissionsOpen] = useState(initialRoute.open)
@@ -448,11 +451,11 @@ export function SettingsPage(): React.JSX.Element {
                 ))}
 
                 <div className="border-t border-border pt-3">
-                  <p className="text-[12px] font-medium text-fg">Custom hosts list URL</p>
+                  <p className="text-[12px] font-medium text-fg">Custom filter lists</p>
                   <p className="mt-0.5 text-[11.5px] text-muted">
-                    Add a hosts-format list from an http or https URL. Raw hosts file uploads are not
-                    supported.
+                    Add a hosts-format list from an http/https URL or upload a local hosts file.
                   </p>
+
                   <div className="mt-2 flex gap-2">
                     <input
                       type="url"
@@ -502,10 +505,53 @@ export function SettingsPage(): React.JSX.Element {
                       Add
                     </button>
                   </div>
+
+                  <div className="mt-2">
+                    <label
+                      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-bg px-3 py-1.5 text-[12.5px] text-fg hover:bg-hover ${
+                        importingFilterFile ? 'pointer-events-none opacity-60' : ''
+                      }`}
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      <span>{importingFilterFile ? 'Uploading…' : 'Upload hosts file'}</span>
+                      <input
+                        type="file"
+                        accept=".txt,text/plain"
+                        className="sr-only"
+                        disabled={importingFilterFile}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0]
+                          event.target.value = ''
+                          if (!file) return
+                          setCustomFilterError(null)
+                          setImportingFilterFile(true)
+                          void file
+                            .text()
+                            .then(async (content) => {
+                              const prefs = await window.voyager.settings.importFilterFile(
+                                file.name,
+                                content
+                              )
+                              setPreferences(prefs)
+                            })
+                            .catch((error: unknown) => {
+                              setCustomFilterError(
+                                error instanceof Error
+                                  ? error.message
+                                  : 'Could not import that hosts file.'
+                              )
+                            })
+                            .finally(() => setImportingFilterFile(false))
+                        }}
+                      />
+                    </label>
+                  </div>
+
                   {customFilterError && (
                     <p className="mt-1.5 text-[11.5px] text-danger">{customFilterError}</p>
                   )}
-                  {preferences.customFilterLists.length > 0 && (
+
+                  {(preferences.customFilterLists.length > 0 || preferences.customFilterFiles.length > 0) && (
                     <ul className="mt-2 space-y-1.5">
                       {preferences.customFilterLists.map((url) => (
                         <li
@@ -525,6 +571,36 @@ export function SettingsPage(): React.JSX.Element {
                                 preferences.customFilterLists.filter((entry) => entry !== url)
                               )
                             }
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </li>
+                      ))}
+                      {preferences.customFilterFiles.map((file) => (
+                        <li
+                          key={file.id}
+                          className="flex items-center gap-2 rounded-md border border-border bg-bg px-2 py-1.5"
+                        >
+                          <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg" title={file.name}>
+                            {file.name}
+                            <span className="ml-1.5 text-muted">(uploaded file)</span>
+                          </span>
+                          <button
+                            type="button"
+                            className="shrink-0 rounded p-1 text-muted hover:bg-hover hover:text-fg"
+                            aria-label={`Remove uploaded filter list ${file.name}`}
+                            onClick={async () => {
+                              try {
+                                const prefs = await window.voyager.settings.removeFilterFile(file.id)
+                                setPreferences(prefs)
+                              } catch (error: unknown) {
+                                setCustomFilterError(
+                                  error instanceof Error
+                                    ? error.message
+                                    : 'Could not remove that hosts file.'
+                                )
+                              }
+                            }}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>

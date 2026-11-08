@@ -57,9 +57,12 @@ import { consumePendingDragUrl, setPendingDragUrl } from '../bookmarks/drag'
 import { isFilterListId } from '../../shared/filter-lists'
 import {
   builtinFilterListEnabled,
+  enabledCustomFilterFiles,
   enabledCustomFilterLists,
   enabledFilterLists,
+  importCustomFilterFile,
   normalizeCustomFilterUrl,
+  removeCustomFilterFile,
   syncContentBlocking
 } from '../contentBlocking/contentBlocking'
 import { getSettings, setSettings } from '../store'
@@ -126,7 +129,8 @@ function userPreferences(): UserPreferences {
     contentBlocking: getSettings('contentBlocking', false) !== false,
     builtinFilterList: builtinFilterListEnabled(),
     filterLists: enabledFilterLists(),
-    customFilterLists: enabledCustomFilterLists()
+    customFilterLists: enabledCustomFilterLists(),
+    customFilterFiles: enabledCustomFilterFiles()
   }
 }
 
@@ -251,6 +255,34 @@ export function registerIpcHandlers(context: IpcContext): void {
       return respond()
     }
   )
+
+  ipcMain.handle(
+    IpcChannels.ContentBlockingImportFile,
+    (_event, input: { name?: unknown; content?: unknown }) => {
+      const name = typeof input?.name === 'string' ? input.name : 'Custom hosts list'
+      const content = typeof input?.content === 'string' ? input.content : ''
+      if (!content) throw new Error('No file content was provided.')
+      const file = importCustomFilterFile(name, content)
+      setSettings('customFilterFiles', [...enabledCustomFilterFiles(), file])
+      syncContentBlocking()
+      const prefs = userPreferences()
+      context.send(IpcChannels.SettingsChanged, prefs)
+      return prefs
+    }
+  )
+
+  ipcMain.handle(IpcChannels.ContentBlockingRemoveFile, (_event, id: string) => {
+    if (typeof id !== 'string') throw new Error('Invalid filter file id')
+    removeCustomFilterFile(id)
+    setSettings(
+      'customFilterFiles',
+      enabledCustomFilterFiles().filter((file) => file.id !== id)
+    )
+    syncContentBlocking()
+    const prefs = userPreferences()
+    context.send(IpcChannels.SettingsChanged, prefs)
+    return prefs
+  })
 
   /* ---- theme ----------------------------------------------------------- */
 
