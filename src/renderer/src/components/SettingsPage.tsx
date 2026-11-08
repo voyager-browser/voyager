@@ -157,10 +157,14 @@ export function SettingsPage(): React.JSX.Element {
   })
   const [newProfileName, setNewProfileName] = useState('')
   const [newProfileColor, setNewProfileColor] = useState<ProfileColor>('blue')
+  const [newProfilePicture, setNewProfilePicture] = useState<string | null>(null)
+  const [newProfileBackground, setNewProfileBackground] = useState('')
   const [profileError, setProfileError] = useState<string | null>(null)
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [editingColor, setEditingColor] = useState<ProfileColor>('blue')
+  const [editingPicture, setEditingPicture] = useState<string | null>(null)
+  const [editingBackground, setEditingBackground] = useState('')
 
   useEffect(() => {
     const bookmarks = useBookmarksStore.getState()
@@ -265,6 +269,24 @@ export function SettingsPage(): React.JSX.Element {
   }, [sitePermissionsOpen])
 
 
+
+  const readProfilePicture = async (file: File): Promise<string | null> => {
+    if (!file.type.startsWith('image/')) {
+      setProfileError('Choose an image file.')
+      return null
+    }
+    if (file.size > 500_000) {
+      setProfileError('Profile picture is too large (max 500 KB).')
+      return null
+    }
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
+      reader.onerror = () => reject(reader.error ?? new Error('Could not read image'))
+      reader.readAsDataURL(file)
+    })
+  }
+
   const createProfile = async (): Promise<void> => {
     const name = newProfileName.trim()
     if (!name) {
@@ -273,9 +295,16 @@ export function SettingsPage(): React.JSX.Element {
     }
     setProfileError(null)
     try {
-      const profile = await window.voyager.profiles.create({ name, color: newProfileColor })
+      const profile = await window.voyager.profiles.create({
+        name,
+        color: newProfileColor,
+        picture: newProfilePicture,
+        backgroundColor: newProfileBackground || null
+      })
       setProfiles((current) => ({ ...current, profiles: [...current.profiles, profile] }))
       setNewProfileName('')
+      setNewProfilePicture(null)
+      setNewProfileBackground('')
       setProfileError(null)
     } catch (error) {
       setProfileError(error instanceof Error ? error.message : 'Could not create profile.')
@@ -286,6 +315,8 @@ export function SettingsPage(): React.JSX.Element {
     setEditingProfileId(profile.id)
     setEditingName(profile.name)
     setEditingColor(profile.color)
+    setEditingPicture(profile.picture ?? null)
+    setEditingBackground(profile.backgroundColor ?? '')
     setProfileError(null)
   }
 
@@ -295,7 +326,9 @@ export function SettingsPage(): React.JSX.Element {
       const profile = await window.voyager.profiles.update({
         id: editingProfileId,
         name: editingName,
-        color: editingColor
+        color: editingColor,
+        picture: editingPicture,
+        backgroundColor: editingBackground || null
       })
       setProfiles((current) => ({
         ...current,
@@ -453,6 +486,41 @@ export function SettingsPage(): React.JSX.Element {
                               />
                             ))}
                           </div>
+                          <div className="flex items-center gap-2">
+                            {editingPicture ? (
+                              <img src={editingPicture} alt="" className="h-10 w-10 rounded-full object-cover" />
+                            ) : (
+                              <span className="text-[12px] text-muted">No picture</span>
+                            )}
+                            <label className="cursor-pointer rounded-md border border-border px-2 py-1 text-[12px] text-fg hover:bg-hover">
+                              Choose picture
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="sr-only"
+                                onChange={async (event) => {
+                                  const file = event.target.files?.[0]
+                                  event.target.value = ''
+                                  if (!file) return
+                                  try {
+                                    const pic = await readProfilePicture(file)
+                                    if (pic) setEditingPicture(pic)
+                                  } catch {
+                                    setProfileError('Could not read that image.')
+                                  }
+                                }}
+                              />
+                            </label>
+                            {editingPicture && (
+                              <button
+                                type="button"
+                                onClick={() => setEditingPicture(null)}
+                                className="text-[12px] text-muted hover:text-danger"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
                           <div className="flex gap-2">
                             <button
                               type="button"
@@ -570,6 +638,39 @@ export function SettingsPage(): React.JSX.Element {
                       }`}
                     />
                   ))}
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  {newProfilePicture ? (
+                    <img src={newProfilePicture} alt="" className="h-8 w-8 rounded-full object-cover" />
+                  ) : null}
+                  <label className="cursor-pointer rounded-md border border-border px-2 py-1 text-[12px] text-fg hover:bg-hover">
+                    {newProfilePicture ? 'Change picture' : 'Add picture'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={async (event) => {
+                        const file = event.target.files?.[0]
+                        event.target.value = ''
+                        if (!file) return
+                        try {
+                          const pic = await readProfilePicture(file)
+                          if (pic) setNewProfilePicture(pic)
+                        } catch {
+                          setProfileError('Could not read that image.')
+                        }
+                      }}
+                    />
+                  </label>
+                  {newProfilePicture && (
+                    <button
+                      type="button"
+                      onClick={() => setNewProfilePicture(null)}
+                      className="text-[12px] text-muted hover:text-danger"
+                    >
+                      Remove
+                    </button>
+                  )}
                 </div>
               </div>
             </section>
