@@ -1,4 +1,4 @@
-import { app, clipboard, ipcMain, nativeTheme } from 'electron'
+import { app, clipboard, ipcMain, nativeTheme, type WebContents } from 'electron'
 import { IpcChannels } from '../../shared/ipc-channels'
 import { isPermissionKind, isPermissionRequestChoice } from '../../shared/permissions'
 import {
@@ -112,6 +112,20 @@ import { DEFAULT_PROXY_CONFIG } from '../../shared/proxy'
 import { DEFAULT_NEW_TAB_URL } from '../../shared/constants'
 import { createWindow } from '../window/createWindow'
 import { getSettings, getThemeMode, setSettings, setThemeMode, storesFor } from '../store'
+import {
+  clearFormHistory,
+  currentAutofillState,
+  deleteAddress,
+  deleteContact,
+  deletePaymentMethod,
+  getAutofillProfileSuggestions,
+  getFormHistorySuggestions,
+  recordFormHistory,
+  removeFormHistoryEntry,
+  saveAddress,
+  saveContact,
+  savePaymentMethod
+} from '../autofill/autofill'
 
 import { isDefaultBrowser, setDefaultBrowser } from '../defaultBrowser'
 import {
@@ -219,6 +233,18 @@ export function registerIpcHandlers(context: IpcContext): void {
     (event?.sender ? settingsProfileFor(event.sender) : null) ??
     activeWindow()?.profile ??
     DEFAULT_PROFILE_ID
+
+  const profileForSender = (sender: WebContents): string =>
+    windowForWebContents(sender)?.profile ??
+    settingsProfileFor(sender) ??
+    activeWindow()?.profile ??
+    DEFAULT_PROFILE_ID
+
+  const publishAutofill = (profileId: string): ReturnType<typeof currentAutofillState> => {
+    const state = currentAutofillState(profileId)
+    sendToProfile(profileId, IpcChannels.AutofillStateChanged, state)
+    return state
+  }
 
   const sendToProfile = (profileId: string, channel: string, payload?: unknown): void =>
     broadcastToProfile(profileId, channel, payload)
@@ -868,6 +894,91 @@ export function registerIpcHandlers(context: IpcContext): void {
       sendToProfile(profileId, IpcChannels.HistoryStateChanged, state)
     )
   })
+
+  /* ---- autofill -------------------------------------------------------- */
+
+  ipcMain.handle(IpcChannels.AutofillGetState, (event) =>
+    currentAutofillState(profileFor(event as any))
+  )
+
+  ipcMain.handle(IpcChannels.AutofillSaveAddress, (event, input) => {
+    if (!input || typeof input !== 'object') throw new Error('Invalid address')
+    saveAddress(profileFor(event as any), input as any)
+    return publishAutofill(profileFor(event as any))
+  })
+
+  ipcMain.handle(IpcChannels.AutofillDeleteAddress, (event, id: string) => {
+    if (typeof id !== 'string') throw new Error('Invalid address id')
+    deleteAddress(profileFor(event as any), id)
+    return publishAutofill(profileFor(event as any))
+  })
+
+  ipcMain.handle(IpcChannels.AutofillSaveContact, (event, input) => {
+    if (!input || typeof input !== 'object') throw new Error('Invalid contact')
+    saveContact(profileFor(event as any), input as any)
+    return publishAutofill(profileFor(event as any))
+  })
+
+  ipcMain.handle(IpcChannels.AutofillDeleteContact, (event, id: string) => {
+    if (typeof id !== 'string') throw new Error('Invalid contact id')
+    deleteContact(profileFor(event as any), id)
+    return publishAutofill(profileFor(event as any))
+  })
+
+  ipcMain.handle(IpcChannels.AutofillSavePayment, (event, input) => {
+    if (!input || typeof input !== 'object') throw new Error('Invalid payment method')
+    savePaymentMethod(profileFor(event as any), input as any)
+    return publishAutofill(profileFor(event as any))
+  })
+
+  ipcMain.handle(IpcChannels.AutofillDeletePayment, (event, id: string) => {
+    if (typeof id !== 'string') throw new Error('Invalid payment method id')
+    deletePaymentMethod(profileFor(event as any), id)
+    return publishAutofill(profileFor(event as any))
+  })
+
+  ipcMain.handle(IpcChannels.AutofillClearFormHistory, (event) => {
+    clearFormHistory(profileFor(event as any))
+    return publishAutofill(profileFor(event as any))
+  })
+
+  ipcMain.handle(IpcChannels.AutofillDeleteFormHistoryEntry, (event, id: string) => {
+    if (typeof id !== 'string') throw new Error('Invalid form history id')
+    removeFormHistoryEntry(profileFor(event as any), id)
+    return publishAutofill(profileFor(event as any))
+  })
+
+  ipcMain.handle(
+    IpcChannels.AutofillGetFormSuggestions,
+    (event, payload: { field?: unknown; prefix?: unknown }) => {
+      const profileId = profileForSender(event.sender)
+      if (typeof payload?.field !== 'string') return []
+      return getFormHistorySuggestions(
+        profileId,
+        payload.field,
+        typeof payload.prefix === 'string' ? payload.prefix : ''
+      )
+    }
+  )
+
+  ipcMain.handle(
+    IpcChannels.AutofillRecordFormField,
+    (event, payload: { field?: unknown; value?: unknown }) => {
+      const profileId = profileForSender(event.sender)
+      if (typeof payload?.field !== 'string' || typeof payload?.value !== 'string') return
+      recordFormHistory(profileId, payload.field, payload.value)
+    }
+  )
+
+  ipcMain.handle(
+    IpcChannels.AutofillGetFillData,
+    (event, payload: { kind?: unknown }) => {
+      const profileId = profileForSender(event.sender)
+      const kind = payload?.kind
+      if (kind !== 'address' && kind !== 'contact' && kind !== 'payment') return []
+      return getAutofillProfileSuggestions(profileId, kind)
+    }
+  )
 
   /* ---- downloads ------------------------------------------------------ */
 
