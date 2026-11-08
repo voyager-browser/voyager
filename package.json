@@ -29,7 +29,7 @@
     "appId": "com.voyager.browser",
     "productName": "Voyager",
     "artifactName": "Voyager-${version}-${os}-${arch}.${ext}",
-    "copyright": "Copyright \u00a9 2026 InfiniteVoid_",
+    "copyright": "Copyright © 2026 InfiniteVoid_",
     "asar": false,
     "npmRebuild": false,
     "directories": {
@@ -148,6 +148,7 @@
   "dependencies": {
     "electron-updater": "^6.8.11",
     "lucide-react": "^1.70.0",
+    "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "zustand": "^5.1.0"
