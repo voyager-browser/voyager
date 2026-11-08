@@ -158,7 +158,7 @@ export function Toolbar(): React.JSX.Element {
           type="button"
           className={cn(
             'no-drag ml-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white transition-opacity hover:opacity-90',
-            PROFILE_COLOR_CLASSES[profile.color]
+            PROFILE_COLOR_CLASSES[profile.color] ?? PROFILE_COLOR_CLASSES.blue
           )}
           title={`${profile.name} profile`}
           aria-label={`Profile: ${profile.name}. Manage profiles.`}
