@@ -293,6 +293,10 @@ export interface UserPreferences {
   proxyBypassRules: string
   /** Enable the built-in spell checker for page content (default on). */
   spellcheck: boolean
+  /** Show a Home button in the toolbar (default off). */
+  showHomeButton: boolean
+  /** URL opened by the Home button. */
+  homeUrl: string
 }
 
 /** Site data categories cleared together from Settings. */

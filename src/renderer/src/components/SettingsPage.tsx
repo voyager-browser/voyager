@@ -25,6 +25,7 @@ import { useTheme } from './providers/theme-context'
 import { useBrowserStore } from '../state/browserStore'
 import { DEFAULT_SEARCH_ENGINE, SEARCH_ENGINES, type SearchEngineId } from '../../../shared/search'
 import { DEFAULT_FILTER_LISTS, FILTER_LISTS } from '../../../shared/filter-lists'
+import { DEFAULT_NEW_TAB_URL } from '../../../shared/constants'
 import { DEFAULT_PROXY_CONFIG, type ProxyMode, type ProxyScheme } from '../../../shared/proxy'
 import type { AppVersionInfo, ThemeMode, UserPreferences } from '../../../shared/types'
 import { BUILTIN_BLOCKED_DOMAINS } from '../../../shared/content-blocking'
@@ -150,7 +151,9 @@ export function SettingsPage(): React.JSX.Element {
     proxyHost: DEFAULT_PROXY_CONFIG.host,
     proxyPort: DEFAULT_PROXY_CONFIG.port,
     proxyBypassRules: DEFAULT_PROXY_CONFIG.bypassRules,
-    spellcheck: true
+    spellcheck: true,
+    showHomeButton: false,
+    homeUrl: DEFAULT_NEW_TAB_URL
   })
   const [customFilterUrl, setCustomFilterUrl] = useState('')
   const [customFilterError, setCustomFilterError] = useState<string | null>(null)
@@ -758,6 +761,28 @@ export function SettingsPage(): React.JSX.Element {
                   />
                   <span>Use vertical tabs (compact favicon rail that expands on hover)</span>
                 </label>
+              </div>
+              <div className="mt-4 border-t border-border pt-4">
+                <label className="flex items-center gap-2 text-[13px] text-fg">
+                  <input
+                    type="checkbox"
+                    checked={preferences.showHomeButton}
+                    onChange={(event) => setPreference('showHomeButton', event.target.checked)}
+                  />
+                  <span>Show Home button</span>
+                </label>
+                {preferences.showHomeButton && (
+                  <label className="mt-3 block">
+                    <span className="mb-1 block text-[12px] text-muted">Home page</span>
+                    <input
+                      type="text"
+                      className="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-[13px] text-fg"
+                      value={preferences.homeUrl}
+                      placeholder={DEFAULT_NEW_TAB_URL}
+                      onChange={(e) => void setPreference('homeUrl', e.target.value)}
+                    />
+                  </label>
+                )}
               </div>
               <div className="mt-4 flex items-center justify-between gap-4 border-t border-border pt-4">
                 <div>

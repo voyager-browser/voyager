@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Download, RotateCw, Star, VenetianMask, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Download, Home, RotateCw, Star, VenetianMask, X } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { isNewTab } from '../../../shared/url'
 import { PROFILE_COLOR_CLASSES } from '../../../shared/profiles'
@@ -55,6 +55,9 @@ export function Toolbar(): React.JSX.Element {
   const goForward = useBrowserStore((state) => state.goForward)
   const reload = useBrowserStore((state) => state.reload)
   const stop = useBrowserStore((state) => state.stop)
+  const navigate = useBrowserStore((state) => state.navigate)
+  const showHomeButton = useBrowserStore((state) => state.showHomeButton)
+  const homeUrl = useBrowserStore((state) => state.homeUrl)
 
   const addBookmark = useBookmarksStore((state) => state.addBookmark)
   const removeBookmark = useBookmarksStore((state) => state.removeBookmark)
@@ -107,6 +110,11 @@ export function Toolbar(): React.JSX.Element {
       ) : (
         <IconButton label="Reload" onClick={reload}>
           <RotateCw className="h-4 w-4" />
+        </IconButton>
+      )}
+      {showHomeButton && (
+        <IconButton label="Home" onClick={() => navigate(homeUrl)}>
+          <Home className="h-4 w-4" />
         </IconButton>
       )}
 
