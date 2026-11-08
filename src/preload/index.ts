@@ -2,6 +2,10 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { ALL_IPC_CHANNELS, IpcChannels, type IpcChannel } from '../shared/ipc-channels'
 import type {
   AppVersionInfo,
+  AutofillAddress,
+  AutofillContact,
+  AutofillPaymentMethod,
+  AutofillState,
   BookmarkFolderPatch,
   BookmarkMoveInput,
   BookmarkNodeKind,
@@ -223,6 +227,31 @@ const api = {
       ipcRenderer.invoke(IpcChannels.HistoryRecordVisit, visit),
     onStateChanged: (listener: (state: HistoryState) => void): Unsubscribe =>
       subscribe<HistoryState>(IpcChannels.HistoryStateChanged, listener)
+  },
+
+  autofill: {
+    getState: (): Promise<AutofillState> => ipcRenderer.invoke(IpcChannels.AutofillGetState),
+    saveAddress: (
+      input: Omit<AutofillAddress, 'id' | 'updatedAt'> & { id?: string }
+    ): Promise<AutofillState> => ipcRenderer.invoke(IpcChannels.AutofillSaveAddress, input),
+    deleteAddress: (id: string): Promise<AutofillState> =>
+      ipcRenderer.invoke(IpcChannels.AutofillDeleteAddress, id),
+    saveContact: (
+      input: Omit<AutofillContact, 'id' | 'updatedAt'> & { id?: string }
+    ): Promise<AutofillState> => ipcRenderer.invoke(IpcChannels.AutofillSaveContact, input),
+    deleteContact: (id: string): Promise<AutofillState> =>
+      ipcRenderer.invoke(IpcChannels.AutofillDeleteContact, id),
+    savePayment: (
+      input: Omit<AutofillPaymentMethod, 'id' | 'updatedAt'> & { id?: string }
+    ): Promise<AutofillState> => ipcRenderer.invoke(IpcChannels.AutofillSavePayment, input),
+    deletePayment: (id: string): Promise<AutofillState> =>
+      ipcRenderer.invoke(IpcChannels.AutofillDeletePayment, id),
+    clearFormHistory: (): Promise<AutofillState> =>
+      ipcRenderer.invoke(IpcChannels.AutofillClearFormHistory),
+    deleteFormHistoryEntry: (id: string): Promise<AutofillState> =>
+      ipcRenderer.invoke(IpcChannels.AutofillDeleteFormHistoryEntry, id),
+    onStateChanged: (listener: (state: AutofillState) => void): Unsubscribe =>
+      subscribe<AutofillState>(IpcChannels.AutofillStateChanged, listener)
   },
 
   downloads: {
