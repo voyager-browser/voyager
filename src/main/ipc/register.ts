@@ -185,7 +185,8 @@ function userPreferences(profileId: string): UserPreferences {
     proxyPort: normalizeProxyPort(getSettings(profileId, 'proxyPort', DEFAULT_PROXY_CONFIG.port)),
     proxyBypassRules: normalizeProxyBypassRules(
       getSettings(profileId, 'proxyBypassRules', DEFAULT_PROXY_CONFIG.bypassRules)
-    )
+    ),
+    spellcheck: getSettings(profileId, 'spellcheck', true) !== false
   }
 }
 
@@ -261,7 +262,8 @@ export function registerIpcHandlers(context: IpcContext): void {
     'proxyScheme',
     'proxyHost',
     'proxyPort',
-    'proxyBypassRules'
+    'proxyBypassRules',
+    'spellcheck'
   ])
 
   ipcMain.handle(
@@ -341,6 +343,14 @@ export function registerIpcHandlers(context: IpcContext): void {
           primeContentBlocking(profileId)
           syncContentBlocking(profileId)
         }
+        return respond()
+      }
+      if (key === 'spellcheck') {
+        if (typeof value !== 'boolean') {
+          throw new Error('Expected a boolean for setting: spellcheck')
+        }
+        setSettings(profileId, key, value)
+        sessionForProfile(profileId).setSpellCheckerEnabled(value)
         return respond()
       }
       if (key === 'proxyMode') {

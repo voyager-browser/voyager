@@ -291,6 +291,8 @@ export interface UserPreferences {
   proxyPort: number
   /** Comma/newline-separated bypass rules for fixed proxy mode. */
   proxyBypassRules: string
+  /** Enable the built-in spell checker for page content (default on). */
+  spellcheck: boolean
 }
 
 /** Site data categories cleared together from Settings. */

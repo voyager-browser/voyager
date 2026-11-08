@@ -149,7 +149,8 @@ export function SettingsPage(): React.JSX.Element {
     proxyScheme: DEFAULT_PROXY_CONFIG.scheme,
     proxyHost: DEFAULT_PROXY_CONFIG.host,
     proxyPort: DEFAULT_PROXY_CONFIG.port,
-    proxyBypassRules: DEFAULT_PROXY_CONFIG.bypassRules
+    proxyBypassRules: DEFAULT_PROXY_CONFIG.bypassRules,
+    spellcheck: true
   })
   const [customFilterUrl, setCustomFilterUrl] = useState('')
   const [customFilterError, setCustomFilterError] = useState<string | null>(null)
@@ -1091,6 +1092,21 @@ export function SettingsPage(): React.JSX.Element {
                 </span>
                 <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
               </button>
+
+              <label className="mt-4 flex items-start gap-2 text-[13px] text-fg">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={preferences.spellcheck}
+                  onChange={(event) => void setPreference('spellcheck', event.target.checked)}
+                />
+                <span>
+                  <span className="block">Use spell check</span>
+                  <span className="mt-0.5 block text-[11.5px] text-muted">
+                    Check spelling in text fields on web pages.
+                  </span>
+                </span>
+              </label>
             </section>
 
             <section

@@ -66,6 +66,7 @@ export function ensureProfileSession(profileId: string): Session {
   registerVoyagerProtocol(ses.protocol)
   attachPermissionHandlers(ses, profileId)
   void applyProxyForProfile(ses, profileId)
+  ses.setSpellCheckerEnabled(getSettings(profileId, 'spellcheck', true) !== false)
   if (getSettings(profileId, 'contentBlocking', false) === true) {
     primeContentBlocking(profileId)
   }
