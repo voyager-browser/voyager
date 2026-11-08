@@ -32,4 +32,5 @@ export interface SettingsShape {
   memorySaver?: boolean
   developerMode?: boolean
   userAgent?: string
+  preloadTopSites?: boolean
 }

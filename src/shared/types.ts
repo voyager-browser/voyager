@@ -307,6 +307,8 @@ export interface UserPreferences {
   developerMode: boolean
   /** Custom User-Agent string; empty uses the default. */
   userAgent: string
+  /** Prefetch/preload top sites to warm DNS and cache (uses network in background). */
+  preloadTopSites: boolean
 }
 
 /** Site data categories cleared together from Settings. */

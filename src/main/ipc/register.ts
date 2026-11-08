@@ -107,6 +107,7 @@ import {
 } from '../proxy/proxy'
 import { applyUserAgentForProfile, userAgentForProfile } from '../userAgent/userAgent'
 import { refreshAppMenu } from '../menu/menu'
+import { runTopSitesPreload } from '../preload/preloadTopSites'
 import { DEFAULT_PROXY_CONFIG } from '../../shared/proxy'
 import { DEFAULT_NEW_TAB_URL } from '../../shared/constants'
 import { createWindow } from '../window/createWindow'
@@ -201,7 +202,8 @@ function userPreferences(profileId: string): UserPreferences {
     userAgent:
       typeof getSettings(profileId, 'userAgent', '') === 'string'
         ? (getSettings(profileId, 'userAgent', '') as string)
-        : '' 
+        : '',
+    preloadTopSites: getSettings(profileId, 'preloadTopSites', false) === true
   }
 }
 
@@ -283,7 +285,8 @@ export function registerIpcHandlers(context: IpcContext): void {
     'homeUrl',
     'memorySaver',
     'developerMode',
-    'userAgent' 
+    'userAgent',
+    'preloadTopSites'
   ])
 
   ipcMain.handle(
@@ -421,6 +424,14 @@ export function registerIpcHandlers(context: IpcContext): void {
         if (typeof value !== 'string') throw new Error('Invalid home URL')
         const trimmed = value.trim()
         setSettings(profileId, 'homeUrl', trimmed || DEFAULT_NEW_TAB_URL)
+        return respond()
+      }
+      if (key === 'preloadTopSites') {
+        if (typeof value !== 'boolean') {
+          throw new Error('Expected a boolean for setting: preloadTopSites')
+        }
+        setSettings(profileId, key, value)
+        if (value) void runTopSitesPreload(sessionForProfile(profileId), profileId)
         return respond()
       }
       if (typeof value !== 'boolean') {
