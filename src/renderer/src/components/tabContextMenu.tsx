@@ -1,4 +1,4 @@
-import { Copy, PanelLeft, Pin, Plus, RotateCw, Volume2, VolumeX, X } from 'lucide-react'
+import { Copy, PanelLeft, Pin, Plus, QrCode, RotateCw, Volume2, VolumeX, X } from 'lucide-react'
 import type { TabState } from '../../../shared/types'
 import { isNewTab } from '../../../shared/url'
 import { useBrowserStore } from '../state/browserStore'
@@ -46,6 +46,14 @@ export function buildTabMenuItems(tab: TabState, options: TabMenuOptions): Conte
       icon: <Copy className="h-3.5 w-3.5" />,
       disabled: isNewTab(tab.url),
       onSelect: () => store.copyTabUrl(tab.id)
+    },
+    {
+      label: 'Generate QR code',
+      icon: <QrCode className="h-3.5 w-3.5" />,
+      onSelect: () =>
+        window.dispatchEvent(
+          new CustomEvent('voyager:open-qr-code', { detail: { url: tab.url } })
+        )
     },
     { separator: true },
     {
