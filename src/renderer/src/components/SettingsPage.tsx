@@ -3,14 +3,18 @@ import {
   ChevronRight,
   Database,
   Download,
+  ExternalLink,
   Info,
   Palette,
+  Pencil,
+  Plus,
   Power,
   Search,
   Shield,
   ShieldCheck,
   Trash2,
   Upload,
+  UserCircle2,
   type LucideIcon
 } from 'lucide-react'
 import { useBookmarksStore } from '../state/bookmarksStore'
@@ -22,6 +26,14 @@ import { DEFAULT_SEARCH_ENGINE, SEARCH_ENGINES, type SearchEngineId } from '../.
 import { DEFAULT_FILTER_LISTS, FILTER_LISTS } from '../../../shared/filter-lists'
 import type { AppVersionInfo, ThemeMode, UserPreferences } from '../../../shared/types'
 import { BUILTIN_BLOCKED_DOMAINS } from '../../../shared/content-blocking'
+import {
+  DEFAULT_PROFILE_ID,
+  PROFILE_COLOR_CLASSES,
+  PROFILE_COLORS,
+  type ProfileColor,
+  type ProfileInfo,
+  type ProfilesState
+} from '../../../shared/profiles'
 import { SitePermissionsSettings } from './SitePermissionsSettings'
 
 function sitePermissionsRoute(): { open: boolean; origin?: string } {
@@ -30,6 +42,10 @@ function sitePermissionsRoute(): { open: boolean; origin?: string } {
   const query = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : ''
   const origin = new URLSearchParams(query).get('origin') ?? undefined
   return { open: true, origin }
+}
+
+function profilesRoute(): boolean {
+  return window.location.hash.replace(/^#/, '') === 'profiles'
 }
 
 interface SettingsNavItem {
@@ -42,6 +58,7 @@ interface SettingsNavItem {
 /** Sidebar groups mirror Chrome's settings navigation. */
 const SETTINGS_NAV_GROUPS: SettingsNavItem[][] = [
   [
+    { id: 'profiles', label: 'Profiles', icon: UserCircle2 },
     {
       id: 'privacy',
       label: 'Privacy and security',
@@ -134,6 +151,16 @@ export function SettingsPage(): React.JSX.Element {
   const [sitePermissionsOpen, setSitePermissionsOpen] = useState(initialRoute.open)
   const [appInfo, setAppInfo] = useState<AppVersionInfo | null>(null)
   const [isDefaultBrowser, setIsDefaultBrowser] = useState<boolean | null>(null)
+  const [profiles, setProfiles] = useState<ProfilesState>({
+    profiles: [],
+    activeProfileId: DEFAULT_PROFILE_ID
+  })
+  const [newProfileName, setNewProfileName] = useState('')
+  const [newProfileColor, setNewProfileColor] = useState<ProfileColor>('blue')
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
+  const [editingColor, setEditingColor] = useState<ProfileColor>('blue')
 
   useEffect(() => {
     const bookmarks = useBookmarksStore.getState()
@@ -149,8 +176,10 @@ export function SettingsPage(): React.JSX.Element {
     })
     void window.voyager.appInfo().then(setAppInfo)
     void window.voyager.defaultBrowser.isDefault().then(setIsDefaultBrowser)
+    void window.voyager.profiles.getState().then(setProfiles)
 
     const unsubscribes = [
+      window.voyager.profiles.onStateChanged(setProfiles),
       window.voyager.bookmarks.onStateChanged(bookmarks.applyState),
       window.voyager.history.onStateChanged(history.applyState),
       window.voyager.downloads.onStateChanged(downloads.applyState)
@@ -162,7 +191,16 @@ export function SettingsPage(): React.JSX.Element {
     document.title = 'Settings - Voyager'
   }, [])
 
-  const setPreference = async (key: keyof UserPreferences, value: boolean | string | string[]) => {
+  useEffect(() => {
+    if (!profilesRoute()) return
+    const id = window.setTimeout(() => scrollToSection('profiles'), 0)
+    return () => window.clearTimeout(id)
+  }, [])
+
+  const setPreference = async (
+    key: keyof UserPreferences,
+    value: boolean | string | string[]
+  ): Promise<void> => {
     setPreferences((current) => ({ ...current, [key]: value }))
     const prefs = await window.voyager.settings.set(key, value)
     setPreferences(prefs)
@@ -190,7 +228,7 @@ export function SettingsPage(): React.JSX.Element {
   }
 
   const contentRef = useRef<HTMLDivElement>(null)
-  const [activeSection, setActiveSection] = useState('appearance')
+  const [activeSection, setActiveSection] = useState(profilesRoute() ? 'profiles' : 'appearance')
 
   const scrollToSection = (id: string) => {
     setActiveSection(id)
@@ -225,6 +263,62 @@ export function SettingsPage(): React.JSX.Element {
     for (const section of sections) observer.observe(section)
     return () => observer.disconnect()
   }, [sitePermissionsOpen])
+
+
+  const createProfile = async (): Promise<void> => {
+    const name = newProfileName.trim()
+    if (!name) {
+      setProfileError('Enter a profile name.')
+      return
+    }
+    setProfileError(null)
+    try {
+      const profile = await window.voyager.profiles.create({ name, color: newProfileColor })
+      setProfiles((current) => ({ ...current, profiles: [...current.profiles, profile] }))
+      setNewProfileName('')
+      await window.voyager.profiles.openWindow(profile.id)
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : 'Could not create profile.')
+    }
+  }
+
+  const startEditingProfile = (profile: ProfileInfo): void => {
+    setEditingProfileId(profile.id)
+    setEditingName(profile.name)
+    setEditingColor(profile.color)
+    setProfileError(null)
+  }
+
+  const saveProfile = async (): Promise<void> => {
+    if (!editingProfileId) return
+    try {
+      const profile = await window.voyager.profiles.update({
+        id: editingProfileId,
+        name: editingName,
+        color: editingColor
+      })
+      setProfiles((current) => ({
+        ...current,
+        profiles: current.profiles.map((candidate) => (candidate.id === profile.id ? profile : candidate))
+      }))
+      setEditingProfileId(null)
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : 'Could not update profile.')
+    }
+  }
+
+  const deleteProfile = async (id: string): Promise<void> => {
+    if (id === DEFAULT_PROFILE_ID) return
+    if (!window.confirm('Delete this profile? Its bookmarks, history, and browsing data will be removed.')) return
+    try {
+      const state = await window.voyager.profiles.delete(id)
+      setProfiles(state)
+      if (editingProfileId === id) setEditingProfileId(null)
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : 'Could not delete profile.')
+    }
+  }
+
 
   if (sitePermissionsOpen) {
     return (
@@ -308,6 +402,178 @@ export function SettingsPage(): React.JSX.Element {
       <div ref={contentRef} className="min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-6 py-8">
           <div className="space-y-8">
+            <section
+              data-settings-section="profiles"
+              className="rounded-lg border border-border bg-surface p-5"
+            >
+              <h2 className="mb-1 text-[15px] font-semibold text-fg">Profiles</h2>
+              <p className="mb-4 text-[12px] text-muted">
+                Each profile has its own bookmarks, history, downloads, site permissions, and
+                settings.
+              </p>
+
+              {profileError && (
+                <div className="mb-3 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger">
+                  {profileError}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {profiles.profiles.map((profile) => {
+                  const active = profile.id === profiles.activeProfileId
+                  const editing = editingProfileId === profile.id
+                  return (
+                    <div
+                      key={profile.id}
+                      className={`rounded-md border px-3 py-2.5 ${
+                        active ? 'border-accent/40 bg-accent/5' : 'border-border bg-bg'
+                      }`}
+                    >
+                      {editing ? (
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={editingName}
+                            onChange={(event) => setEditingName(event.target.value)}
+                            className="w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[13px] text-fg"
+                            aria-label="Profile name"
+                          />
+                          <div className="flex flex-wrap gap-1.5">
+                            {PROFILE_COLORS.map((color) => (
+                              <button
+                                key={color}
+                                type="button"
+                                aria-label={`Color ${color}`}
+                                onClick={() => setEditingColor(color)}
+                                className={`h-6 w-6 rounded-full ${PROFILE_COLOR_CLASSES[color]} ${
+                                  editingColor === color
+                                    ? 'ring-2 ring-accent ring-offset-1 ring-offset-bg'
+                                    : ''
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void saveProfile()}
+                              className="rounded-md bg-accent px-2.5 py-1 text-[12px] text-accent-foreground"
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingProfileId(null)}
+                              className="rounded-md border border-border px-2.5 py-1 text-[12px] text-fg"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold text-white ${PROFILE_COLOR_CLASSES[profile.color]}`}
+                            aria-hidden="true"
+                          >
+                            {(profile.name.trim()[0] ?? '?').toUpperCase()}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate text-[13px] font-medium text-fg">
+                                {profile.name}
+                              </span>
+                              {active && (
+                                <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                                  This window
+                                </span>
+                              )}
+                              {profile.isDefault && (
+                                <span className="text-[10px] text-muted">Default</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              title="Open profile in a new window"
+                              aria-label={`Open ${profile.name} in a new window`}
+                              onClick={() => void window.voyager.profiles.openWindow(profile.id)}
+                              className="rounded-md p-1.5 text-muted hover:bg-hover hover:text-fg"
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              title="Edit profile"
+                              aria-label={`Edit ${profile.name}`}
+                              onClick={() => startEditingProfile(profile)}
+                              className="rounded-md p-1.5 text-muted hover:bg-hover hover:text-fg"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            {!profile.isDefault && (
+                              <button
+                                type="button"
+                                title="Delete profile"
+                                aria-label={`Delete ${profile.name}`}
+                                onClick={() => void deleteProfile(profile.id)}
+                                className="rounded-md p-1.5 text-muted hover:bg-danger/10 hover:text-danger"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="mt-4 border-t border-border pt-4">
+                <div className="mb-2 text-[13px] font-medium text-fg">Add profile</div>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="min-w-[180px] flex-1">
+                    <span className="sr-only">Profile name</span>
+                    <input
+                      type="text"
+                      value={newProfileName}
+                      onChange={(event) => setNewProfileName(event.target.value)}
+                      placeholder="Profile name"
+                      className="w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-[13px] text-fg"
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') void createProfile()
+                      }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void createProfile()}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[13px] text-accent-foreground"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add
+                  </button>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {PROFILE_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      aria-label={`New profile color ${color}`}
+                      onClick={() => setNewProfileColor(color)}
+                      className={`h-6 w-6 rounded-full ${PROFILE_COLOR_CLASSES[color]} ${
+                        newProfileColor === color
+                          ? 'ring-2 ring-accent ring-offset-1 ring-offset-surface'
+                          : ''
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+            </section>
+
             <section
               data-settings-section="appearance"
               className="rounded-lg border border-border bg-surface p-5"

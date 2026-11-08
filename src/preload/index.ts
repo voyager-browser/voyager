@@ -26,8 +26,15 @@ import type {
   ThemeMode,
   ThemeState,
   Unsubscribe,
-  UserPreferences
+  UserPreferences,
+  WindowState
 } from '../shared/types'
+import type {
+  CreateProfileInput,
+  ProfileInfo,
+  ProfilesState,
+  RenameProfileInput
+} from '../shared/profiles'
 
 const allowedChannels = new Set<string>(ALL_IPC_CHANNELS)
 
@@ -188,7 +195,19 @@ const api = {
     open: (url?: string): Promise<void> => ipcRenderer.invoke(IpcChannels.WindowsOpen, url),
     openIncognito: (url?: string): Promise<void> =>
       ipcRenderer.invoke(IpcChannels.WindowsOpenIncognito, url),
-    getState: (): Promise<{ incognito: boolean }> => ipcRenderer.invoke(IpcChannels.WindowsGetState)
+    getState: (): Promise<WindowState> => ipcRenderer.invoke(IpcChannels.WindowsGetState)
+  },
+
+  profiles: {
+    getState: (): Promise<ProfilesState> => ipcRenderer.invoke(IpcChannels.ProfilesGetState),
+    create: (input: CreateProfileInput): Promise<ProfileInfo> =>
+      ipcRenderer.invoke(IpcChannels.ProfilesCreate, input),
+    update: (input: RenameProfileInput): Promise<ProfileInfo> =>
+      ipcRenderer.invoke(IpcChannels.ProfilesUpdate, input),
+    delete: (id: string): Promise<ProfilesState> => ipcRenderer.invoke(IpcChannels.ProfilesDelete, id),
+    openWindow: (id: string): Promise<void> => ipcRenderer.invoke(IpcChannels.ProfilesOpenWindow, id),
+    onStateChanged: (listener: (state: ProfilesState) => void): Unsubscribe =>
+      subscribe<ProfilesState>(IpcChannels.ProfilesStateChanged, listener)
   },
 
   history: {

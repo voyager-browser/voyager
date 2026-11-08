@@ -1,6 +1,7 @@
 import { app, Menu, nativeImage, type MenuItemConstructorOptions } from 'electron'
 import { IpcChannels } from '../../shared/ipc-channels'
 import type { WindowController } from '../window/WindowController'
+import { DEFAULT_PROFILE_ID } from '../../shared/profiles'
 import { getSettings } from '../store'
 import { openSettingsWindow } from '../window/settingsWindow'
 import { createWindow, createIncognitoWindow } from '../window/createWindow'
@@ -48,7 +49,7 @@ export function createAppMenu(getController?: () => WindowController | null): vo
           label: 'Settings…',
           accelerator: 'CmdOrCtrl+Comma',
           icon: nativeImage.createMenuSymbol('gearshape'),
-          click: () => openSettingsWindow()
+          click: () => openSettingsWindow(undefined, controller()?.profile)
         },
         { type: 'separator' },
         { role: 'hide' },
@@ -65,12 +66,12 @@ export function createAppMenu(getController?: () => WindowController | null): vo
       {
         label: 'New Window',
         accelerator: 'CmdOrCtrl+N',
-        click: () => createWindow()
+        click: () => createWindow({ profileId: controller()?.profile })
       },
       {
         label: 'New Incognito Window',
         accelerator: 'CmdOrCtrl+Shift+N',
-        click: () => createIncognitoWindow()
+        click: () => createIncognitoWindow(undefined, controller()?.profile)
       },
       { type: 'separator' },
       { role: 'close' },
@@ -116,7 +117,11 @@ export function createAppMenu(getController?: () => WindowController | null): vo
       {
         label: 'Show Bookmarks Bar',
         type: 'checkbox',
-        checked: getSettings('bookmarksBarVisible') === true,
+        checked:
+          getSettings(
+            controller()?.profile ?? DEFAULT_PROFILE_ID,
+            'bookmarksBarVisible'
+          ) === true,
         accelerator: 'CmdOrCtrl+Shift+B',
         click: () => {
           const window = getController?.() ?? null

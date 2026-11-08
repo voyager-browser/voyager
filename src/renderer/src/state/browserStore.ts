@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import type { BrowserState, NewTabRequest, TabState } from '../../../shared/types'
+import type { BrowserState, NewTabRequest, TabState, WindowState } from '../../../shared/types'
+import type { ProfileInfo } from '../../../shared/profiles'
 import { isNewTab, resolveInput } from '../../../shared/url'
 import { DEFAULT_SEARCH_ENGINE, buildSearchUrl, type SearchEngineId } from '../../../shared/search'
 import { focusOmnibox } from '../lib/shortcuts'
@@ -7,10 +8,12 @@ import { focusOmnibox } from '../lib/shortcuts'
 interface BrowserStore extends BrowserState {
   ready: boolean
   incognito: boolean
+  profile: ProfileInfo | null
   searchEngine: SearchEngineId
   verticalTabs: boolean
   /** Replace store state with the latest snapshot from the main process. */
   applyState: (state: BrowserState) => void
+  applyWindowState: (state: WindowState) => void
   setIncognito: (incognito: boolean) => void
   setSearchEngine: (engine: SearchEngineId) => void
   setVerticalTabs: (enabled: boolean) => void
@@ -44,10 +47,12 @@ export const useBrowserStore = create<BrowserStore>()((set, get) => ({
   activeTabId: null,
   ready: false,
   incognito: false,
+  profile: null,
   searchEngine: DEFAULT_SEARCH_ENGINE,
   verticalTabs: false,
 
   applyState: (state) => set({ tabs: state.tabs, activeTabId: state.activeTabId, ready: true }),
+  applyWindowState: (state) => set({ incognito: state.incognito, profile: state.profile }),
 
   setIncognito: (incognito) => set({ incognito }),
   setSearchEngine: (engine) => set({ searchEngine: engine }),

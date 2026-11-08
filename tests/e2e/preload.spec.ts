@@ -14,6 +14,7 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
     history: Object.keys(window.voyager.history),
     downloads: Object.keys(window.voyager.downloads),
     permissions: Object.keys(window.voyager.permissions),
+    profiles: Object.keys(window.voyager.profiles),
     ui: Object.keys(window.voyager.ui),
     windows: Object.keys(window.voyager.windows)
   }))
@@ -30,6 +31,7 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
     'navigation',
     'permissions',
     'platform',
+    'profiles',
     'settings',
     'tabs',
     'theme',
@@ -64,6 +66,14 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
       'onStateChanged'
     ])
   )
+  expect(api.profiles).toEqual([
+    'getState',
+    'create',
+    'update',
+    'delete',
+    'openWindow',
+    'onStateChanged'
+  ])
   expect(api.ui).toEqual(
     expect.arrayContaining([
       'onFocusOmnibox',

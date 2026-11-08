@@ -243,7 +243,7 @@ export class TabManager {
 
   navigate(url: string): void {
     if (url.startsWith(SETTINGS_URL)) {
-      openSettingsWindow()
+      openSettingsWindow(undefined, this.window.profile)
       return
     }
     const wc = this.activeWebContents()
@@ -400,7 +400,7 @@ export class TabManager {
     // window.open and target=_blank become new tabs instead of new windows.
     wc.setWindowOpenHandler(({ url }) => {
       if (url.startsWith(SETTINGS_URL)) {
-        openSettingsWindow()
+        openSettingsWindow(undefined, this.window.profile)
         return { action: 'deny' }
       }
       this.create({ url })
@@ -410,7 +410,7 @@ export class TabManager {
     wc.addListener('will-navigate', (event, url) => {
       if (url.startsWith(SETTINGS_URL)) {
         event.preventDefault()
-        openSettingsWindow()
+        openSettingsWindow(undefined, this.window.profile)
         return
       }
       if (isInternalUrl(url)) {
@@ -446,14 +446,15 @@ export class TabManager {
       const newTitle = wc.getTitle()
       entry.title = newTitle
       let changed = false
+      const profileId = this.window.profile
       if (entry.url.startsWith('http') && !isNewTab(entry.url) && !this.window.isIncognito) {
-        if (updateHistoryTitle(entry.url, newTitle)) changed = true
+        if (updateHistoryTitle(profileId, entry.url, newTitle)) changed = true
         try {
           if (!changed) {
             // If navigation recording happened before the title existed, record it now.
-            const state = currentHistoryState()
+            const state = currentHistoryState(profileId)
             if (!state.entries.some((item) => item.url === entry.url)) {
-              recordVisit({ url: entry.url, title: newTitle || entry.url })
+              recordVisit(profileId, { url: entry.url, title: newTitle || entry.url })
               changed = true
             }
           }
@@ -463,7 +464,7 @@ export class TabManager {
       }
       if (changed) {
         try {
-          this.window.sendToChrome(IpcChannels.HistoryStateChanged, currentHistoryState())
+          this.window.sendToChrome(IpcChannels.HistoryStateChanged, currentHistoryState(profileId))
         } catch {
           // Ignore.
         }
@@ -487,8 +488,9 @@ export class TabManager {
       // Record history for main frame navigations to real pages.
       if (!isNewTab(url) && url.startsWith('http') && !this.window.isIncognito) {
         try {
-          recordVisit({ url, title: wc.getTitle() || entry.title || url })
-          this.window.sendToChrome(IpcChannels.HistoryStateChanged, currentHistoryState())
+          const profileId = this.window.profile
+          recordVisit(profileId, { url, title: wc.getTitle() || entry.title || url })
+          this.window.sendToChrome(IpcChannels.HistoryStateChanged, currentHistoryState(profileId))
         } catch {
           // Ignore history write failures; navigation should not be blocked.
         }
@@ -500,8 +502,9 @@ export class TabManager {
         entry.url = url
         if (!isNewTab(url) && url.startsWith('http') && !this.window.isIncognito) {
           try {
-            recordVisit({ url, title: entry.title || url })
-            this.window.sendToChrome(IpcChannels.HistoryStateChanged, currentHistoryState())
+            const profileId = this.window.profile
+            recordVisit(profileId, { url, title: entry.title || url })
+            this.window.sendToChrome(IpcChannels.HistoryStateChanged, currentHistoryState(profileId))
           } catch {
             /* ignore */
           }
@@ -624,7 +627,7 @@ export class TabManager {
         this.window.sendToChrome(IpcChannels.UiOpenDownloads)
         break
       case 'open-settings':
-        openSettingsWindow()
+        openSettingsWindow(undefined, this.window.profile)
         break
       case 'dev-tools':
         this.toggleDevTools()

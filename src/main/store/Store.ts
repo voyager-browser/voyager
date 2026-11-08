@@ -5,22 +5,24 @@ import { readJsonFile, writeJsonFile } from './jsonFile'
 const WRITE_DEBOUNCE_MS = 250
 
 /**
- * Small typed JSON store for one file in userData. Reads once at startup,
- * merges onto defaults, and writes with a debounced atomic save. Call
- * `flush()` on shutdown so debounced writes are never lost.
+ * Small typed JSON store for one file in a profile's data directory. Reads
+ * once at startup, merges onto defaults, and writes with a debounced atomic
+ * save. Call `flush()` on shutdown so debounced writes are never lost.
  */
 export class Store<T extends object> {
   private readonly fileName: string
+  private readonly directory: string
   private data: T
   private timer: NodeJS.Timeout | null = null
 
-  constructor(fileName: string, defaults: T) {
+  constructor(fileName: string, defaults: T, directory?: string) {
     this.fileName = fileName
+    this.directory = directory ?? app.getPath('userData')
     this.data = { ...defaults, ...readJsonFile<Partial<T>>(this.filePath(), {}) }
   }
 
   private filePath(): string {
-    return join(app.getPath('userData'), this.fileName)
+    return join(this.directory, this.fileName)
   }
 
   get<K extends keyof T>(key: K): T[K] {
