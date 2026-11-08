@@ -35,7 +35,14 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
     'ui',
     'windows'
   ])
-  expect(api.settings).toEqual(['get', 'open', 'set', 'onChanged'])
+  expect(api.settings).toEqual([
+    'get',
+    'open',
+    'set',
+    'importFilterFile',
+    'removeFilterFile',
+    'onChanged'
+  ])
   expect(api.browsingData).toEqual(['clear'])
   expect(api.defaultBrowser).toEqual(['isDefault', 'setDefault'])
   expect(api.tabs).toEqual(
