@@ -372,7 +372,7 @@ export function attachContentBlocking(ses: Session, profileId: string): void {
   attachedSessions.add(ses)
 
   ses.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
-    if ((getSettings(profileId, 'contentBlocking', true) as boolean) === false) {
+    if ((getSettings(profileId, 'contentBlocking', false) as boolean) !== true) {
       callback({ cancel: false })
       return
     }
