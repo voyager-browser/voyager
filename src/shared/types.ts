@@ -240,6 +240,13 @@ export interface DownloadsState {
 }
 
 /** User preferences exposed to the settings window. */
+/** A user-imported hosts-format filter file (stored locally, not fetched). */
+export interface CustomFilterFile {
+  id: string
+  name: string
+  addedAt: number
+}
+
 export interface UserPreferences {
   clearHistory: boolean
   clearDownloads: boolean
@@ -264,6 +271,8 @@ export interface UserPreferences {
   filterLists: FilterListId[]
   /** Custom hosts-format list URLs (http/https) added by the user. */
   customFilterLists: string[]
+  /** Imported hosts-format files stored locally. */
+  customFilterFiles: CustomFilterFile[]
 }
 
 /** Site data categories cleared together from Settings. */

@@ -20,4 +20,5 @@ export interface SettingsShape {
   builtinFilterList?: boolean
   filterLists?: string[]
   customFilterLists?: string[]
+  customFilterFiles?: { id: string; name: string; addedAt: number }[]
 }

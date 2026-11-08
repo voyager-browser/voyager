@@ -13,6 +13,8 @@ export const IpcChannels = {
   SettingsGet: 'settings:get',
   SettingsSet: 'settings:set',
   SettingsChanged: 'settings:changed',
+  ContentBlockingImportFile: 'content-blocking:import-file',
+  ContentBlockingRemoveFile: 'content-blocking:remove-file',
 
   ThemeGet: 'theme:get',
   ThemeSet: 'theme:set',
