@@ -23,11 +23,7 @@ export function sessionForProfile(profileId: string): Session {
 }
 
 /** Send a profile-scoped event to that profile's windows and settings page. */
-export function broadcastToProfile(
-  profileId: string,
-  channel: string,
-  payload?: unknown
-): void {
+export function broadcastToProfile(profileId: string, channel: string, payload?: unknown): void {
   for (const window of allWindows()) {
     if (window.profile === profileId) window.sendToChrome(channel, payload)
   }

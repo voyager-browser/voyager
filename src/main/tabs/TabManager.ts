@@ -504,7 +504,10 @@ export class TabManager {
           try {
             const profileId = this.window.profile
             recordVisit(profileId, { url, title: entry.title || url })
-            this.window.sendToChrome(IpcChannels.HistoryStateChanged, currentHistoryState(profileId))
+            this.window.sendToChrome(
+              IpcChannels.HistoryStateChanged,
+              currentHistoryState(profileId)
+            )
           } catch {
             /* ignore */
           }

@@ -60,9 +60,7 @@ export class WindowController {
     this.incognito = options.incognito ?? false
     this.profileId = options.profileId ?? DEFAULT_PROFILE_ID
     // Incognito profiles live in an in-memory session and are never persisted.
-    this.incognitoPartition = this.incognito
-      ? `${INCOGNITO_PARTITION_PREFIX}${randomUUID()}`
-      : null
+    this.incognitoPartition = this.incognito ? `${INCOGNITO_PARTITION_PREFIX}${randomUUID()}` : null
     this.verticalTabs = getSettings(this.profileId, 'verticalTabs', false) === true
     if (this.incognito) this.attachIncognitoSession()
     else ensureProfileSession(this.profileId)

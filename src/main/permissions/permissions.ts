@@ -196,10 +196,7 @@ export function currentSitePermissions(profileId: string): SitePermissionsState 
   return { decisions: [...storesFor(profileId).permissions.get('decisions')] }
 }
 
-export function sitePermissionsForOrigin(
-  profileId: string,
-  origin: string
-): SitePermissionsState {
+export function sitePermissionsForOrigin(profileId: string, origin: string): SitePermissionsState {
   const normalized = permissionOriginForUrl(origin) ?? origin
   return {
     decisions: storesFor(profileId)
