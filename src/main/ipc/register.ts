@@ -96,6 +96,15 @@ import {
   ensureProfileSession,
   sessionForProfile
 } from '../profiles/session'
+import {
+  applyProxyForProfile,
+  isProxyMode,
+  isProxyScheme,
+  normalizeProxyBypassRules,
+  normalizeProxyHost,
+  normalizeProxyPort
+} from '../proxy/proxy'
+import { DEFAULT_PROXY_CONFIG } from '../../shared/proxy'
 import { createWindow } from '../window/createWindow'
 import { getSettings, getThemeMode, setSettings, setThemeMode } from '../store'
 
@@ -163,7 +172,20 @@ function userPreferences(profileId: string): UserPreferences {
     builtinFilterList: builtinFilterListEnabled(profileId),
     filterLists: enabledFilterLists(profileId),
     customFilterLists: enabledCustomFilterLists(profileId),
-    customFilterFiles: enabledCustomFilterFiles(profileId)
+    customFilterFiles: enabledCustomFilterFiles(profileId),
+    proxyMode: ((): UserPreferences['proxyMode'] => {
+      const v = getSettings(profileId, 'proxyMode', DEFAULT_PROXY_CONFIG.mode)
+      return isProxyMode(v) ? v : DEFAULT_PROXY_CONFIG.mode
+    })(),
+    proxyScheme: ((): UserPreferences['proxyScheme'] => {
+      const v = getSettings(profileId, 'proxyScheme', DEFAULT_PROXY_CONFIG.scheme)
+      return isProxyScheme(v) ? v : DEFAULT_PROXY_CONFIG.scheme
+    })(),
+    proxyHost: normalizeProxyHost(getSettings(profileId, 'proxyHost', DEFAULT_PROXY_CONFIG.host)),
+    proxyPort: normalizeProxyPort(getSettings(profileId, 'proxyPort', DEFAULT_PROXY_CONFIG.port)),
+    proxyBypassRules: normalizeProxyBypassRules(
+      getSettings(profileId, 'proxyBypassRules', DEFAULT_PROXY_CONFIG.bypassRules)
+    )
   }
 }
 
@@ -234,12 +256,21 @@ export function registerIpcHandlers(context: IpcContext): void {
     'contentBlocking',
     'builtinFilterList',
     'filterLists',
-    'customFilterLists'
+    'customFilterLists',
+    'proxyMode',
+    'proxyScheme',
+    'proxyHost',
+    'proxyPort',
+    'proxyBypassRules'
   ])
 
   ipcMain.handle(
     IpcChannels.SettingsSet,
-    (_event, key: keyof UserPreferences, value: boolean | string | string[]) => {
+    async (
+      _event,
+      key: keyof UserPreferences,
+      value: boolean | string | string[] | number
+    ): Promise<UserPreferences> => {
       if (!supportedSettings.has(key)) {
         throw new Error(`Unsupported setting: ${key}`)
       }
@@ -248,6 +279,9 @@ export function registerIpcHandlers(context: IpcContext): void {
         const prefs = userPreferences(profileId)
         sendToProfile(profileId, IpcChannels.SettingsChanged, prefs)
         return prefs
+      }
+      const applyProxy = async (): Promise<void> => {
+        await applyProxyForProfile(sessionForProfile(profileId), profileId)
       }
       if (key === 'searchEngine') {
         if (!isSearchEngineId(value)) {
@@ -307,6 +341,35 @@ export function registerIpcHandlers(context: IpcContext): void {
           primeContentBlocking(profileId)
           syncContentBlocking(profileId)
         }
+        return respond()
+      }
+      if (key === 'proxyMode') {
+        if (!isProxyMode(value)) throw new Error('Invalid proxy mode')
+        setSettings(profileId, 'proxyMode', value)
+        await applyProxy()
+        return respond()
+      }
+      if (key === 'proxyScheme') {
+        if (!isProxyScheme(value)) throw new Error('Invalid proxy scheme')
+        setSettings(profileId, 'proxyScheme', value)
+        await applyProxy()
+        return respond()
+      }
+      if (key === 'proxyHost') {
+        if (typeof value !== 'string') throw new Error('Invalid proxy host')
+        setSettings(profileId, 'proxyHost', normalizeProxyHost(value))
+        await applyProxy()
+        return respond()
+      }
+      if (key === 'proxyPort') {
+        setSettings(profileId, 'proxyPort', normalizeProxyPort(value))
+        await applyProxy()
+        return respond()
+      }
+      if (key === 'proxyBypassRules') {
+        if (typeof value !== 'string') throw new Error('Invalid proxy bypass rules')
+        setSettings(profileId, 'proxyBypassRules', normalizeProxyBypassRules(value))
+        await applyProxy()
         return respond()
       }
       if (typeof value !== 'boolean') {

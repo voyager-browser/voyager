@@ -4,6 +4,7 @@ import {
   Database,
   Download,
   ExternalLink,
+  Globe,
   Info,
   Palette,
   Pencil,
@@ -24,6 +25,7 @@ import { useTheme } from './providers/theme-context'
 import { useBrowserStore } from '../state/browserStore'
 import { DEFAULT_SEARCH_ENGINE, SEARCH_ENGINES, type SearchEngineId } from '../../../shared/search'
 import { DEFAULT_FILTER_LISTS, FILTER_LISTS } from '../../../shared/filter-lists'
+import { DEFAULT_PROXY_CONFIG, type ProxyMode, type ProxyScheme } from '../../../shared/proxy'
 import type { AppVersionInfo, ThemeMode, UserPreferences } from '../../../shared/types'
 import { BUILTIN_BLOCKED_DOMAINS } from '../../../shared/content-blocking'
 import {
@@ -71,6 +73,7 @@ const SETTINGS_NAV_GROUPS: SettingsNavItem[][] = [
   ],
   [
     { id: 'content-blocking', label: 'Content blocking', icon: Shield },
+    { id: 'proxy', label: 'Proxy', icon: Globe },
     { id: 'downloads', label: 'Downloads', icon: Download },
     { id: 'clear-browsing-data', label: 'Clear browsing data', icon: Trash2 },
     { id: 'data', label: 'Data', icon: Database }
@@ -141,7 +144,12 @@ export function SettingsPage(): React.JSX.Element {
     builtinFilterList: true,
     filterLists: [...DEFAULT_FILTER_LISTS],
     customFilterLists: [],
-    customFilterFiles: []
+    customFilterFiles: [],
+    proxyMode: DEFAULT_PROXY_CONFIG.mode,
+    proxyScheme: DEFAULT_PROXY_CONFIG.scheme,
+    proxyHost: DEFAULT_PROXY_CONFIG.host,
+    proxyPort: DEFAULT_PROXY_CONFIG.port,
+    proxyBypassRules: DEFAULT_PROXY_CONFIG.bypassRules
   })
   const [customFilterUrl, setCustomFilterUrl] = useState('')
   const [customFilterError, setCustomFilterError] = useState<string | null>(null)
@@ -203,7 +211,7 @@ export function SettingsPage(): React.JSX.Element {
 
   const setPreference = async (
     key: keyof UserPreferences,
-    value: boolean | string | string[]
+    value: boolean | string | string[] | number
   ): Promise<void> => {
     setPreferences((current) => ({ ...current, [key]: value }))
     const prefs = await window.voyager.settings.set(key, value)
@@ -1083,6 +1091,105 @@ export function SettingsPage(): React.JSX.Element {
                 </span>
                 <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
               </button>
+            </section>
+
+            <section
+              data-settings-section="proxy"
+              className="rounded-lg border border-border bg-surface p-5"
+            >
+              <h2 className="mb-1 text-[15px] font-semibold text-fg">Proxy</h2>
+              <p className="mb-4 text-[12px] text-muted">
+                Configure how this profile connects to the network. Supports HTTP, HTTPS, SOCKS4,
+                and SOCKS5 proxies.
+              </p>
+
+              <div className="space-y-2">
+                {(
+                  [
+                    { id: 'system', label: 'Use system proxy settings' },
+                    { id: 'direct', label: 'No proxy (direct connection)' },
+                    { id: 'fixed_servers', label: 'Manual proxy configuration' }
+                  ] as { id: ProxyMode; label: string }[]
+                ).map((option) => (
+                  <label key={option.id} className="flex items-center gap-2 text-[13px] text-fg">
+                    <input
+                      type="radio"
+                      name="proxyMode"
+                      checked={preferences.proxyMode === option.id}
+                      onChange={() => void setPreference('proxyMode', option.id)}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </div>
+
+              {preferences.proxyMode === 'fixed_servers' && (
+                <div className="mt-4 space-y-3 border-t border-border pt-4">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <label className="block">
+                      <span className="mb-1 block text-[12px] text-muted">Type</span>
+                      <select
+                        className="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-[13px] text-fg"
+                        value={preferences.proxyScheme}
+                        onChange={(e) =>
+                          void setPreference('proxyScheme', e.target.value as ProxyScheme)
+                        }
+                      >
+                        <option value="http">HTTP</option>
+                        <option value="https">HTTPS</option>
+                        <option value="socks4">SOCKS4</option>
+                        <option value="socks5">SOCKS5</option>
+                      </select>
+                    </label>
+                    <label className="block sm:col-span-2">
+                      <span className="mb-1 block text-[12px] text-muted">Host</span>
+                      <input
+                        type="text"
+                        className="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-[13px] text-fg"
+                        value={preferences.proxyHost}
+                        placeholder="proxy.example.com"
+                        onChange={(e) => void setPreference('proxyHost', e.target.value)}
+                      />
+                    </label>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <label className="block">
+                      <span className="mb-1 block text-[12px] text-muted">Port</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={65535}
+                        className="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-[13px] text-fg"
+                        value={preferences.proxyPort}
+                        onChange={(e) => {
+                          const n = Number.parseInt(e.target.value, 10)
+                          if (Number.isFinite(n)) void setPreference('proxyPort', n)
+                        }}
+                      />
+                    </label>
+                    <label className="block sm:col-span-2">
+                      <span className="mb-1 block text-[12px] text-muted">Bypass rules</span>
+                      <input
+                        type="text"
+                        className="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-[13px] text-fg"
+                        value={preferences.proxyBypassRules}
+                        placeholder="<local>"
+                        onChange={(e) => void setPreference('proxyBypassRules', e.target.value)}
+                      />
+                      <span className="mt-1 block text-[11px] text-muted">
+                        Comma-separated rules (e.g. <code>&lt;local&gt;</code>,{' '}
+                        <code>*.example.com</code>).
+                      </span>
+                    </label>
+                  </div>
+                  {!preferences.proxyHost.trim() && (
+                    <p className="text-[12px] text-muted">
+                      Enter a host to enable the manual proxy. System proxy settings are used until
+                      a host is provided.
+                    </p>
+                  )}
+                </div>
+              )}
             </section>
 
             <section
