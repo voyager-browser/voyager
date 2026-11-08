@@ -59,6 +59,46 @@ const SETTINGS_NAV_GROUPS: SettingsNavItem[][] = [
   [{ id: 'about', label: 'About', icon: Info }]
 ]
 
+const BUG_REPORT_BODY = `# Bug
+
+## Details
+
+Give a thorough explanation of your bug.
+
+### Reproduce
+
+Give the steps to reproduce in this order, it can be as many steps as you want.
+
+1. Step 1
+2. Step 2
+3. Step 3
+
+## Checklist
+
+### Questions
+
+- [ ] Have you tested this on the stable build of Voyager?
+- [ ] Have you tested this on the developer build of Voyager?
+- [x] Did you use the "report bug" button in Voyager?
+
+### Is this a...
+
+- [x] Bug? _(an unexpected problem or behavior)_
+- [ ] Feature? _(an idea you'd like to see in Voyager)_
+- [ ] Task? _(a specific task of work)_
+`
+
+/** Pre-filled GitHub issue used by the About section's report-bug button. */
+function reportBugUrl(): string {
+  const params = new URLSearchParams({
+    assignees: 'Infinite1024Void',
+    labels: 'bug',
+    type: 'bug',
+    body: BUG_REPORT_BODY
+  })
+  return `https://github.com/voyager-browser/voyager/issues/new?${params.toString()}`
+}
+
 export function SettingsPage(): React.JSX.Element {
   const { mode, setMode } = useTheme()
   const bookmarks = useBookmarksStore((state) => state.items)
@@ -516,6 +556,20 @@ export function SettingsPage(): React.JSX.Element {
             <h2 className="mb-4 text-[15px] font-semibold text-fg">About</h2>
             <div className="space-y-1 text-[13px] text-fg">
               <div>Version {appInfo?.app ?? '1.0.0'}</div>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={() =>
+                  void window.voyager.tabs.create({ url: reportBugUrl(), active: true })
+                }
+                className="rounded-md bg-accent px-3 py-1.5 text-[13px] text-accent-foreground"
+              >
+                Report a bug
+              </button>
+              <span className="text-[11.5px] text-muted">
+                Opens a pre-filled GitHub issue in a new Voyager tab.
+              </span>
             </div>
           </section>
         </div>
