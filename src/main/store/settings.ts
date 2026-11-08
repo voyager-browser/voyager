@@ -30,4 +30,6 @@ export interface SettingsShape {
   showHomeButton?: boolean
   homeUrl?: string
   memorySaver?: boolean
+  developerMode?: boolean
+  userAgent?: string
 }

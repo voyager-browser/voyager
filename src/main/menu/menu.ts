@@ -2,12 +2,22 @@ import { app, Menu, nativeImage, type MenuItemConstructorOptions } from 'electro
 import { IpcChannels } from '../../shared/ipc-channels'
 import type { WindowController } from '../window/WindowController'
 import { DEFAULT_PROFILE_ID } from '../../shared/profiles'
-import { getSettings } from '../store'
+import { USER_AGENT_PRESETS, userAgentPresetId } from '../../shared/user-agent'
+import { getSettings, setSettings } from '../store'
+import { applyUserAgentForProfile } from '../userAgent/userAgent'
+import { sessionForProfile } from '../profiles/session'
 import { openSettingsWindow } from '../window/settingsWindow'
 import { createWindow, createIncognitoWindow } from '../window/createWindow'
 import { activeWindow } from '../window/windowRegistry'
 
+let menuController: (() => WindowController | null) | undefined
+
+export function refreshAppMenu(): void {
+  createAppMenu(menuController)
+}
+
 export function createAppMenu(getController?: () => WindowController | null): void {
+  menuController = getController
   const isMac = process.platform === 'darwin'
   const controller = (): WindowController | null =>
     (getController ? getController() : null) ?? activeWindow()
@@ -84,49 +94,90 @@ export function createAppMenu(getController?: () => WindowController | null): vo
     submenu: [{ role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }]
   })
 
-  template.push({
-    label: 'View',
-    submenu: [
-      {
-        label: 'Reload',
-        accelerator: 'CmdOrCtrl+R',
-        click: () => controller()?.tabs.reload()
-      },
-      {
-        label: 'Toggle Developer Tools',
-        accelerator: 'Alt+CmdOrCtrl+I',
-        click: () => controller()?.tabs.toggleDevTools()
-      },
-      { type: 'separator' },
-      {
-        label: 'Actual Size',
-        accelerator: 'CmdOrCtrl+0',
-        click: () => controller()?.tabs.zoomReset()
-      },
-      {
-        label: 'Zoom In',
-        accelerator: 'CmdOrCtrl+Plus',
-        click: () => controller()?.tabs.zoomIn()
-      },
-      {
-        label: 'Zoom Out',
-        accelerator: 'CmdOrCtrl+-',
-        click: () => controller()?.tabs.zoomOut()
-      },
-      { type: 'separator' },
-      {
-        label: 'Show Bookmarks Bar',
-        type: 'checkbox',
-        checked:
-          getSettings(controller()?.profile ?? DEFAULT_PROFILE_ID, 'bookmarksBarVisible') === true,
-        accelerator: 'CmdOrCtrl+Shift+B',
-        click: () => {
-          const window = getController?.() ?? null
-          window?.toggleBookmarksBar()
-        }
+  const profileId = controller()?.profile ?? DEFAULT_PROFILE_ID
+  const developerMode = getSettings(profileId, 'developerMode', false) === true
+  const currentUserAgent =
+    typeof getSettings(profileId, 'userAgent', '') === 'string'
+      ? (getSettings(profileId, 'userAgent', '') as string)
+      : ''
+  const uaPreset = userAgentPresetId(currentUserAgent)
+
+  const viewSubmenu: MenuItemConstructorOptions[] = [
+    {
+      label: 'Reload',
+      accelerator: 'CmdOrCtrl+R',
+      click: () => controller()?.tabs.reload()
+    },
+    {
+      label: 'Toggle Developer Tools',
+      accelerator: 'Alt+CmdOrCtrl+I',
+      click: () => controller()?.tabs.toggleDevTools()
+    },
+    { type: 'separator' },
+    {
+      label: 'Actual Size',
+      accelerator: 'CmdOrCtrl+0',
+      click: () => controller()?.tabs.zoomReset()
+    },
+    {
+      label: 'Zoom In',
+      accelerator: 'CmdOrCtrl+Plus',
+      click: () => controller()?.tabs.zoomIn()
+    },
+    {
+      label: 'Zoom Out',
+      accelerator: 'CmdOrCtrl+-',
+      click: () => controller()?.tabs.zoomOut()
+    },
+    { type: 'separator' },
+    {
+      label: 'Show Bookmarks Bar',
+      type: 'checkbox',
+      checked: getSettings(profileId, 'bookmarksBarVisible') === true,
+      accelerator: 'CmdOrCtrl+Shift+B',
+      click: () => {
+        controller()?.toggleBookmarksBar()
       }
-    ]
-  })
+    },
+    {
+      label: 'Developer Mode',
+      type: 'checkbox',
+      checked: developerMode,
+      click: () => {
+        const pid = controller()?.profile ?? DEFAULT_PROFILE_ID
+        const next = !(getSettings(pid, 'developerMode', false) === true)
+        setSettings(pid, 'developerMode', next)
+        refreshAppMenu()
+      }
+    }
+  ]
+
+  if (developerMode) {
+    viewSubmenu.push(
+      { type: 'separator' },
+      {
+        label: 'For Developers',
+        submenu: [
+          {
+            label: 'User Agent',
+            submenu: USER_AGENT_PRESETS.map((preset) => ({
+              label: preset.label,
+              type: 'radio' as const,
+              checked: uaPreset === preset.id,
+              click: (): void => {
+                const pid = controller()?.profile ?? DEFAULT_PROFILE_ID
+                setSettings(pid, 'userAgent', preset.userAgent)
+                applyUserAgentForProfile(sessionForProfile(pid), pid)
+                refreshAppMenu()
+              }
+            }))
+          }
+        ]
+      }
+    )
+  }
+
+  template.push({ label: 'View', submenu: viewSubmenu })
 
   template.push({
     label: 'Bookmarks',

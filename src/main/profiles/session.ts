@@ -10,6 +10,7 @@ import {
 } from '../permissions/permissions'
 import { registerVoyagerProtocol } from '../protocol/voyagerProtocol'
 import { applyProxyForProfile } from '../proxy/proxy'
+import { applyUserAgentForProfile } from '../userAgent/userAgent'
 import { getSettings } from '../store'
 import {
   sendToSettingsWindow,
@@ -73,6 +74,7 @@ export function ensureProfileSession(profileId: string): Session {
     broadcastToProfile(profileId, IpcChannels.PermissionsStateChanged, currentSitePermissions(profileId))
   }
   void applyProxyForProfile(ses, profileId)
+  applyUserAgentForProfile(ses, profileId)
   ses.setSpellCheckerEnabled(getSettings(profileId, 'spellcheck', true) !== false)
   if (getSettings(profileId, 'contentBlocking', false) === true) {
     primeContentBlocking(profileId)

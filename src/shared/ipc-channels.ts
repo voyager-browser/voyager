@@ -57,6 +57,7 @@ export const IpcChannels = {
 
   TabsReopenLastClosed: 'tabs:reopen-last-closed',
 
+  TabGetUserAgent: 'tab:get-user-agent',
   TabDragStart: 'tab:drag-start',
   TabPrompt: 'tab:prompt',
 
