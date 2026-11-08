@@ -111,7 +111,7 @@ import { runTopSitesPreload } from '../preload/preloadTopSites'
 import { DEFAULT_PROXY_CONFIG } from '../../shared/proxy'
 import { DEFAULT_NEW_TAB_URL } from '../../shared/constants'
 import { createWindow } from '../window/createWindow'
-import { getSettings, getThemeMode, setSettings, setThemeMode } from '../store'
+import { getSettings, getThemeMode, setSettings, setThemeMode, storesFor } from '../store'
 
 import { isDefaultBrowser, setDefaultBrowser } from '../defaultBrowser'
 import {
@@ -203,7 +203,10 @@ function userPreferences(profileId: string): UserPreferences {
       typeof getSettings(profileId, 'userAgent', '') === 'string'
         ? (getSettings(profileId, 'userAgent', '') as string)
         : '',
-    preloadTopSites: getSettings(profileId, 'preloadTopSites', false) === true
+    preloadTopSites: getSettings(profileId, 'preloadTopSites', false) === true,
+    autofillProfiles: getSettings(profileId, 'autofillProfiles', true) !== false,
+    autofillPayments: getSettings(profileId, 'autofillPayments', true) !== false,
+    saveFormHistory: getSettings(profileId, 'saveFormHistory', true) !== false
   }
 }
 
@@ -286,7 +289,10 @@ export function registerIpcHandlers(context: IpcContext): void {
     'memorySaver',
     'developerMode',
     'userAgent',
-    'preloadTopSites'
+    'preloadTopSites',
+    'autofillProfiles',
+    'autofillPayments',
+    'saveFormHistory'
   ])
 
   ipcMain.handle(
@@ -695,6 +701,15 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
       if (options.sitePermissions === true && clearSitePermissions(profileId)) {
         publishPermissions(profileId)
+      }
+      if (options.formHistory === true || options.autofillData === true) {
+        const store = storesFor(profileId).autofill
+        if (options.formHistory === true) store.set('formHistory', [])
+        if (options.autofillData === true) {
+          store.set('addresses', [])
+          store.set('contacts', [])
+          store.set('paymentMethods', [])
+        }
       }
     }
   )

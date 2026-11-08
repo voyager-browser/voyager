@@ -33,4 +33,7 @@ export interface SettingsShape {
   developerMode?: boolean
   userAgent?: string
   preloadTopSites?: boolean
+  autofillProfiles?: boolean
+  autofillPayments?: boolean
+  saveFormHistory?: boolean
 }

@@ -309,6 +309,68 @@ export interface UserPreferences {
   userAgent: string
   /** Prefetch/preload top sites to warm DNS and cache (uses network in background). */
   preloadTopSites: boolean
+  /** Save and offer address/contact autofill on forms. */
+  autofillProfiles: boolean
+  /** Save and offer payment method autofill on forms. */
+  autofillPayments: boolean
+  /** Save form field values and offer autocomplete suggestions. */
+  saveFormHistory: boolean
+}
+
+/** A saved address for autofill. */
+export interface AutofillAddress {
+  id: string
+  label?: string
+  name: string
+  organization?: string
+  streetAddress: string
+  streetAddress2?: string
+  city: string
+  region?: string
+  postalCode: string
+  country: string
+  phone?: string
+  email?: string
+  updatedAt: number
+}
+
+/** A saved contact for autofill. */
+export interface AutofillContact {
+  id: string
+  name: string
+  email?: string
+  phone?: string
+  organization?: string
+  updatedAt: number
+}
+
+/** A saved payment method for autofill (card details stored locally). */
+export interface AutofillPaymentMethod {
+  id: string
+  nameOnCard: string
+  cardNumber: string
+  expiryMonth: string
+  expiryYear: string
+  cardType?: string
+  updatedAt: number
+}
+
+/** A remembered form field value for autocomplete suggestions. */
+export interface FormHistoryEntry {
+  id: string
+  /** Normalized field name/key used for matching. */
+  field: string
+  value: string
+  /** Number of times this value was submitted. */
+  count: number
+  updatedAt: number
+}
+
+export interface AutofillState {
+  addresses: AutofillAddress[]
+  contacts: AutofillContact[]
+  paymentMethods: AutofillPaymentMethod[]
+  formHistory: FormHistoryEntry[]
 }
 
 /** Site data categories cleared together from Settings. */
@@ -318,4 +380,6 @@ export interface ClearBrowsingDataOptions {
   indexedDb: boolean
   cache: boolean
   sitePermissions: boolean
+  formHistory?: boolean
+  autofillData?: boolean
 }

@@ -161,7 +161,10 @@ export function SettingsPage(): React.JSX.Element {
     memorySaver: false,
     developerMode: false,
     userAgent: '',
-    preloadTopSites: false
+    preloadTopSites: false,
+    autofillProfiles: true,
+    autofillPayments: true,
+    saveFormHistory: true
   })
   const [customFilterUrl, setCustomFilterUrl] = useState('')
   const [customFilterError, setCustomFilterError] = useState<string | null>(null)

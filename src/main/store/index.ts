@@ -4,6 +4,8 @@ import { DEFAULT_PROFILE_ID } from '../../shared/profiles'
 import type { ThemeMode } from '../../shared/types'
 import { Store } from './Store'
 import type { AppSettingsShape } from './app'
+import type { AutofillShape } from './autofill'
+import { EMPTY_AUTOFILL } from './autofill'
 import type { BookmarksShape } from './bookmarks'
 import type { DownloadsShape } from './downloads'
 import type { HistoryShape } from './history'
@@ -19,6 +21,7 @@ export interface ProfileStores {
   history: Store<HistoryShape>
   downloads: Store<DownloadsShape>
   permissions: Store<PermissionsShape>
+  autofill: Store<AutofillShape>
 }
 
 const bundles = new Map<string, ProfileStores>()
@@ -52,7 +55,8 @@ export function storesFor(profileId: string): ProfileStores {
       'permissions.json',
       { decisions: [], autoRemovedDecisions: [] },
       directory
-    )
+    ),
+    autofill: new Store<AutofillShape>('autofill.json', { ...EMPTY_AUTOFILL }, directory)
   }
   bundles.set(profileId, bundle)
   return bundle
