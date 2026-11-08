@@ -473,7 +473,7 @@ export function SettingsPage(): React.JSX.Element {
                       ) : (
                         <div className="flex items-center gap-3">
                           <span
-                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold text-white ${PROFILE_COLOR_CLASSES[profile.color]}`}
+                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold text-white ${PROFILE_COLOR_CLASSES[profile.color] ?? PROFILE_COLOR_CLASSES.blue}`}
                             aria-hidden="true"
                           >
                             {(profile.name.trim()[0] ?? '?').toUpperCase()}
