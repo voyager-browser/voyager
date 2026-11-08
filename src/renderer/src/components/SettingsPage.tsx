@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  ChevronDown,
   ChevronRight,
   Database,
   Download,
+  Home,
   Info,
   Palette,
   Power,
@@ -11,6 +13,7 @@ import {
   ShieldCheck,
   Trash2,
   Upload,
+  X,
   type LucideIcon
 } from 'lucide-react'
 import { useBookmarksStore } from '../state/bookmarksStore'
@@ -30,6 +33,13 @@ function sitePermissionsRoute(): { open: boolean; origin?: string } {
   const query = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : ''
   const origin = new URLSearchParams(query).get('origin') ?? undefined
   return { open: true, origin }
+}
+
+function settingsSearchRoute(): string {
+  const hash = window.location.hash.replace(/^#/, '')
+  if (!hash.startsWith('search')) return ''
+  const query = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : ''
+  return new URLSearchParams(query).get('q') ?? ''
 }
 
 interface SettingsNavItem {
@@ -59,6 +69,33 @@ const SETTINGS_NAV_GROUPS: SettingsNavItem[][] = [
     { id: 'data', label: 'Data', icon: Database }
   ],
   [{ id: 'about', label: 'About', icon: Info }]
+]
+
+interface SettingsSearchEntry {
+  id: string
+  label: string
+  sectionId: string
+  keywords: string[]
+}
+
+const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
+  { id: 'privacy', label: 'Privacy and security', sectionId: 'privacy', keywords: ['privacy', 'security', 'incognito', 'permissions'] },
+  { id: 'site-permissions', label: 'Site permissions', sectionId: 'site-permissions', keywords: ['permissions', 'camera', 'microphone', 'location', 'notifications', 'site'] },
+  { id: 'incognito', label: 'Open Incognito Window', sectionId: 'privacy', keywords: ['incognito', 'private', 'window'] },
+  { id: 'appearance', label: 'Appearance', sectionId: 'appearance', keywords: ['theme', 'dark', 'light', 'appearance', 'vertical tabs', 'default browser'] },
+  { id: 'theme', label: 'Theme', sectionId: 'appearance', keywords: ['theme', 'dark', 'light', 'system', 'mode'] },
+  { id: 'vertical-tabs', label: 'Vertical tabs', sectionId: 'appearance', keywords: ['vertical', 'tabs', 'sidebar', 'rail'] },
+  { id: 'default-browser', label: 'Default browser', sectionId: 'appearance', keywords: ['default', 'browser', 'links'] },
+  { id: 'search-engine', label: 'Search engine', sectionId: 'search', keywords: ['search', 'engine', 'google', 'duckduckgo', 'brave'] },
+  { id: 'startup', label: 'On startup', sectionId: 'startup', keywords: ['startup', 'restore', 'session', 'tabs', 'continue'] },
+  { id: 'content-blocking', label: 'Content blocking', sectionId: 'content-blocking', keywords: ['ads', 'trackers', 'blocking', 'filter', 'hosts', 'upload', 'custom'] },
+  { id: 'builtin-filter', label: 'Built-in filter list', sectionId: 'content-blocking', keywords: ['builtin', 'built-in', 'filter', 'voyager'] },
+  { id: 'custom-filter-url', label: 'Custom filter list URL', sectionId: 'content-blocking', keywords: ['custom', 'filter', 'url', 'hosts', 'http'] },
+  { id: 'upload-filter', label: 'Upload hosts file', sectionId: 'content-blocking', keywords: ['upload', 'hosts', 'file', 'custom', 'filter'] },
+  { id: 'downloads', label: 'Downloads', sectionId: 'downloads', keywords: ['downloads', 'files', 'open automatically'] },
+  { id: 'clear-browsing-data', label: 'Clear browsing data', sectionId: 'clear-browsing-data', keywords: ['clear', 'history', 'cookies', 'cache', 'data', 'browsing'] },
+  { id: 'data', label: 'Data', sectionId: 'data', keywords: ['data', 'bookmarks', 'history', 'downloads', 'count'] },
+  { id: 'about', label: 'About', sectionId: 'about', keywords: ['about', 'version', 'report', 'bug'] }
 ]
 
 const BUG_REPORT_BODY = `# Bug
@@ -160,6 +197,7 @@ export function SettingsPage(): React.JSX.Element {
 
   useEffect(() => {
     document.title = 'Settings - Voyager'
+    if (settingsSearchRoute()) settingsSearchRef.current?.focus()
   }, [])
 
   const setPreference = async (key: keyof UserPreferences, value: boolean | string | string[]) => {
@@ -191,6 +229,9 @@ export function SettingsPage(): React.JSX.Element {
 
   const contentRef = useRef<HTMLDivElement>(null)
   const [activeSection, setActiveSection] = useState('appearance')
+  const [settingsQuery, setSettingsQuery] = useState(settingsSearchRoute)
+  const [expandedNav, setExpandedNav] = useState<Record<string, boolean>>({ privacy: true })
+  const settingsSearchRef = useRef<HTMLInputElement>(null)
 
   const scrollToSection = (id: string) => {
     setActiveSection(id)
@@ -241,67 +282,165 @@ export function SettingsPage(): React.JSX.Element {
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-bg text-fg">
-      <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-surface">
-        <div className="px-4 pb-3 pt-5">
+      <aside className="flex h-full w-72 shrink-0 flex-col border-r border-border bg-surface">
+        <div className="px-4 pb-2 pt-5">
           <h1 className="text-[17px] font-semibold text-fg">Settings</h1>
           <p className="mt-0.5 text-[11.5px] text-muted">Voyager {appInfo?.app ?? '1.0.0'}</p>
         </div>
-        <nav aria-label="Settings sections" className="flex-1 overflow-y-auto px-2 pb-4">
-          {SETTINGS_NAV_GROUPS.map((group, groupIndex) => (
-            <div
-              key={groupIndex}
-              className={groupIndex > 0 ? 'mt-3 border-t border-border pt-3' : ''}
+
+        <div className="px-3 pb-3">
+          <div className="flex items-center gap-1.5 rounded-lg border border-border bg-bg px-2 py-1.5 focus-within:border-accent focus-within:ring-1 focus-within:ring-ring">
+            <Search className="h-4 w-4 shrink-0 text-muted" />
+            <input
+              ref={settingsSearchRef}
+              type="text"
+              value={settingsQuery}
+              onChange={(event) => setSettingsQuery(event.target.value)}
+              placeholder="Search settings"
+              aria-label="Search settings"
+              className="min-w-0 flex-1 bg-transparent text-[13px] text-fg outline-none placeholder:text-muted"
+            />
+            {settingsQuery ? (
+              <button
+                type="button"
+                aria-label="Clear search"
+                className="rounded p-0.5 text-muted hover:bg-hover hover:text-fg"
+                onClick={() => {
+                  setSettingsQuery('')
+                  settingsSearchRef.current?.focus()
+                }}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+            <button
+              type="button"
+              aria-label="Settings home"
+              title="Home"
+              className="rounded p-0.5 text-muted hover:bg-hover hover:text-fg"
+              onClick={() => {
+                setSettingsQuery('')
+                contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+                setActiveSection('privacy')
+                window.history.replaceState(null, '', window.location.href.split('#')[0])
+              }}
             >
-              {group.map((item) => {
-                const Icon = item.icon
-                const active = activeSection === item.id
-                return (
-                  <div key={item.id}>
+              <Home className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <nav aria-label="Settings sections" className="flex-1 overflow-y-auto px-2 pb-4">
+          {settingsQuery.trim() ? (
+            (() => {
+              const q = settingsQuery.trim().toLowerCase()
+              const results = SETTINGS_SEARCH_ENTRIES.filter(
+                (entry) =>
+                  entry.label.toLowerCase().includes(q) ||
+                  entry.keywords.some((keyword) => keyword.toLowerCase().includes(q))
+              )
+              if (results.length === 0) {
+                return <p className="px-3 py-2 text-[12.5px] text-muted">No settings found.</p>
+              }
+              return (
+                <div className="space-y-0.5">
+                  {results.map((entry) => (
                     <button
+                      key={`${entry.sectionId}:${entry.id}`}
                       type="button"
-                      onClick={() => scrollToSection(item.id)}
-                      aria-current={active ? 'page' : undefined}
-                      className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] transition-colors ${
-                        active
-                          ? 'bg-accent/10 font-medium text-fg'
-                          : 'text-muted hover:bg-hover hover:text-fg'
-                      }`}
+                      onClick={() => {
+                        setSettingsQuery('')
+                        scrollToSection(entry.sectionId)
+                      }}
+                      className="flex w-full items-center rounded-md px-3 py-2 text-left text-[13px] text-fg transition-colors hover:bg-hover"
                     >
-                      <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
-                      <span className="truncate">{item.label}</span>
+                      <span className="truncate">{entry.label}</span>
                     </button>
-                    {item.children && (
-                      <div className="mb-1 ml-[1.375rem] space-y-0.5 border-l border-border pl-3">
-                        {item.children.map((child) => {
-                          const childActive = activeSection === child.id
-                          return (
-                            <button
-                              key={child.id}
-                              type="button"
-                              aria-label={
-                                child.id === 'site-permissions'
-                                  ? 'Open site permission settings'
-                                  : child.label
-                              }
-                              onClick={() => scrollToSection(child.id)}
-                              aria-current={childActive ? 'page' : undefined}
-                              className={`flex w-full items-center rounded-md px-2 py-1.5 text-left text-[12px] transition-colors ${
-                                childActive
-                                  ? 'bg-accent/10 font-medium text-fg'
-                                  : 'text-muted hover:bg-hover hover:text-fg'
-                              }`}
-                            >
-                              {child.label}
-                            </button>
-                          )
-                        })}
+                  ))}
+                </div>
+              )
+            })()
+          ) : (
+            SETTINGS_NAV_GROUPS.map((group, groupIndex) => (
+              <div
+                key={groupIndex}
+                className={groupIndex > 0 ? 'mt-3 border-t border-border pt-3' : ''}
+              >
+                {group.map((item) => {
+                  const Icon = item.icon
+                  const active = activeSection === item.id
+                  const hasChildren = Boolean(item.children?.length)
+                  const expanded = expandedNav[item.id] ?? false
+                  return (
+                    <div key={item.id}>
+                      <div
+                        className={`flex items-center rounded-md transition-colors ${
+                          active ? 'bg-accent/10' : 'hover:bg-hover'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => scrollToSection(item.id)}
+                          aria-current={active ? 'page' : undefined}
+                          className={`flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-left text-[13px] ${
+                            active ? 'font-medium text-fg' : 'text-muted hover:text-fg'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+                          <span className="truncate">{item.label}</span>
+                        </button>
+                        {hasChildren && (
+                          <button
+                            type="button"
+                            aria-label={expanded ? `Collapse ${item.label}` : `Expand ${item.label}`}
+                            aria-expanded={expanded}
+                            className="mr-1 rounded p-1 text-muted hover:bg-hover/80 hover:text-fg"
+                            onClick={() =>
+                              setExpandedNav((current) => ({
+                                ...current,
+                                [item.id]: !current[item.id]
+                              }))
+                            }
+                          >
+                            <ChevronDown
+                              className={`h-4 w-4 transition-transform ${expanded ? '' : '-rotate-90'}`}
+                            />
+                          </button>
+                        )}
                       </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          ))}
+                      {hasChildren && expanded && (
+                        <div className="mb-1 ml-[1.375rem] space-y-0.5 border-l border-border pl-3">
+                          {item.children?.map((child) => {
+                            const childActive = activeSection === child.id
+                            return (
+                              <button
+                                key={child.id}
+                                type="button"
+                                aria-label={
+                                  child.id === 'site-permissions'
+                                    ? 'Open site permission settings'
+                                    : child.label
+                                }
+                                onClick={() => scrollToSection(child.id)}
+                                aria-current={childActive ? 'page' : undefined}
+                                className={`flex w-full items-center rounded-md px-2 py-1.5 text-left text-[12px] transition-colors ${
+                                  childActive
+                                    ? 'bg-accent/10 font-medium text-fg'
+                                    : 'text-muted hover:bg-hover hover:text-fg'
+                                }`}
+                              >
+                                {child.label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ))
+          )}
         </nav>
       </aside>
 

@@ -17,11 +17,17 @@ function settingsBaseUrl(): string {
 
 function settingsUrlFor(target?: SettingsTarget): string {
   const base = settingsBaseUrl()
-  if (target?.page !== 'site-permissions') return base
-  const params = new URLSearchParams()
-  if (target.origin) params.set('origin', target.origin)
-  const query = params.toString()
-  return `${base}#site-permissions${query ? `?${query}` : ''}`
+  if (target?.page === 'site-permissions') {
+    const params = new URLSearchParams()
+    if (target.origin) params.set('origin', target.origin)
+    const query = params.toString()
+    return `${base}#site-permissions${query ? `?${query}` : ''}`
+  }
+  if (target?.search) {
+    const params = new URLSearchParams({ q: target.search })
+    return `${base}#search?${params.toString()}`
+  }
+  return base
 }
 
 /** Open the settings window, or focus it when it is already open. */

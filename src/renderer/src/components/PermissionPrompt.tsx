@@ -58,6 +58,7 @@ export function PermissionPrompt(): React.JSX.Element | null {
   const installRef = useRef<HTMLButtonElement>(null)
   const onceRef = useRef<HTMLButtonElement>(null)
   const blockRef = useRef<HTMLButtonElement>(null)
+  const moreRef = useRef<HTMLButtonElement>(null)
   const request = queue[0]
   const activeRequestId = request?.id
 
@@ -90,9 +91,12 @@ export function PermissionPrompt(): React.JSX.Element | null {
   }
 
   const moveFocus = (direction: 1 | -1): void => {
-    const buttons = [installRef.current, onceRef.current, blockRef.current].filter(
-      (button): button is HTMLButtonElement => button !== null
-    )
+    const buttons = [
+      installRef.current,
+      onceRef.current,
+      blockRef.current,
+      moreRef.current
+    ].filter((button): button is HTMLButtonElement => button !== null)
     if (buttons.length === 0) return
     const currentIndex = buttons.findIndex((button) => button === document.activeElement)
     const nextIndex =
@@ -171,16 +175,31 @@ export function PermissionPrompt(): React.JSX.Element | null {
           >
             Allow this time
           </button>
-          <button
-            ref={blockRef}
-            type="button"
-            className={cn(
-              'w-full rounded-lg px-3 py-2 text-[13px] font-medium text-danger transition-colors hover:bg-danger/10'
-            )}
-            onClick={() => choose('block')}
-          >
-            Never allow
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              ref={blockRef}
+              type="button"
+              className={cn(
+                'min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px] font-medium text-danger transition-colors hover:bg-danger/10'
+              )}
+              onClick={() => choose('block')}
+            >
+              Never allow
+            </button>
+            <button
+              ref={moreRef}
+              type="button"
+              className="shrink-0 rounded-lg px-2 py-2 text-[12px] font-medium text-accent transition-colors hover:bg-hover hover:underline"
+              onClick={() => {
+                void window.voyager.settings.open({
+                  page: 'site-permissions',
+                  origin: request.origin
+                })
+              }}
+            >
+              See more
+            </button>
+          </div>
         </div>
       </div>
     </div>

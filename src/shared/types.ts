@@ -116,6 +116,7 @@ export interface PromptRequest {
 export interface SettingsTarget {
   page?: 'site-permissions'
   origin?: string
+  search?: string
 }
 
 export interface NewBookmarkFolderInput {

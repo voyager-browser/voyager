@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Globe, Search } from 'lucide-react'
+import { Globe, Search, Settings } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { useOverlaySignal } from '../lib/overlay'
 import {
@@ -108,13 +108,17 @@ export function Omnibox(): React.JSX.Element {
     if (focused) inputRef.current?.select()
   }, [focused])
 
+  const settingsMatch = value.match(/^@settings(?:\s+(.*))?$/i)
+  const settingsCommandQuery = settingsMatch ? (settingsMatch[1] ?? '').trim() : null
+  const isSettingsCommand = settingsMatch !== null
+
   const suggestions = useSuggestions(
     value,
-    focused && value.trim().length > 0,
+    focused && value.trim().length > 0 && !isSettingsCommand,
     searchEngine
   )
   const showDropdown = focused && value.trim() !== '' && !pageInfoOpen
-  const rowCount = suggestions.length + 1 // index 0 is "search for ..."
+  const rowCount = isSettingsCommand ? 1 : suggestions.length + 1 // index 0 is primary action
 
   // Let the dropdown / page-info popover escape the chrome strip.
   useOverlaySignal(showDropdown || pageInfoOpen)
@@ -124,13 +128,28 @@ export function Omnibox(): React.JSX.Element {
     setFocused(false)
     inputRef.current?.blur()
   }
+  const openSettingsCommand = (): void => {
+    void window.voyager.settings.open(
+      settingsCommandQuery ? { search: settingsCommandQuery } : undefined
+    )
+    setFocused(false)
+    inputRef.current?.blur()
+  }
   const submit = (): void => {
     if (value.trim() === '') return
+    if (isSettingsCommand) {
+      openSettingsCommand()
+      return
+    }
     navigate(value)
     setFocused(false)
     inputRef.current?.blur()
   }
   const runRow = (index: number): void => {
+    if (isSettingsCommand) {
+      openSettingsCommand()
+      return
+    }
     if (index === 0) submit()
     else searchFor(suggestions[index - 1])
   }
@@ -186,24 +205,38 @@ export function Omnibox(): React.JSX.Element {
 
       {showDropdown && (
         <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-border bg-surface py-1 shadow-xl shadow-black/15">
-          <SuggestionRow
-            active={highlight === 0}
-            onActivate={() => setHighlight(0)}
-            onSelect={() => runRow(0)}
-            icon={<Search className="h-3.5 w-3.5" />}
-            title={value.trim()}
-            detail={`Search ${SEARCH_ENGINES[searchEngine].name}`}
-          />
-          {suggestions.map((suggestion, index) => (
+          {isSettingsCommand ? (
             <SuggestionRow
-              key={suggestion}
-              active={highlight === index + 1}
-              onActivate={() => setHighlight(index + 1)}
-              onSelect={() => runRow(index + 1)}
-              icon={<Globe className="h-3.5 w-3.5" />}
-              title={suggestion}
+              active={highlight === 0}
+              onActivate={() => setHighlight(0)}
+              onSelect={() => runRow(0)}
+              icon={<Settings className="h-3.5 w-3.5" />}
+              title={settingsCommandQuery ? `Search Settings: ${settingsCommandQuery}` : 'Open Settings'}
+              detail="@settings"
+              highlighted
             />
-          ))}
+          ) : (
+            <>
+              <SuggestionRow
+                active={highlight === 0}
+                onActivate={() => setHighlight(0)}
+                onSelect={() => runRow(0)}
+                icon={<Search className="h-3.5 w-3.5" />}
+                title={value.trim()}
+                detail={`Search ${SEARCH_ENGINES[searchEngine].name}`}
+              />
+              {suggestions.map((suggestion, index) => (
+                <SuggestionRow
+                  key={suggestion}
+                  active={highlight === index + 1}
+                  onActivate={() => setHighlight(index + 1)}
+                  onSelect={() => runRow(index + 1)}
+                  icon={<Globe className="h-3.5 w-3.5" />}
+                  title={suggestion}
+                />
+              ))}
+            </>
+          )}
         </div>
       )}
 
@@ -219,6 +252,7 @@ interface SuggestionRowProps {
   icon: React.ReactNode
   title: string
   detail?: string
+  highlighted?: boolean
 }
 
 function SuggestionRow({
@@ -227,7 +261,8 @@ function SuggestionRow({
   onSelect,
   icon,
   title,
-  detail
+  detail,
+  highlighted
 }: SuggestionRowProps): React.JSX.Element {
   return (
     <button
@@ -239,12 +274,31 @@ function SuggestionRow({
       }}
       className={cn(
         'flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors',
+        highlighted && !active && 'bg-accent/10',
         active ? 'bg-hover' : 'bg-transparent'
       )}
     >
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted">{icon}</span>
-      <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{title}</span>
-      {detail && <span className="shrink-0 text-[11.5px] text-muted">{detail}</span>}
+      <span
+        className={cn(
+          'flex h-4 w-4 shrink-0 items-center justify-center',
+          highlighted ? 'text-accent' : 'text-muted'
+        )}
+      >
+        {icon}
+      </span>
+      <span className={cn('min-w-0 flex-1 truncate text-[13px]', highlighted ? 'font-medium text-fg' : 'text-fg')}>
+        {title}
+      </span>
+      {detail && (
+        <span
+          className={cn(
+            'shrink-0 text-[11.5px]',
+            highlighted ? 'font-medium text-accent' : 'text-muted'
+          )}
+        >
+          {detail}
+        </span>
+      )}
     </button>
   )
 }

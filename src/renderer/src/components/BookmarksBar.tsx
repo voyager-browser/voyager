@@ -56,6 +56,14 @@ export function BookmarksBar(): React.JSX.Element | null {
   const [folderMenu, setFolderMenu] = useState<FolderMenuState | null>(null)
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [preview, setPreview] = useState<{
+    title: string
+    url?: string
+    favicon?: string | null
+    detail?: string
+    x: number
+    y: number
+  } | null>(null)
 
   const rootFolders = folders.filter((folder) => folder.parentId === null)
   const rootItems = items.filter((item) => (item.folderId ?? null) === null)
@@ -77,10 +85,16 @@ export function BookmarksBar(): React.JSX.Element | null {
     return [
       ...childFolders.map((folder) => ({
         label: folder.title,
+        icon: <Folder className="h-3.5 w-3.5 shrink-0 text-muted" />,
         children: folderMenuItems(folder.id)
       })),
       ...childItems.map((item) => ({
         label: item.title,
+        icon: item.favicon ? (
+          <img src={item.favicon} alt="" className="h-3.5 w-3.5 shrink-0 rounded-sm" />
+        ) : (
+          <span className="h-3.5 w-3.5 shrink-0 rounded-sm bg-hover" />
+        ),
         onSelect: () => navigate(item.url)
       }))
     ]
@@ -260,12 +274,25 @@ export function BookmarksBar(): React.JSX.Element | null {
           >
             <button
               type="button"
-              title={folder.title}
               aria-label={`Folder ${folder.title}`}
               onClick={(event) => {
+                setPreview(null)
                 const rect = event.currentTarget.getBoundingClientRect()
                 setFolderMenu({ x: rect.left, y: rect.bottom + 2, folderId: folder.id })
               }}
+              onMouseEnter={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect()
+                const count =
+                  folders.filter((child) => child.parentId === folder.id).length +
+                  items.filter((item) => (item.folderId ?? null) === folder.id).length
+                setPreview({
+                  title: folder.title,
+                  detail: `${count} item${count === 1 ? '' : 's'}`,
+                  x: rect.left,
+                  y: rect.bottom + 4
+                })
+              }}
+              onMouseLeave={() => setPreview(null)}
               className="flex h-[22px] max-w-full items-center gap-1.5 rounded-md px-2 text-[12px] text-fg transition-colors hover:bg-hover"
             >
               <Folder className="h-3.5 w-3.5 shrink-0 text-muted" />
@@ -300,14 +327,28 @@ export function BookmarksBar(): React.JSX.Element | null {
             <button
               type="button"
               onClick={(event) => {
+                setPreview(null)
                 if (event.ctrlKey || event.metaKey) {
                   openMenu(event, 'bookmark', bookmark.id)
                   return
                 }
                 navigate(bookmark.url)
               }}
-              onContextMenu={(event) => openMenu(event, 'bookmark', bookmark.id)}
-              title={bookmark.url}
+              onContextMenu={(event) => {
+                setPreview(null)
+                openMenu(event, 'bookmark', bookmark.id)
+              }}
+              onMouseEnter={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect()
+                setPreview({
+                  title: bookmark.title || bookmark.url,
+                  url: bookmark.url,
+                  favicon: bookmark.favicon,
+                  x: rect.left,
+                  y: rect.bottom + 4
+                })
+              }}
+              onMouseLeave={() => setPreview(null)}
               className="flex h-[22px] max-w-full items-center gap-1.5 rounded-md px-2 text-[12px] text-fg transition-colors hover:bg-hover"
             >
               {bookmark.favicon ? (
@@ -322,6 +363,34 @@ export function BookmarksBar(): React.JSX.Element | null {
       {dragOver && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-sm border-2 border-dashed border-accent bg-accent/10 text-[12px] font-medium text-accent">
           Drop to add to bookmarks
+        </div>
+      )}
+
+      {preview && !menu && !folderMenu && (
+        <div
+          className="pointer-events-none fixed z-50 max-w-[320px] rounded-lg border border-border bg-surface px-3 py-2 shadow-lg shadow-black/15"
+          style={{ left: preview.x, top: preview.y }}
+        >
+          <div className="flex items-start gap-2">
+            {preview.favicon ? (
+              <img src={preview.favicon} alt="" className="mt-0.5 h-4 w-4 shrink-0 rounded-sm" />
+            ) : preview.url ? (
+              <span className="mt-0.5 h-4 w-4 shrink-0 rounded-sm bg-hover" />
+            ) : (
+              <Folder className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
+            )}
+            <div className="min-w-0">
+              <div className="truncate text-[12.5px] font-medium text-fg">{preview.title}</div>
+              {preview.url && (
+                <div className="mt-0.5 truncate text-[11px] text-muted" title={preview.url}>
+                  {preview.url}
+                </div>
+              )}
+              {preview.detail && (
+                <div className="mt-0.5 text-[11px] text-muted">{preview.detail}</div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
