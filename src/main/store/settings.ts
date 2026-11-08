@@ -17,4 +17,5 @@ export interface SettingsShape {
   restoreSession?: boolean
   verticalTabs?: boolean
   contentBlocking?: boolean
+  filterLists?: string[]
 }

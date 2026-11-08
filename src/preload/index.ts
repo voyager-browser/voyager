@@ -61,8 +61,10 @@ const api = {
     get: (): Promise<UserPreferences> => ipcRenderer.invoke(IpcChannels.SettingsGet),
     open: (target?: SettingsTarget): Promise<void> =>
       ipcRenderer.invoke(IpcChannels.SettingsOpen, target),
-    set: (key: keyof UserPreferences, value: boolean | string): Promise<UserPreferences> =>
-      ipcRenderer.invoke(IpcChannels.SettingsSet, key, value),
+    set: (
+      key: keyof UserPreferences,
+      value: boolean | string | string[]
+    ): Promise<UserPreferences> => ipcRenderer.invoke(IpcChannels.SettingsSet, key, value),
     onChanged: (listener: (preferences: UserPreferences) => void): Unsubscribe =>
       subscribe(IpcChannels.SettingsChanged, listener)
   },
