@@ -19,6 +19,20 @@ export const SEARCH_ENGINES = {
       `https://search.brave.com/search?q=${encodeURIComponent(query)}`,
     suggest: (partial: string): string =>
       `https://search.brave.com/api/suggest?q=${encodeURIComponent(partial)}`
+  },
+  bing: {
+    name: 'Bing',
+    search: (query: string): string =>
+      `https://www.bing.com/search?q=${encodeURIComponent(query)}`,
+    suggest: (partial: string): string =>
+      `https://api.bing.com/osjson.aspx?query=${encodeURIComponent(partial)}`
+  },
+  ecosia: {
+    name: 'Ecosia',
+    search: (query: string): string =>
+      `https://www.ecosia.org/search?q=${encodeURIComponent(query)}`,
+    suggest: (partial: string): string =>
+      `https://ac.ecosia.org/autocomplete?q=${encodeURIComponent(partial)}&type=list`
   }
 } as const
 
@@ -45,12 +59,22 @@ export function parseSuggestions(text: string): string[] {
     : trimmed
   try {
     const data = JSON.parse(inner) as unknown
-    if (!Array.isArray(data)) return []
-    const list = data.find(
-      (entry): entry is unknown[] => Array.isArray(entry) && typeof entry[0] === 'string'
-    )
-    if (!list) return []
-    return list.filter((item): item is string => typeof item === 'string').slice(0, 6)
+    if (Array.isArray(data)) {
+      const list = data.find(
+        (entry): entry is unknown[] => Array.isArray(entry) && typeof entry[0] === 'string'
+      )
+      if (!list) return []
+      return list.filter((item): item is string => typeof item === 'string').slice(0, 6)
+    }
+    if (data && typeof data === 'object' && 'suggestions' in data) {
+      const suggestions = (data as { suggestions?: unknown }).suggestions
+      if (Array.isArray(suggestions)) {
+        return suggestions
+          .filter((item): item is string => typeof item === 'string')
+          .slice(0, 6)
+      }
+    }
+    return []
   } catch {
     return []
   }
