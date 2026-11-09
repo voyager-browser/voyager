@@ -6,6 +6,7 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
     platform: window.voyager.platform,
     namespaces: Object.keys(window.voyager).sort(),
     settings: Object.keys(window.voyager.settings),
+    autofill: Object.keys(window.voyager.autofill),
     tabs: Object.keys(window.voyager.tabs),
     navigation: Object.keys(window.voyager.navigation),
     bookmarks: Object.keys(window.voyager.bookmarks),
@@ -22,6 +23,7 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
   expect(api.platform).toBe(process.platform)
   expect(api.namespaces).toEqual([
     'appInfo',
+    'autofill',
     'bookmarks',
     'browsingData',
     'certificates',
@@ -47,6 +49,18 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
     'onChanged'
   ])
   expect(api.browsingData).toEqual(['clear'])
+  expect(api.autofill).toEqual([
+    'getState',
+    'saveAddress',
+    'deleteAddress',
+    'saveContact',
+    'deleteContact',
+    'savePayment',
+    'deletePayment',
+    'clearFormHistory',
+    'deleteFormHistoryEntry',
+    'onStateChanged'
+  ])
   expect(api.defaultBrowser).toEqual(['isDefault', 'setDefault'])
   expect(api.tabs).toEqual(
     expect.arrayContaining(['getState', 'create', 'close', 'activate', 'reorder', 'pinToggle'])
