@@ -47,6 +47,8 @@ export interface TabState {
 export interface BrowserState {
   tabs: TabState[]
   activeTabId: string | null
+  /** Secondary tab shown beside the active tab in split view, or null. */
+  splitTabId?: string | null
 }
 
 export interface NewTabRequest {

@@ -39,6 +39,8 @@ export const IpcChannels = {
   TabsCloseOthers: 'tabs:close-others',
   TabsCloseToRight: 'tabs:close-to-right',
   TabsCopyUrl: 'tabs:copy-url',
+  TabsOpenSplit: 'tabs:open-split',
+  TabsCloseSplit: 'tabs:close-split',
 
   NavBack: 'nav:back',
   NavForward: 'nav:forward',

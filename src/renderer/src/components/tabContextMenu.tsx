@@ -1,4 +1,15 @@
-import { Copy, PanelLeft, Pin, Plus, QrCode, RotateCw, Volume2, VolumeX, X } from 'lucide-react'
+import {
+  Columns2,
+  Copy,
+  PanelLeft,
+  Pin,
+  Plus,
+  QrCode,
+  RotateCw,
+  Volume2,
+  VolumeX,
+  X
+} from 'lucide-react'
 import type { TabState } from '../../../shared/types'
 import { isNewTab } from '../../../shared/url'
 import { useBrowserStore } from '../state/browserStore'
@@ -7,11 +18,34 @@ import type { ContextMenuItem } from './ui/ContextMenu'
 export interface TabMenuOptions {
   verticalTabs: boolean
   onToggleVerticalTabs: () => void
+  /** Currently selected tabs, used to offer "Add to Split View". */
+  selectedTabIds?: string[]
 }
 
 /** Shared context-menu items for a tab in either the horizontal or vertical strip. */
 export function buildTabMenuItems(tab: TabState, options: TabMenuOptions): ContextMenuItem[] {
   const store = useBrowserStore.getState()
+  const splitSelection = options.selectedTabIds?.length === 2 ? options.selectedTabIds : null
+
+  const splitItems: ContextMenuItem[] = [
+    {
+      label: 'Add to Split View',
+      icon: <Columns2 className="h-3.5 w-3.5" />,
+      disabled: !splitSelection,
+      onSelect: () => {
+        if (splitSelection) store.openSplit(splitSelection[0], splitSelection[1])
+      }
+    },
+    ...(store.splitTabId
+      ? [
+          {
+            label: 'Exit split view',
+            icon: <Columns2 className="h-3.5 w-3.5" />,
+            onSelect: () => store.closeSplit()
+          }
+        ]
+      : [])
+  ]
 
   return [
     {
@@ -40,6 +74,7 @@ export function buildTabMenuItems(tab: TabState, options: TabMenuOptions): Conte
       icon: tab.muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />,
       onSelect: () => store.muteToggle(tab.id)
     },
+    ...splitItems,
     { separator: true },
     {
       label: 'Copy URL',

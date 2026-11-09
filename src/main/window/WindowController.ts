@@ -45,6 +45,7 @@ export class WindowController {
 
   private readonly tabViews = new Set<WebContentsView>()
   private activeTabView: WebContentsView | null = null
+  private splitSecondaryView: WebContentsView | null = null
   private chromeHeight = DEFAULT_CHROME_HEIGHT
   private bookmarksVisible = false
   private verticalTabs = false
@@ -292,19 +293,34 @@ export class WindowController {
     if (this.activeTabView === view) {
       this.activeTabView = null
     }
+    if (this.splitSecondaryView === view) {
+      this.splitSecondaryView = null
+    }
     this.applyLayout()
   }
 
   hideTabView(view: WebContentsView): void {
+    if (view === this.splitSecondaryView) return
     view.setVisible(false)
   }
 
   showTabView(view: WebContentsView): void {
     this.activeTabView = view
     for (const other of this.tabViews) {
-      other.setVisible(other === view)
+      other.setVisible(other === view || other === this.splitSecondaryView)
     }
     view.webContents.focus()
+    this.applyLayout()
+  }
+
+  /** Show `view` as the secondary split pane, or clear it with null. */
+  setSplitView(view: WebContentsView | null): void {
+    const previous = this.splitSecondaryView
+    this.splitSecondaryView = view
+    if (previous && previous !== view && previous !== this.activeTabView) {
+      previous.setVisible(false)
+    }
+    if (view) view.setVisible(true)
     this.applyLayout()
   }
 
@@ -453,5 +469,22 @@ export class WindowController {
       width: this.layout.contentWidth,
       height: this.layout.contentHeight
     })
+
+    // Split view: active tab left, secondary tab right, equal widths.
+    if (this.splitSecondaryView && this.activeTabView) {
+      const leftWidth = Math.floor(this.layout.contentWidth / 2)
+      this.activeTabView.setBounds({
+        x: this.layout.contentX,
+        y: this.layout.contentY,
+        width: leftWidth,
+        height: this.layout.contentHeight
+      })
+      this.splitSecondaryView.setBounds({
+        x: this.layout.contentX + leftWidth,
+        y: this.layout.contentY,
+        width: this.layout.contentWidth - leftWidth,
+        height: this.layout.contentHeight
+      })
+    }
   }
 }
