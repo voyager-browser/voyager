@@ -120,6 +120,9 @@ const api = {
       ipcRenderer.invoke(IpcChannels.TabsCloseToRight, id),
     copyUrl: (id: string): Promise<string | undefined> =>
       ipcRenderer.invoke(IpcChannels.TabsCopyUrl, id),
+    openSplit: (firstId: string, secondId: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannels.TabsOpenSplit, firstId, secondId),
+    closeSplit: (): Promise<void> => ipcRenderer.invoke(IpcChannels.TabsCloseSplit),
     reopenLastClosed: (): Promise<void> => ipcRenderer.invoke(IpcChannels.TabsReopenLastClosed),
     onStateChanged: (listener: (state: BrowserState) => void): Unsubscribe =>
       subscribe<BrowserState>(IpcChannels.TabsStateChanged, listener)

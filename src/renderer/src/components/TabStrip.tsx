@@ -50,10 +50,48 @@ export function TabStrip(): React.JSX.Element {
   const activateTab = useBrowserStore((state) => state.activateTab)
   const verticalTabs = useBrowserStore((state) => state.verticalTabs)
   const toggleVerticalTabs = useBrowserStore((state) => state.toggleVerticalTabs)
+  const splitTabId = useBrowserStore((state) => state.splitTabId)
 
   const [dragId, setDragId] = useState<string | null>(null)
   const [overId, setOverId] = useState<string | null>(null)
   const [menu, setMenu] = useState<TabMenuState | null>(null)
+  const [selection, setSelection] = useState<string[]>([])
+  const [anchorId, setAnchorId] = useState<string | null>(null)
+
+  const selectedIds = selection.filter((id) => tabs.some((tab) => tab.id === id))
+
+  const handleSelect = (tabId: string, event: React.MouseEvent): void => {
+    const index = tabs.findIndex((tab) => tab.id === tabId)
+    if (event.shiftKey) {
+      const anchor = anchorId ?? activeTabId ?? tabId
+      const anchorIndex = tabs.findIndex((tab) => tab.id === anchor)
+      if (anchorIndex !== -1 && index !== -1) {
+        const start = Math.min(anchorIndex, index)
+        const end = Math.max(anchorIndex, index)
+        setSelection(tabs.slice(start, end + 1).map((tab) => tab.id))
+        setAnchorId(anchor)
+        return
+      }
+    }
+    if (event.metaKey || event.ctrlKey) {
+      setSelection((previous) =>
+        previous.includes(tabId) ? previous.filter((id) => id !== tabId) : [...previous, tabId]
+      )
+      setAnchorId(tabId)
+      return
+    }
+    setSelection([tabId])
+    setAnchorId(tabId)
+    activateTab(tabId)
+  }
+
+  const openMenu = (tabId: string, x: number, y: number): void => {
+    if (!selection.includes(tabId)) {
+      setSelection([tabId])
+      setAnchorId(tabId)
+    }
+    setMenu({ x, y, tabId })
+  }
 
   const handleDrop = (targetId: string): void => {
     if (dragId && dragId !== targetId) {
@@ -71,7 +109,8 @@ export function TabStrip(): React.JSX.Element {
   const menuItems = menuTab
     ? buildTabMenuItems(menuTab, {
         verticalTabs,
-        onToggleVerticalTabs: toggleVerticalTabs
+        onToggleVerticalTabs: toggleVerticalTabs,
+        selectedTabIds: selectedIds
       })
     : []
 
@@ -99,8 +138,13 @@ export function TabStrip(): React.JSX.Element {
               <TabItem
                 tab={tab}
                 active={tab.id === activeTabId}
+                selected={selectedIds.includes(tab.id)}
+                split={
+                  splitTabId !== null && (tab.id === splitTabId || tab.id === activeTabId)
+                }
                 dragging={dragId === tab.id}
                 dropTarget={overId === tab.id}
+                onSelect={(event) => handleSelect(tab.id, event)}
                 onDragStart={setDragId}
                 onDragOver={setOverId}
                 onDrop={handleDrop}
@@ -109,8 +153,7 @@ export function TabStrip(): React.JSX.Element {
                   setOverId(null)
                 }}
                 onContextMenu={(x, y) => {
-                  activateTab(tab.id)
-                  setMenu({ x, y, tabId: tab.id })
+                  openMenu(tab.id, x, y)
                 }}
               />
             </Fragment>

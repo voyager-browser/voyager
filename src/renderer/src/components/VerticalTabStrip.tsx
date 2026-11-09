@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { PanelLeft, Plus, Volume2, VolumeX, X } from 'lucide-react'
+import { Columns2, PanelLeft, Plus, Volume2, VolumeX, X } from 'lucide-react'
 import type { TabState } from '../../../shared/types'
 import { VERTICAL_TAB_RAIL_COMPACT_WIDTH, VERTICAL_TAB_RAIL_WIDTH } from '../../../shared/constants'
 import { cn } from '../lib/cn'
@@ -32,11 +32,49 @@ export function VerticalTabStrip(): React.JSX.Element {
   const activateTab = useBrowserStore((state) => state.activateTab)
   const closeTab = useBrowserStore((state) => state.closeTab)
   const toggleVerticalTabs = useBrowserStore((state) => state.toggleVerticalTabs)
+  const splitTabId = useBrowserStore((state) => state.splitTabId)
 
   const [expanded, setExpanded] = useState(false)
   const [dragId, setDragId] = useState<string | null>(null)
   const [overId, setOverId] = useState<string | null>(null)
   const [menu, setMenu] = useState<RailMenuState | null>(null)
+  const [selection, setSelection] = useState<string[]>([])
+  const [anchorId, setAnchorId] = useState<string | null>(null)
+
+  const selectedIds = selection.filter((id) => tabs.some((tab) => tab.id === id))
+
+  const handleSelect = (tabId: string, event: React.MouseEvent): void => {
+    const index = tabs.findIndex((tab) => tab.id === tabId)
+    if (event.shiftKey) {
+      const anchor = anchorId ?? activeTabId ?? tabId
+      const anchorIndex = tabs.findIndex((tab) => tab.id === anchor)
+      if (anchorIndex !== -1 && index !== -1) {
+        const start = Math.min(anchorIndex, index)
+        const end = Math.max(anchorIndex, index)
+        setSelection(tabs.slice(start, end + 1).map((tab) => tab.id))
+        setAnchorId(anchor)
+        return
+      }
+    }
+    if (event.metaKey || event.ctrlKey) {
+      setSelection((previous) =>
+        previous.includes(tabId) ? previous.filter((id) => id !== tabId) : [...previous, tabId]
+      )
+      setAnchorId(tabId)
+      return
+    }
+    setSelection([tabId])
+    setAnchorId(tabId)
+    activateTab(tabId)
+  }
+
+  const openMenu = (tabId: string, x: number, y: number): void => {
+    if (!selection.includes(tabId)) {
+      setSelection([tabId])
+      setAnchorId(tabId)
+    }
+    setMenu({ x, y, tabId })
+  }
 
   useEffect(() => {
     void window.voyager.ui.setRailExpanded(expanded)
@@ -71,7 +109,8 @@ export function VerticalTabStrip(): React.JSX.Element {
   const menuItems = menuTab
     ? buildTabMenuItems(menuTab, {
         verticalTabs: true,
-        onToggleVerticalTabs: toggleVerticalTabs
+        onToggleVerticalTabs: toggleVerticalTabs,
+        selectedTabIds: selectedIds
       })
     : [
         {
@@ -142,10 +181,12 @@ export function VerticalTabStrip(): React.JSX.Element {
             key={tab.id}
             tab={tab}
             active={tab.id === activeTabId}
+            selected={selectedIds.includes(tab.id)}
+            split={splitTabId !== null && (tab.id === splitTabId || tab.id === activeTabId)}
             expanded={expanded}
             dragging={dragId === tab.id}
             dropTarget={overId === tab.id}
-            onActivate={() => activateTab(tab.id)}
+            onSelect={(event) => handleSelect(tab.id, event)}
             onClose={() => closeTab(tab.id)}
             onDragStart={() => setDragId(tab.id)}
             onDragOver={() => setOverId(tab.id)}
@@ -155,8 +196,7 @@ export function VerticalTabStrip(): React.JSX.Element {
               setOverId(null)
             }}
             onContextMenu={(x, y) => {
-              activateTab(tab.id)
-              setMenu({ x, y, tabId: tab.id })
+              openMenu(tab.id, x, y)
             }}
           />
         ))}
@@ -172,10 +212,12 @@ export function VerticalTabStrip(): React.JSX.Element {
 interface VerticalTabItemProps {
   tab: TabState
   active: boolean
+  selected: boolean
+  split: boolean
   expanded: boolean
   dragging: boolean
   dropTarget: boolean
-  onActivate: () => void
+  onSelect: (event: React.MouseEvent) => void
   onClose: () => void
   onDragStart: () => void
   onDragOver: () => void
@@ -187,10 +229,12 @@ interface VerticalTabItemProps {
 function VerticalTabItem({
   tab,
   active,
+  selected,
+  split,
   expanded,
   dragging,
   dropTarget,
-  onActivate,
+  onSelect,
   onClose,
   onDragStart,
   onDragOver,
@@ -205,7 +249,7 @@ function VerticalTabItem({
       aria-label={tab.title || 'New Tab'}
       draggable
       title={tab.title || tab.url}
-      onClick={onActivate}
+      onClick={onSelect}
       onDragStart={(event) => {
         event.dataTransfer.setData('text/plain', tab.id)
         event.dataTransfer.effectAllowed = 'move'
@@ -236,6 +280,8 @@ function VerticalTabItem({
         'group flex h-8 shrink-0 items-center rounded-md transition-colors',
         expanded ? 'gap-2 px-2' : 'justify-center',
         active ? 'bg-surface text-fg' : 'text-muted hover:bg-hover hover:text-fg',
+        selected && !active && 'bg-hover/70 text-fg',
+        split && 'ring-1 ring-inset ring-accent/60',
         dragging && 'opacity-40',
         dropTarget && 'ring-1 ring-inset ring-accent'
       )}
@@ -247,6 +293,8 @@ function VerticalTabItem({
           {tab.title || 'New Tab'}
         </span>
       )}
+
+      {expanded && split && <Columns2 className="h-3.5 w-3.5 shrink-0 text-accent" />}
 
       {expanded && tab.hasAudio && !active && <Volume2 className="h-3.5 w-3.5 shrink-0" />}
       {expanded && tab.muted && <VolumeX className="h-3.5 w-3.5 shrink-0" />}

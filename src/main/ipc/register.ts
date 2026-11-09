@@ -573,6 +573,14 @@ export function registerIpcHandlers(context: IpcContext): void {
     return tab?.url
   })
 
+  ipcMain.handle(IpcChannels.TabsOpenSplit, (event, firstId: string, secondId: string) =>
+    context.getWindow(event as any)?.tabs.openSplit(firstId, secondId)
+  )
+
+  ipcMain.handle(IpcChannels.TabsCloseSplit, (event) =>
+    context.getWindow(event as any)?.tabs.closeSplit()
+  )
+
   /* ---- navigation ------------------------------------------------------ */
 
   ipcMain.handle(IpcChannels.NavBack, (event) => context.getWindow(event as any)?.tabs.goBack())

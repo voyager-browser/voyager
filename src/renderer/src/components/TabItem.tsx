@@ -1,4 +1,4 @@
-import { Loader2, Volume2, VolumeX, X } from 'lucide-react'
+import { Columns2, Loader2, Volume2, VolumeX, X } from 'lucide-react'
 import type { TabState } from '../../../shared/types'
 import { cn } from '../lib/cn'
 import { useBrowserStore } from '../state/browserStore'
@@ -6,8 +6,11 @@ import { useBrowserStore } from '../state/browserStore'
 interface TabItemProps {
   tab: TabState
   active: boolean
+  selected: boolean
+  split: boolean
   dragging: boolean
   dropTarget: boolean
+  onSelect: (event: React.MouseEvent) => void
   onDragStart: (id: string) => void
   onDragOver: (id: string) => void
   onDrop: (id: string) => void
@@ -18,15 +21,17 @@ interface TabItemProps {
 export function TabItem({
   tab,
   active,
+  selected,
+  split,
   dragging,
   dropTarget,
+  onSelect,
   onDragStart,
   onDragOver,
   onDrop,
   onDragEnd,
   onContextMenu
 }: TabItemProps): React.JSX.Element {
-  const activateTab = useBrowserStore((state) => state.activateTab)
   const closeSelected = useBrowserStore((state) => state.closeTab)
 
   if (tab.pinned) {
@@ -36,7 +41,7 @@ export function TabItem({
         aria-selected={active}
         draggable
         title={tab.title}
-        onClick={() => activateTab(tab.id)}
+        onClick={onSelect}
         onDragStart={(event) => {
           event.dataTransfer.setData('text/plain', tab.id)
           event.dataTransfer.effectAllowed = 'move'
@@ -66,6 +71,8 @@ export function TabItem({
           'no-drag flex h-[31px] w-[36px] shrink-0 items-center justify-center rounded-t-[9px] border border-b-0',
           'transition-colors',
           active ? 'border-border bg-surface' : 'border-transparent hover:bg-hover',
+          selected && !active && 'bg-hover/70',
+          split && 'ring-1 ring-inset ring-accent/60',
           dragging && 'opacity-40',
           dropTarget && 'border-l-2 border-l-accent'
         )}
@@ -80,7 +87,7 @@ export function TabItem({
       role="tab"
       aria-selected={active}
       draggable
-      onClick={() => activateTab(tab.id)}
+      onClick={onSelect}
       onDragStart={(event) => {
         event.dataTransfer.setData('text/plain', tab.id)
         event.dataTransfer.effectAllowed = 'move'
@@ -112,6 +119,8 @@ export function TabItem({
         active
           ? 'border-border bg-surface text-fg'
           : 'border-transparent text-muted hover:bg-hover hover:text-fg',
+        selected && !active && 'bg-hover/70 text-fg',
+        split && 'ring-1 ring-inset ring-accent/60',
         dragging && 'opacity-40',
         dropTarget && 'border-l-2 border-l-accent'
       )}
@@ -122,6 +131,7 @@ export function TabItem({
         {tab.title || 'New Tab'}
       </span>
 
+      {split && <Columns2 className="h-3.5 w-3.5 shrink-0 text-accent" />}
       {tab.hasAudio && !active && <Volume2 className="h-3.5 w-3.5 shrink-0 text-muted" />}
       {tab.muted && <VolumeX className="h-3.5 w-3.5 shrink-0 text-muted" />}
 

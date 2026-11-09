@@ -36,6 +36,8 @@ interface BrowserStore extends BrowserState {
   closeOthers: (id: string) => void
   closeToRight: (id: string) => void
   copyTabUrl: (id: string) => void
+  openSplit: (firstId: string, secondId: string) => void
+  closeSplit: () => void
   reopenTab: () => void
   goBack: () => void
   goForward: () => void
@@ -50,6 +52,7 @@ interface BrowserStore extends BrowserState {
 export const useBrowserStore = create<BrowserStore>()((set, get) => ({
   tabs: [],
   activeTabId: null,
+  splitTabId: null,
   ready: false,
   incognito: false,
   profile: null,
@@ -58,7 +61,13 @@ export const useBrowserStore = create<BrowserStore>()((set, get) => ({
   showHomeButton: false,
   homeUrl: DEFAULT_NEW_TAB_URL,
 
-  applyState: (state) => set({ tabs: state.tabs, activeTabId: state.activeTabId, ready: true }),
+  applyState: (state) =>
+    set({
+      tabs: state.tabs,
+      activeTabId: state.activeTabId,
+      splitTabId: state.splitTabId ?? null,
+      ready: true
+    }),
   applyWindowState: (state) => set({ incognito: state.incognito, profile: state.profile }),
 
   setIncognito: (incognito) => set({ incognito }),
@@ -121,6 +130,12 @@ export const useBrowserStore = create<BrowserStore>()((set, get) => ({
   },
   copyTabUrl: (id) => {
     void window.voyager.tabs.copyUrl(id)
+  },
+  openSplit: (firstId, secondId) => {
+    void window.voyager.tabs.openSplit(firstId, secondId)
+  },
+  closeSplit: () => {
+    void window.voyager.tabs.closeSplit()
   },
   reopenTab: () => {
     void window.voyager.tabs.reopenLastClosed()

@@ -39,6 +39,7 @@ export class TabManager {
   private readonly entries = new Map<string, TabEntry>()
   private order: string[] = []
   private activeId: string | null = null
+  private splitId: string | null = null
   private readonly closedTabs: { url: string; title: string }[] = []
 
   constructor(
@@ -84,7 +85,29 @@ export class TabManager {
         discarded: entry.discarded
       })
     }
-    return { tabs, activeTabId: this.activeId }
+    return { tabs, activeTabId: this.activeId, splitTabId: this.splitId }
+  }
+
+  /** Show two tabs side by side (active/primary left, secondary right). */
+  openSplit(firstId: string, secondId: string): void {
+    if (firstId === secondId) return
+    if (!this.entries.has(firstId) || !this.entries.has(secondId)) return
+    const primaryId = this.activeId === secondId ? secondId : firstId
+    const secondaryId = primaryId === firstId ? secondId : firstId
+    if (this.activeId !== primaryId) this.activate(primaryId)
+    this.splitId = secondaryId
+    const secondary = this.entries.get(secondaryId)
+    if (!secondary) return
+    if (secondary.discarded) this.restoreDiscardedTab(secondary)
+    this.window.setSplitView(secondary.view)
+    this.broadcast()
+  }
+
+  closeSplit(): void {
+    if (!this.splitId) return
+    this.splitId = null
+    this.window.setSplitView(null)
+    this.broadcast()
   }
 
   create(request: NewTabRequest = {}): string {
@@ -146,6 +169,8 @@ export class TabManager {
       else entry.view.webContents.focus()
       return
     }
+    // Activating another tab exits split view; the user can create a new split.
+    if (this.splitId) this.closeSplit()
     const previous = this.activeId
     this.activeId = id
     if (previous) {
@@ -200,6 +225,10 @@ export class TabManager {
   close(id: string): void {
     const entry = this.entries.get(id)
     if (!entry) return
+
+    if (this.splitId && (id === this.splitId || id === this.activeId)) {
+      this.closeSplit()
+    }
 
     this.closedTabs.push({
       url: isNewTab(entry.url) ? DEFAULT_NEW_TAB_URL : entry.url,
