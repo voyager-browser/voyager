@@ -406,7 +406,9 @@ export class TabManager {
     if (wc.isDevToolsOpened()) {
       wc.closeDevTools()
     } else {
-      wc.openDevTools()
+      // Dock DevTools to the right of the page. Chromium then crops the page
+      // viewport instead of drawing DevTools on top of it or detaching it.
+      wc.openDevTools({ mode: 'right' })
     }
   }
 

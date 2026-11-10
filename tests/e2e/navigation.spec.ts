@@ -144,6 +144,25 @@ test('toggles DevTools for the active tab', async ({ voyager, server }) => {
   await expect.poll(() => devToolsOpen(voyager.app)).toBe(false)
 })
 
+test('docks DevTools beside a cropped page', async ({ voyager, server }) => {
+  await voyager.navigate(server.url('/home'))
+  const before = await voyager.tab.evaluate(() => window.innerWidth)
+
+  await voyager.chrome.evaluate(() => window.voyager.navigation.toggleDevTools())
+  await expect.poll(() => devToolsOpen(voyager.app)).toBe(true)
+  // A docked DevTools panel takes layout space from the page; a detached or
+  // overlaid panel leaves the page viewport untouched.
+  await expect
+    .poll(() => voyager.tab.evaluate(() => window.innerWidth), { timeout: 15_000 })
+    .toBeLessThan(before)
+
+  await voyager.chrome.evaluate(() => window.voyager.navigation.toggleDevTools())
+  await expect.poll(() => devToolsOpen(voyager.app)).toBe(false)
+  await expect
+    .poll(() => voyager.tab.evaluate(() => window.innerWidth), { timeout: 15_000 })
+    .toBe(before)
+})
+
 test('opens links clicked from DevTools in a new Voyager tab', async ({ voyager, server }) => {
   await voyager.navigate(server.url('/home'))
   const target = server.url('/second')
