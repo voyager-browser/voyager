@@ -80,7 +80,8 @@
           "EphemeralBrowserSessionIsSupported": true,
           "CallbackURLMatchingIsSupported": true
         }
-      }
+      },
+      "x64ArchFiles": "Contents/Resources/app/node_modules/objc-js/prebuilds/**"
     },
     "win": {
       "target": [
