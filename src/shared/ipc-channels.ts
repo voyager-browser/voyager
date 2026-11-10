@@ -126,6 +126,9 @@ export const IpcChannels = {
   AutofillRecordFormField: 'autofill:record-form-field',
   AutofillGetFillData: 'autofill:get-fill-data',
 
+  WebAuthnCreate: 'webauthn:create',
+  WebAuthnGet: 'webauthn:get',
+
   WindowsOpen: 'windows:open',
   WindowsOpenIncognito: 'windows:open-incognito',
   WindowsGetState: 'windows:get-state',
