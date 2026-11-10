@@ -9,6 +9,18 @@ contextBridge.exposeInMainWorld(PROMPT_BRIDGE, (message: string, defaultValue: s
   ipcRenderer.sendSync(IpcChannels.TabPrompt, { message, defaultValue })
 )
 
+// WebAuthn/passkey bridge (macOS uses native AuthenticationServices via the
+// main process). Exposed to the page world so the navigator.credentials wrapper
+// can invoke it; other platforms keep Chromium's native WebAuthn.
+if (process.platform === 'darwin') {
+  contextBridge.exposeInMainWorld('__voyagerWebAuthn', {
+    create: (payload: { options?: unknown; origin: string; topOrigin?: string }) =>
+      ipcRenderer.invoke(IpcChannels.WebAuthnCreate, payload),
+    get: (payload: { options?: unknown; origin: string; topOrigin?: string }) =>
+      ipcRenderer.invoke(IpcChannels.WebAuthnGet, payload)
+  })
+}
+
 const CUSTOM_USER_AGENT = (() => {
   try {
     const ua = ipcRenderer.sendSync(IpcChannels.TabGetUserAgent)
@@ -68,6 +80,100 @@ void webFrame.executeJavaScript(`
         toJSON() { return { brands, mobile, platform }; }
       };
       try { Object.defineProperty(nav, 'userAgentData', { get: () => uaData, configurable: true }); } catch {}
+    }
+
+    // macOS: route WebAuthn publicKey operations through native AuthenticationServices
+    // (supports platform passkeys, security keys, and cross-device QR). Other platforms
+    // use Chromium's native implementation.
+    if (${JSON.stringify(process.platform === 'darwin')} && window.__voyagerWebAuthn && navigator.credentials) {
+      const b64uToBuf = (s) => {
+        if (s == null) return null;
+        if (s instanceof ArrayBuffer) return s;
+        if (ArrayBuffer.isView(s)) return s.buffer.slice(s.byteOffset, s.byteOffset + s.byteLength);
+        if (typeof s !== 'string') return s;
+        const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4);
+        const bin = atob(b64);
+        const out = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+        return out.buffer;
+      };
+      const bufToB64u = (buf) => {
+        if (buf == null) return null;
+        const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+        let bin = '';
+        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        return btoa(bin).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');
+      };
+      const toCredError = (err, fallback) => {
+        const name = (err && err.error) || fallback || 'NotAllowedError';
+        const msg = (err && (err.message || (err.errorObject && err.errorObject.message))) || String(name);
+        try { return new DOMException(msg, name); } catch { return new Error(msg); }
+      };
+      const buildGetCredential = (d) => {
+        const rawId = b64uToBuf(d.credentialId);
+        const response = {
+          clientDataJSON: b64uToBuf(d.clientDataJSON),
+          authenticatorData: b64uToBuf(d.authenticatorData),
+          signature: b64uToBuf(d.signature),
+          userHandle: b64uToBuf(d.userHandle),
+          getAuthenticatorData() { return this.authenticatorData; },
+          getPublicKey() { return null; },
+          getPublicKeyAlgorithm() { return -7; },
+          getTransports() { return []; },
+          toJSON() { return { clientDataJSON: bufToB64u(this.clientDataJSON), authenticatorData: bufToB64u(this.authenticatorData), signature: bufToB64u(this.signature), userHandle: this.userHandle ? bufToB64u(this.userHandle) : null }; }
+        };
+        return {
+          id: typeof d.credentialId === 'string' ? d.credentialId : bufToB64u(rawId),
+          rawId, type: 'public-key',
+          authenticatorAttachment: d.authenticatorAttachment || 'platform',
+          response,
+          getClientExtensionResults() { return d.extensions || {}; },
+          toJSON() { return { id: this.id, rawId: bufToB64u(this.rawId), type: this.type, authenticatorAttachment: this.authenticatorAttachment, response: this.response.toJSON(), clientExtensionResults: this.getClientExtensionResults() }; }
+        };
+      };
+      const buildCreateCredential = (d) => {
+        const rawId = b64uToBuf(d.credentialId);
+        const response = {
+          clientDataJSON: b64uToBuf(d.clientDataJSON),
+          attestationObject: b64uToBuf(d.attestationObject),
+          getAuthenticatorData() { return b64uToBuf(d.authData); },
+          getPublicKey() { return b64uToBuf(d.publicKey); },
+          getPublicKeyAlgorithm() { return d.publicKeyAlgorithm ?? -7; },
+          getTransports() { return Array.isArray(d.transports) ? d.transports : []; },
+          toJSON() { return { clientDataJSON: bufToB64u(this.clientDataJSON), attestationObject: bufToB64u(this.attestationObject), authenticatorData: bufToB64u(b64uToBuf(d.authData)), publicKey: bufToB64u(b64uToBuf(d.publicKey)), publicKeyAlgorithm: this.getPublicKeyAlgorithm(), transports: this.getTransports() }; }
+        };
+        return {
+          id: typeof d.credentialId === 'string' ? d.credentialId : bufToB64u(rawId),
+          rawId, type: 'public-key',
+          authenticatorAttachment: d.authenticatorAttachment || 'platform',
+          response,
+          getClientExtensionResults() { return d.extensions || {}; },
+          toJSON() { return { id: this.id, rawId: bufToB64u(this.rawId), type: this.type, authenticatorAttachment: this.authenticatorAttachment, response: this.response.toJSON(), clientExtensionResults: this.getClientExtensionResults() }; }
+        };
+      };
+      const orig = navigator.credentials;
+      const wrap = {
+        async create(options) {
+          if (!options || !options.publicKey) return orig.create(options);
+          const result = await window.__voyagerWebAuthn.create({ options: options.publicKey, origin: location.origin, topOrigin: (()=>{try{return top.location.origin}catch{return undefined}})() });
+          if (result && result.success && result.data) return buildCreateCredential(result.data);
+          throw toCredError(result, 'NotAllowedError');
+        },
+        async get(options) {
+          if (!options || !options.publicKey) return orig.get(options);
+          // Conditional mediation and abort signals have special semantics; keep native
+          // behavior when the bridge can't faithfully represent them.
+          if (options.mediation === 'conditional') return orig.get(options);
+          if (options.signal && options.signal.aborted) throw toCredError({ error: 'AbortError' }, 'AbortError');
+          const result = await window.__voyagerWebAuthn.get({ options: options.publicKey, origin: location.origin, topOrigin: (()=>{try{return top.location.origin}catch{return undefined}})() });
+          if (result && result.success && result.data) return buildGetCredential(result.data);
+          if (result && result.error === 'AbortError') throw toCredError(result, 'AbortError');
+          throw toCredError(result, 'NotAllowedError');
+        },
+        store: orig.store ? orig.store.bind(orig) : undefined,
+        preventSilentAccess: orig.preventSilentAccess ? orig.preventSilentAccess.bind(orig) : undefined
+      };
+      try { Object.defineProperty(navigator, 'credentials', { configurable: true, get: () => wrap }); } catch {}
     }
   })()
 `)
