@@ -25,6 +25,10 @@ const AUTO_ALLOWED_PERMISSIONS = new Set([
   'keyboardLock',
   'persistent-storage',
   'pointerLock',
+  // WebAuthn/passkeys show their own platform UI (Touch ID, security keys,
+  // cross-device QR). Blocking here causes "limited passkey support".
+  'publickey-credentials-create',
+  'publickey-credentials-get',
   'storage-access',
   'top-level-storage-access'
 ])
