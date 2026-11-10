@@ -23,6 +23,7 @@
     "dist": "npm run build && electron-builder",
     "dist:linux": "npm run build && electron-builder --linux --publish never",
     "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "dist:mac:passkeys": "npm run build && node scripts/build-mac-passkeys.mjs",
     "dist:win": "npm run build && electron-builder --win --publish never"
   },
   "build": {

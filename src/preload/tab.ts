@@ -157,7 +157,9 @@ void webFrame.executeJavaScript(`
           if (!options || !options.publicKey) return orig.create(options);
           const result = await window.__voyagerWebAuthn.create({ options: options.publicKey, origin: location.origin, topOrigin: (()=>{try{return top.location.origin}catch{return undefined}})() });
           if (result && result.success && result.data) return buildCreateCredential(result.data);
-          throw toCredError(result, 'NotAllowedError');
+          const failure = toCredError(result, 'NotAllowedError');
+          console.warn('[voyager] WebAuthn create failed:', failure.message);
+          throw failure;
         },
         async get(options) {
           if (!options || !options.publicKey) return orig.get(options);
@@ -168,7 +170,9 @@ void webFrame.executeJavaScript(`
           const result = await window.__voyagerWebAuthn.get({ options: options.publicKey, origin: location.origin, topOrigin: (()=>{try{return top.location.origin}catch{return undefined}})() });
           if (result && result.success && result.data) return buildGetCredential(result.data);
           if (result && result.error === 'AbortError') throw toCredError(result, 'AbortError');
-          throw toCredError(result, 'NotAllowedError');
+          const failure = toCredError(result, 'NotAllowedError');
+          console.warn('[voyager] WebAuthn get failed:', failure.message);
+          throw failure;
         },
         store: orig.store ? orig.store.bind(orig) : undefined,
         preventSilentAccess: orig.preventSilentAccess ? orig.preventSilentAccess.bind(orig) : undefined

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- Electron needs JIT and writable executable memory for V8. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- Browsing and updates. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+    <!-- Security keys / passkey authenticators may use USB. -->
+    <key>com.apple.security.device.usb</key>
+    <true/>
+    <!-- Replaced with the Apple Developer Team ID by scripts/build-mac-passkeys.mjs. -->
+    <key>com.apple.application-identifier</key>
+    <string>__APPLE_TEAM_ID__.com.voyager.browser</string>
+    <key>com.apple.developer.team-identifier</key>
+    <string>__APPLE_TEAM_ID__</string>
+    <!-- Restricted capability: lets Voyager act as a WebAuthn browser for any
+         relying-party domain. Requires Apple approval and a provisioning
+         profile that includes this entitlement. -->
+    <key>com.apple.developer.web-browser.public-key-credential</key>
+    <true/>
+  </dict>
+</plist>

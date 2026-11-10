@@ -6,6 +6,11 @@ out/
 dist/
 release/
 
+# Local macOS signing material
+build/*.provisionprofile
+build/profile.provisionprofile
+build/entitlements.mac.passkeys.generated.plist
+
 # Tooling caches
 .vite/
 .eslintcache

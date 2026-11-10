@@ -21,6 +21,14 @@ A modern, pretty web browser built with Electron.
 
 Read [CONTRIBUTING.md](./CONTRIBUTING.md) to get started contributing to Voyager!
 
+## Passkeys
+
+Passkeys work out of the box on Windows and Linux. macOS platform passkeys use
+Apple's `AuthenticationServices` and require an approved WebAuthn browser
+entitlement plus a signed build with an embedded provisioning profile. See
+[docs/passkeys.md](./docs/passkeys.md) for the setup and
+`npm run dist:mac:passkeys` build command.
+
 ## Performance
 
 This is a table of how Voyager performs on a MDN page:
