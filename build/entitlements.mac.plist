@@ -14,5 +14,8 @@
     <true/>
     <key>com.apple.security.network.server</key>
     <true/>
+    <!-- Security keys / passkey authenticators may use USB. -->
+    <key>com.apple.security.device.usb</key>
+    <true/>
   </dict>
 </plist>
