@@ -86,6 +86,15 @@ import { createAppMenu } from './menu/menu'
 app.whenReady().then(async (): Promise<void> => {
   if (!hasSingleInstanceLock) return
 
+  if (process.platform === 'darwin') {
+    // Register Electron's platform-passkey discovery so pages see a platform
+    // authenticator from PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+    // and getClientCapabilities(). The create/get calls themselves still go
+    // through the electron-webauthn bridge in the tab preload, which supports
+    // arbitrary relying-party domains.
+    app.configureWebAuthn({ platformPasskeys: true })
+  }
+
   // The default profile's session also backs the settings window, so it is
   // always prepared even when the app starts in a named profile.
   ensureProfileSession(DEFAULT_PROFILE_ID)
