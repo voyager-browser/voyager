@@ -8,8 +8,12 @@ import {
   isFilterListId,
   type FilterListId
 } from '../../shared/filter-lists'
-import type { CustomFilterFile } from '../../shared/types'
-import { getSettings, profileDataDir } from '../store'
+import type {
+  ContentBlockingHostCount,
+  ContentBlockingStats,
+  CustomFilterFile
+} from '../../shared/types'
+import { getSettings, profileDataDir, setSettings } from '../store'
 import { readJsonFile, writeJsonFile } from '../store/jsonFile'
 
 /**
@@ -358,6 +362,191 @@ export function removeCustomFilterFile(profileId: string, id: string): void {
   writeCachedLists(profileId, cached)
 }
 
+/** Turn a URL or hostname into the lowercase hostname used for exceptions. */
+export function normalizeBlockingHost(value: string): string | null {
+  const trimmed = value.trim().toLowerCase()
+  if (!trimmed) return null
+  try {
+    const host = new URL(trimmed).hostname
+    if (host) return host
+  } catch {
+    // Fall through to plain hostname handling.
+  }
+  if (/^(about|data|blob|javascript|file|voyager|chrome|devtools):/i.test(trimmed)) return null
+  if (trimmed.startsWith('[')) {
+    const end = trimmed.indexOf(']')
+    return end > 1 ? trimmed.slice(0, end + 1) : null
+  }
+  const host = trimmed.split('/')[0]?.split(':')[0]?.replace(/\.$/, '') ?? ''
+  return host || null
+}
+
+const exceptionsCache = new Map<string, string[]>()
+
+/** Hostnames where tracker blocking is turned off for a profile. */
+export function contentBlockingExceptions(profileId: string): string[] {
+  const cached = exceptionsCache.get(profileId)
+  if (cached) return cached
+  const stored = getSettings(profileId, 'contentBlockingExceptions', [])
+  const hosts = Array.isArray(stored)
+    ? stored.map((entry) => (typeof entry === 'string' ? normalizeBlockingHost(entry) : null))
+    : []
+  const normalized = [...new Set(hosts.filter((host): host is string => host !== null))].sort()
+  exceptionsCache.set(profileId, normalized)
+  return normalized
+}
+
+/** Replace a profile's exception list after normalizing and de-duplicating it. */
+export function setContentBlockingExceptions(profileId: string, hosts: string[]): string[] {
+  const normalized = [
+    ...new Set(
+      hosts
+        .map((entry) => normalizeBlockingHost(entry))
+        .filter((host): host is string => host !== null)
+    )
+  ].sort()
+  setSettings(profileId, 'contentBlockingExceptions', normalized)
+  exceptionsCache.set(profileId, normalized)
+  return normalized
+}
+
+function isContentBlockingExempt(profileId: string, hostname: string): boolean {
+  return contentBlockingExceptions(profileId).includes(hostname)
+}
+
+/** Turn tracker blocking on or off for one hostname. */
+export function setContentBlockingSiteEnabled(
+  profileId: string,
+  site: string,
+  enabled: boolean
+): void {
+  const host = normalizeBlockingHost(site)
+  if (!host) throw new Error('Invalid site hostname')
+  const next = new Set(contentBlockingExceptions(profileId))
+  if (enabled) next.delete(host)
+  else next.add(host)
+  setContentBlockingExceptions(profileId, [...next])
+}
+
+interface BlockingCounters {
+  blocked: number
+  hosts: Map<string, number>
+}
+
+interface PageBlockingCounters extends BlockingCounters {
+  profileId: string
+  site: string | null
+}
+
+const MAX_TRACKED_HOSTS = 100
+const TOP_HOSTS_LIMIT = 5
+
+const pageCounters = new Map<number, PageBlockingCounters>()
+const sessionCounters = new Map<string, BlockingCounters>()
+
+function newCounters(): BlockingCounters {
+  return { blocked: 0, hosts: new Map() }
+}
+
+function sessionCountersFor(profileId: string): BlockingCounters {
+  let counters = sessionCounters.get(profileId)
+  if (!counters) {
+    counters = newCounters()
+    sessionCounters.set(profileId, counters)
+  }
+  return counters
+}
+
+/** Keep per-host maps bounded so long sessions cannot grow without limit. */
+function incrementHost(hosts: Map<string, number>, host: string): void {
+  const current = hosts.get(host)
+  if (current !== undefined) {
+    hosts.set(host, current + 1)
+  } else if (hosts.size < MAX_TRACKED_HOSTS) {
+    hosts.set(host, 1)
+  }
+}
+
+function topHosts(hosts: Map<string, number>): ContentBlockingHostCount[] {
+  return [...hosts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, TOP_HOSTS_LIMIT)
+    .map(([host, count]) => ({ host, count }))
+}
+
+/** Start fresh counters for a page load; called when a tab navigates. */
+export function resetContentBlockingPage(
+  webContentsId: number,
+  profileId: string,
+  url: string
+): void {
+  pageCounters.set(webContentsId, {
+    profileId,
+    site: normalizeBlockingHost(url),
+    blocked: 0,
+    hosts: new Map()
+  })
+}
+
+/** Update the page's site without discarding counters collected so far. */
+export function trackContentBlockingPage(
+  webContentsId: number,
+  profileId: string,
+  url: string
+): void {
+  const page = pageCounters.get(webContentsId)
+  if (!page) {
+    resetContentBlockingPage(webContentsId, profileId, url)
+    return
+  }
+  page.profileId = profileId
+  page.site = normalizeBlockingHost(url)
+}
+
+/** Drop per-page counters when a tab's WebContents is destroyed. */
+export function clearContentBlockingPage(webContentsId: number): void {
+  pageCounters.delete(webContentsId)
+}
+
+/** Snapshot of tracker-blocking activity for a profile and, optionally, a page. */
+export function contentBlockingStats(
+  profileId: string,
+  webContentsId?: number | null
+): ContentBlockingStats {
+  const session = sessionCounters.get(profileId) ?? newCounters()
+  const page =
+    webContentsId === undefined || webContentsId === null
+      ? undefined
+      : pageCounters.get(webContentsId)
+  const exceptions = contentBlockingExceptions(profileId)
+  const site = page?.site ?? null
+  return {
+    enabled: (getSettings(profileId, 'contentBlocking', false) as boolean) === true,
+    sessionBlocked: session.blocked,
+    topHosts: topHosts(session.hosts),
+    pageBlocked: page?.blocked ?? 0,
+    pageHosts: topHosts(page?.hosts ?? new Map()),
+    site,
+    siteEnabled: site === null || !exceptions.includes(site),
+    exceptions
+  }
+}
+
+function recordBlockedRequest(
+  profileId: string,
+  webContentsId: number | undefined,
+  hostname: string
+): void {
+  const session = sessionCountersFor(profileId)
+  session.blocked += 1
+  incrementHost(session.hosts, hostname)
+  if (webContentsId === undefined) return
+  const page = pageCounters.get(webContentsId)
+  if (!page) return
+  page.blocked += 1
+  incrementHost(page.hosts, hostname)
+}
+
 const attachedSessions = new WeakSet<Session>()
 
 /**
@@ -380,12 +569,24 @@ export function attachContentBlocking(ses: Session, profileId: string): void {
       callback({ cancel: false })
       return
     }
+    const webContentsId = details.webContentsId
+    const page = webContentsId === undefined ? undefined : pageCounters.get(webContentsId)
+    // A site exception disables blocking for every request the page makes.
+    if (page?.site && isContentBlockingExempt(profileId, page.site)) {
+      callback({ cancel: false })
+      return
+    }
     let hostname: string | null
     try {
       hostname = new URL(details.url).hostname
     } catch {
       hostname = null
     }
-    callback({ cancel: hostname !== null && isBlockedHost(profileId, hostname) })
+    if (hostname === null || !isBlockedHost(profileId, hostname)) {
+      callback({ cancel: false })
+      return
+    }
+    recordBlockedRequest(profileId, webContentsId, hostname)
+    callback({ cancel: true })
   })
 }

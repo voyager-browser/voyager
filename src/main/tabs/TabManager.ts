@@ -7,6 +7,11 @@ import { matchShortcut, type BrowserAction } from '../../shared/keyboard'
 import type { BrowserState, NewTabRequest, TabState } from '../../shared/types'
 import { isNewTab, startPageUrl } from '../../shared/url'
 import { currentHistoryState, recordVisit, updateHistoryTitle } from '../history/history'
+import {
+  clearContentBlockingPage,
+  resetContentBlockingPage,
+  trackContentBlockingPage
+} from '../contentBlocking/contentBlocking'
 import { openSettingsWindow } from '../window/settingsWindow'
 import { getSettings } from '../store'
 import type { WindowController } from '../window/WindowController'
@@ -62,6 +67,11 @@ export class TabManager {
       if (entry.view.webContents.id === webContents.id) return id
     }
     return null
+  }
+
+  /** Numeric WebContents id for the active tab, when there is one. */
+  activeWebContentsId(): number | null {
+    return this.activeWebContents()?.id ?? null
   }
 
   snapshot(): BrowserState {
@@ -571,9 +581,14 @@ export class TabManager {
       entry.loading = false
       this.broadcast()
     })
+    wc.on('did-start-navigation', (_event, url, isInPlace, isMainFrame) => {
+      if (!isMainFrame || isInPlace) return
+      resetContentBlockingPage(wc.id, this.window.profile, url)
+    })
     wc.on('did-navigate', (_event, url) => {
       if (entry.discarding || (entry.discarded && url === 'about:blank')) return
       entry.url = url
+      trackContentBlockingPage(wc.id, this.window.profile, url)
       // Record history for main frame navigations to real pages.
       if (!isNewTab(url) && url.startsWith('http') && !this.window.isIncognito) {
         try {
@@ -590,6 +605,7 @@ export class TabManager {
       if (isMainFrame) {
         if (entry.discarding || (entry.discarded && url === 'about:blank')) return
         entry.url = url
+        trackContentBlockingPage(wc.id, this.window.profile, url)
         if (!isNewTab(url) && url.startsWith('http') && !this.window.isIncognito) {
           try {
             const profileId = this.window.profile
@@ -606,8 +622,14 @@ export class TabManager {
       }
     })
     wc.on('did-fail-load', (_event, _code, _description, url, isMainFrame) => {
-      if (isMainFrame) entry.url = url
+      if (isMainFrame) {
+        entry.url = url
+        trackContentBlockingPage(wc.id, this.window.profile, url)
+      }
       this.broadcast()
+    })
+    wc.on('destroyed', () => {
+      clearContentBlockingPage(wc.id)
     })
     wc.on('render-process-gone', () => {
       entry.crashed = true

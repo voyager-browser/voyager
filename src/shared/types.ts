@@ -261,6 +261,32 @@ export interface CustomFilterFile {
   addedAt: number
 }
 
+/** A hostname and how many requests to it were blocked. */
+export interface ContentBlockingHostCount {
+  host: string
+  count: number
+}
+
+/** Live tracker-blocking activity for the active profile. */
+export interface ContentBlockingStats {
+  /** Whether tracker blocking is enabled for the profile. */
+  enabled: boolean
+  /** Requests blocked across the whole profile session. */
+  sessionBlocked: number
+  /** Busiest blocked hosts for the whole session, highest first. */
+  topHosts: ContentBlockingHostCount[]
+  /** Requests blocked on the active page, when requested from a browser window. */
+  pageBlocked: number
+  /** Busiest blocked hosts for the active page, highest first. */
+  pageHosts: ContentBlockingHostCount[]
+  /** Hostname of the active page, when known. */
+  site: string | null
+  /** False when tracker blocking is turned off for the active site. */
+  siteEnabled: boolean
+  /** Hostnames where tracker blocking is turned off. */
+  exceptions: string[]
+}
+
 export interface UserPreferences {
   clearHistory: boolean
   clearDownloads: boolean
@@ -287,6 +313,8 @@ export interface UserPreferences {
   customFilterLists: string[]
   /** Imported hosts-format files stored locally. */
   customFilterFiles: CustomFilterFile[]
+  /** Hostnames where tracker blocking is turned off. */
+  contentBlockingExceptions: string[]
   /** Proxy mode for this profile. */
   proxyMode: ProxyMode
   /** Proxy scheme when using a fixed proxy server. */

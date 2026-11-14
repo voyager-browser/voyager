@@ -15,6 +15,7 @@ import type {
   CertificateDetails,
   CertificateExportFormat,
   ClearBrowsingDataOptions,
+  ContentBlockingStats,
   DownloadsState,
   HistoryState,
   NewBookmarkFolderInput,
@@ -91,6 +92,13 @@ const api = {
       ipcRenderer.invoke(IpcChannels.ContentBlockingRemoveFile, id),
     onChanged: (listener: (preferences: UserPreferences) => void): Unsubscribe =>
       subscribe(IpcChannels.SettingsChanged, listener)
+  },
+
+  contentBlocking: {
+    getStats: (): Promise<ContentBlockingStats> =>
+      ipcRenderer.invoke(IpcChannels.ContentBlockingGetStats),
+    setSiteEnabled: (site: string, enabled: boolean): Promise<ContentBlockingStats> =>
+      ipcRenderer.invoke(IpcChannels.ContentBlockingSetSiteEnabled, site, enabled)
   },
 
   browsingData: {
