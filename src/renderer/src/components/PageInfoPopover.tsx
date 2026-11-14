@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Globe, Lock, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { PERMISSION_LABELS, permissionOriginForUrl } from '../../../shared/permissions'
+import type { ContentBlockingStats } from '../../../shared/types'
 import { safeParseUrl, securityLevelFor } from '../../../shared/url'
 import { cn } from '../lib/cn'
 import { useOriginPermissions, usePermissionsStore } from '../state/permissionsStore'
@@ -17,6 +18,36 @@ export function PageInfoPopover({ url, title }: PageInfoPopoverProps): React.JSX
   const origin = permissionOriginForUrl(url)
   const sitePermissions = useOriginPermissions(origin)
   const [certificateOpen, setCertificateOpen] = useState(false)
+  const [stats, setStats] = useState<ContentBlockingStats | null>(null)
+  const [siteBusy, setSiteBusy] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    const refresh = (): void => {
+      void window.voyager.contentBlocking
+        .getStats()
+        .then((next) => {
+          if (active) setStats(next)
+        })
+        .catch(() => undefined)
+    }
+    refresh()
+    const timer = window.setInterval(refresh, 1500)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [url])
+
+  const setSiteBlocking = async (enabled: boolean): Promise<void> => {
+    if (!stats?.site) return
+    setSiteBusy(true)
+    try {
+      setStats(await window.voyager.contentBlocking.setSiteEnabled(stats.site, enabled))
+    } finally {
+      setSiteBusy(false)
+    }
+  }
 
   return (
     <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-border bg-surface shadow-xl shadow-black/15">
@@ -63,6 +94,64 @@ export function PageInfoPopover({ url, title }: PageInfoPopoverProps): React.JSX
         <p className="flex items-center gap-1.5 px-3.5 pb-3 text-[11.5px] text-danger">
           <Lock className="h-3 w-3" /> Use HTTPS to protect your data
         </p>
+      )}
+
+      {stats && (
+        <div className="border-t border-border px-3.5 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[12.5px] font-medium text-fg">Tracker blocking</p>
+            {stats.enabled && stats.site && (
+              <label className="flex shrink-0 items-center gap-1.5 text-[11.5px] text-muted">
+                <input
+                  type="checkbox"
+                  aria-label="Block trackers on this site"
+                  checked={stats.siteEnabled}
+                  disabled={siteBusy}
+                  onChange={(event) => void setSiteBlocking(event.target.checked)}
+                />
+                <span>Block here</span>
+              </label>
+            )}
+          </div>
+
+          {!stats.enabled ? (
+            <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
+              Tracker blocking is off for this profile. Turn it on in Settings to stop ads and
+              trackers from loading.
+            </p>
+          ) : (
+            <>
+              <p className="mt-1 text-[11.5px] text-muted">
+                {stats.pageBlocked === 0
+                  ? 'No requests blocked on this page.'
+                  : `${stats.pageBlocked} request${
+                      stats.pageBlocked === 1 ? '' : 's'
+                    } blocked on this page.`}
+              </p>
+              {stats.pageHosts.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {stats.pageHosts.slice(0, 3).map((entry) => (
+                    <li
+                      key={entry.host}
+                      className="flex items-center justify-between gap-3 text-[11.5px]"
+                    >
+                      <span className="min-w-0 truncate text-muted">{entry.host}</span>
+                      <span className="shrink-0 tabular-nums text-fg">{entry.count}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-2 text-[11px] text-muted">
+                {stats.sessionBlocked} blocked this session
+              </p>
+              {stats.site && !stats.siteEnabled && (
+                <p className="mt-1 text-[11px] text-muted">
+                  Blocking is off for {stats.site}. Use the checkbox to turn it back on.
+                </p>
+              )}
+            </>
+          )}
+        </div>
       )}
 
       {level === 'secure' && (

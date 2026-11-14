@@ -38,6 +38,7 @@ import type {
   AutofillContact,
   AutofillPaymentMethod,
   AutofillState,
+  ContentBlockingStats,
   ThemeMode,
   UserPreferences
 } from '../../../shared/types'
@@ -163,6 +164,7 @@ export function SettingsPage(): React.JSX.Element {
     filterLists: [...DEFAULT_FILTER_LISTS],
     customFilterLists: [],
     customFilterFiles: [],
+    contentBlockingExceptions: [],
     proxyMode: DEFAULT_PROXY_CONFIG.mode,
     proxyScheme: DEFAULT_PROXY_CONFIG.scheme,
     proxyHost: DEFAULT_PROXY_CONFIG.host,
@@ -182,6 +184,7 @@ export function SettingsPage(): React.JSX.Element {
   const [customFilterUrl, setCustomFilterUrl] = useState('')
   const [customFilterError, setCustomFilterError] = useState<string | null>(null)
   const [importingFilterFile, setImportingFilterFile] = useState(false)
+  const [blockingStats, setBlockingStats] = useState<ContentBlockingStats | null>(null)
   const [clearing, setClearing] = useState(false)
   const [initialRoute] = useState(sitePermissionsRoute)
   const [sitePermissionsOpen, setSitePermissionsOpen] = useState(initialRoute.open)
@@ -242,6 +245,24 @@ export function SettingsPage(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
+    let active = true
+    const refresh = (): void => {
+      void window.voyager.contentBlocking
+        .getStats()
+        .then((next) => {
+          if (active) setBlockingStats(next)
+        })
+        .catch(() => undefined)
+    }
+    refresh()
+    const timer = window.setInterval(refresh, 2000)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  useEffect(() => {
     document.title = 'Settings - Voyager'
   }, [])
 
@@ -259,6 +280,8 @@ export function SettingsPage(): React.JSX.Element {
     const prefs = await window.voyager.settings.set(key, value)
     setPreferences(prefs)
   }
+
+  const blockingExceptions = blockingStats?.exceptions ?? preferences.contentBlockingExceptions
 
   const clearSelected = async () => {
     setClearing(true)
@@ -951,6 +974,79 @@ export function SettingsPage(): React.JSX.Element {
                 Blocks requests to known advertising and tracking domains using the built-in list
                 plus any remote lists you enable below. Off by default.
               </p>
+
+              <div className="mt-3 rounded-md border border-border bg-bg p-3">
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <p className="text-[12px] font-medium text-fg">This session</p>
+                    <p className="text-[11.5px] text-muted">Requests blocked for this profile</p>
+                  </div>
+                  <p className="text-[20px] font-semibold leading-none text-fg tabular-nums">
+                    {blockingStats?.sessionBlocked ?? 0}
+                  </p>
+                </div>
+
+                {(blockingStats?.topHosts.length ?? 0) > 0 && (
+                  <div className="mt-3">
+                    <p className="text-[12px] font-medium text-fg">Top blocked hosts</p>
+                    <ul className="mt-1 space-y-1">
+                      {blockingStats?.topHosts.map((entry) => (
+                        <li
+                          key={entry.host}
+                          className="flex items-center justify-between gap-3 text-[11.5px]"
+                        >
+                          <span className="min-w-0 truncate text-muted">{entry.host}</span>
+                          <span className="shrink-0 text-fg tabular-nums">{entry.count}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {blockingExceptions.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-[12px] font-medium text-fg">Allowed sites</p>
+                    <p className="mt-0.5 text-[11.5px] text-muted">
+                      Tracker blocking is off for these sites.
+                    </p>
+                    <ul className="mt-1.5 space-y-1.5">
+                      {blockingExceptions.map((host) => (
+                        <li
+                          key={host}
+                          className="flex items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5"
+                        >
+                          <span
+                            className="min-w-0 flex-1 truncate text-[11.5px] text-fg"
+                            title={host}
+                          >
+                            {host}
+                          </span>
+                          <button
+                            type="button"
+                            className="shrink-0 text-[11.5px] text-accent hover:underline"
+                            onClick={() => {
+                              const next = blockingExceptions.filter((entry) => entry !== host)
+                              setBlockingStats((current) =>
+                                current ? { ...current, exceptions: next } : current
+                              )
+                              void setPreference('contentBlockingExceptions', next)
+                            }}
+                          >
+                            Turn on
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {blockingStats && !blockingStats.enabled && (
+                  <p className="mt-2 text-[11px] text-muted">
+                    Tracker blocking is off for this profile.
+                  </p>
+                )}
+              </div>
+
               <div className="mt-3 space-y-2">
                 <p className="text-[12px] font-medium text-fg">Filter lists</p>
                 <label className="flex items-start gap-2 text-[12.5px] text-fg">

@@ -74,6 +74,8 @@ import { consumePendingDragUrl, setPendingDragUrl } from '../bookmarks/drag'
 import { isFilterListId } from '../../shared/filter-lists'
 import {
   builtinFilterListEnabled,
+  contentBlockingExceptions,
+  contentBlockingStats,
   enabledCustomFilterFiles,
   enabledCustomFilterLists,
   enabledFilterLists,
@@ -81,6 +83,8 @@ import {
   normalizeCustomFilterUrl,
   primeContentBlocking,
   removeCustomFilterFile,
+  setContentBlockingExceptions,
+  setContentBlockingSiteEnabled,
   syncContentBlocking
 } from '../contentBlocking/contentBlocking'
 import {
@@ -192,6 +196,7 @@ function userPreferences(profileId: string): UserPreferences {
     filterLists: enabledFilterLists(profileId),
     customFilterLists: enabledCustomFilterLists(profileId),
     customFilterFiles: enabledCustomFilterFiles(profileId),
+    contentBlockingExceptions: contentBlockingExceptions(profileId),
     proxyMode: ((): UserPreferences['proxyMode'] => {
       const v = getSettings(profileId, 'proxyMode', DEFAULT_PROXY_CONFIG.mode)
       return isProxyMode(v) ? v : DEFAULT_PROXY_CONFIG.mode
@@ -304,6 +309,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     'builtinFilterList',
     'filterLists',
     'customFilterLists',
+    'contentBlockingExceptions',
     'proxyMode',
     'proxyScheme',
     'proxyHost',
@@ -387,6 +393,13 @@ export function registerIpcHandlers(context: IpcContext): void {
           .filter((entry): entry is string => entry !== null)
         setSettings(profileId, 'customFilterLists', [...new Set(urls)])
         syncContentBlocking(profileId)
+        return respond()
+      }
+      if (key === 'contentBlockingExceptions') {
+        if (!Array.isArray(value) || !value.every((entry) => typeof entry === 'string')) {
+          throw new Error('Expected an array of hostnames')
+        }
+        setContentBlockingExceptions(profileId, value)
         return respond()
       }
       if (key === 'contentBlocking') {
@@ -504,6 +517,32 @@ export function registerIpcHandlers(context: IpcContext): void {
     sendToProfile(profileId, IpcChannels.SettingsChanged, prefs)
     return prefs
   })
+
+  ipcMain.handle(IpcChannels.ContentBlockingGetStats, (event) => {
+    const profileId =
+      windowForAnyWebContents(event.sender)?.profile ??
+      settingsProfileFor(event.sender) ??
+      profileFor(event)
+    const pageContentsId = windowForAnyWebContents(event.sender)?.tabs.activeWebContentsId() ?? null
+    return contentBlockingStats(profileId, pageContentsId)
+  })
+
+  ipcMain.handle(
+    IpcChannels.ContentBlockingSetSiteEnabled,
+    (event, site: string, enabled: boolean) => {
+      const profileId =
+        windowForAnyWebContents(event.sender)?.profile ??
+        settingsProfileFor(event.sender) ??
+        profileFor(event)
+      if (typeof site !== 'string') throw new Error('Invalid site')
+      if (typeof enabled !== 'boolean') throw new Error('Invalid enabled flag')
+      setContentBlockingSiteEnabled(profileId, site, enabled)
+      sendToProfile(profileId, IpcChannels.SettingsChanged, userPreferences(profileId))
+      const pageContentsId =
+        windowForAnyWebContents(event.sender)?.tabs.activeWebContentsId() ?? null
+      return contentBlockingStats(profileId, pageContentsId)
+    }
+  )
 
   /* ---- theme ----------------------------------------------------------- */
 

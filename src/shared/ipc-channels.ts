@@ -15,6 +15,8 @@ export const IpcChannels = {
   SettingsChanged: 'settings:changed',
   ContentBlockingImportFile: 'content-blocking:import-file',
   ContentBlockingRemoveFile: 'content-blocking:remove-file',
+  ContentBlockingGetStats: 'content-blocking:get-stats',
+  ContentBlockingSetSiteEnabled: 'content-blocking:set-site-enabled',
 
   ProfilesGetState: 'profiles:get-state',
   ProfilesCreate: 'profiles:create',
