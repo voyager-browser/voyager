@@ -107,7 +107,6 @@ import {
 } from '../proxy/proxy'
 import { applyUserAgentForProfile, userAgentForProfile } from '../userAgent/userAgent'
 import { refreshAppMenu } from '../menu/menu'
-import { registerWebAuthnHandlers } from '../webauthn/webauthn'
 import { runTopSitesPreload } from '../preload/preloadTopSites'
 import { DEFAULT_PROXY_CONFIG } from '../../shared/proxy'
 import { DEFAULT_NEW_TAB_URL } from '../../shared/constants'
@@ -1115,6 +1114,4 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IpcChannels.UiSetRailExpanded, (event, expanded: boolean) =>
     context.getWindow(event as any)?.setRailExpanded(expanded)
   )
-
-  registerWebAuthnHandlers(ipcMain, context)
 }
