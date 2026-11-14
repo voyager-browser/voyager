@@ -74,13 +74,6 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": true,
-      "extendInfo": {
-        "ASWebAuthenticationSessionWebBrowserSupportCapabilities": {
-          "IsSupported": true,
-          "EphemeralBrowserSessionIsSupported": true,
-          "CallbackURLMatchingIsSupported": true
-        }
-      },
       "x64ArchFiles": "Contents/Resources/app/node_modules/objc-js/prebuilds/**"
     },
     "win": {
@@ -156,7 +149,6 @@
   },
   "dependencies": {
     "electron-updater": "^6.8.11",
-    "electron-webauthn": "^1.4.0",
     "lucide-react": "^1.71.0",
     "qrcode": "^1.5.4",
     "react": "^19.3.0",
