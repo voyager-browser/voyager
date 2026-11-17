@@ -1,0 +1,37 @@
+name: PR Title
+
+# Validates that pull request titles follow Conventional Commits, mirroring the
+# commitlint rules enforced on individual commits. Uses `pull_request` (rather
+# than `pull_request_target`) so the check also runs on the PR that introduces
+# it; switch to `pull_request_target` if fork-based contributions are enabled.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+    branches: [master, main]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  validate:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Keep in sync with @commitlint/config-conventional (commitlint.config.mjs).
+          types: |
+            build
+            chore
+            ci
+            docs
+            feat
+            fix
+            perf
+            refactor
+            revert
+            style
+            test
+          requireScope: false
