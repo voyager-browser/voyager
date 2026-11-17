@@ -72,22 +72,22 @@ interface SettingsNavItem {
   children?: Array<{ id: string; label: string }>
 }
 
-/** Sidebar groups mirror Chrome's settings navigation. */
+/** Sidebar groups mirror Chrome's settings navigation and follow content order. */
 const SETTINGS_NAV_GROUPS: SettingsNavItem[][] = [
   [
     { id: 'profiles', label: 'Profiles', icon: UserCircle2 },
+    { id: 'appearance', label: 'Appearance', icon: Palette },
+    { id: 'startup', label: 'On startup', icon: Power },
+    { id: 'search', label: 'Search', icon: Search },
+    { id: 'content-blocking', label: 'Content blocking', icon: Shield }
+  ],
+  [
     {
       id: 'privacy',
       label: 'Privacy and security',
       icon: ShieldCheck,
       children: [{ id: 'site-permissions', label: 'Site permissions' }]
     },
-    { id: 'appearance', label: 'Appearance', icon: Palette },
-    { id: 'search', label: 'Search', icon: Search },
-    { id: 'startup', label: 'On startup', icon: Power }
-  ],
-  [
-    { id: 'content-blocking', label: 'Content blocking', icon: Shield },
     { id: 'autofill', label: 'Autofill', icon: FileText },
     { id: 'proxy', label: 'Proxy', icon: Globe },
     { id: 'downloads', label: 'Downloads', icon: Download },
@@ -976,19 +976,16 @@ export function SettingsPage(): React.JSX.Element {
               </p>
 
               <div className="mt-3 rounded-md border border-border bg-bg p-3">
-                <div className="flex items-end justify-between gap-3">
-                  <div>
-                    <p className="text-[12px] font-medium text-fg">This session</p>
-                    <p className="text-[11.5px] text-muted">Requests blocked for this profile</p>
-                  </div>
-                  <p className="text-[20px] font-semibold leading-none text-fg tabular-nums">
-                    {blockingStats?.sessionBlocked ?? 0}
+                <div>
+                  <p className="text-[12px] font-medium text-fg">Privacy dashboard</p>
+                  <p className="mt-0.5 text-[11.5px] text-muted tabular-nums">
+                    {blockingStats?.sessionBlocked ?? 0} requests blocked this session
                   </p>
                 </div>
 
-                {(blockingStats?.topHosts.length ?? 0) > 0 && (
-                  <div className="mt-3">
-                    <p className="text-[12px] font-medium text-fg">Top blocked hosts</p>
+                <div className="mt-3">
+                  <p className="text-[12px] font-medium text-fg">Top blocked hosts</p>
+                  {(blockingStats?.topHosts.length ?? 0) > 0 ? (
                     <ul className="mt-1 space-y-1">
                       {blockingStats?.topHosts.map((entry) => (
                         <li
@@ -1000,15 +997,19 @@ export function SettingsPage(): React.JSX.Element {
                         </li>
                       ))}
                     </ul>
-                  </div>
-                )}
-
-                {blockingExceptions.length > 0 && (
-                  <div className="mt-3">
-                    <p className="text-[12px] font-medium text-fg">Allowed sites</p>
-                    <p className="mt-0.5 text-[11.5px] text-muted">
-                      Tracker blocking is off for these sites.
+                  ) : (
+                    <p className="mt-1 text-[11.5px] text-muted">
+                      No requests blocked yet. Blocked hosts will appear here.
                     </p>
+                  )}
+                </div>
+
+                <div className="mt-3">
+                  <p className="text-[12px] font-medium text-fg">Allowed sites</p>
+                  <p className="mt-0.5 text-[11.5px] text-muted">
+                    Tracker blocking is off for these sites.
+                  </p>
+                  {blockingExceptions.length > 0 ? (
                     <ul className="mt-1.5 space-y-1.5">
                       {blockingExceptions.map((host) => (
                         <li
@@ -1037,8 +1038,12 @@ export function SettingsPage(): React.JSX.Element {
                         </li>
                       ))}
                     </ul>
-                  </div>
-                )}
+                  ) : (
+                    <p className="mt-1 text-[11.5px] text-muted">
+                      No allowed sites yet. Allow a site from its page info popover.
+                    </p>
+                  )}
+                </div>
 
                 {blockingStats && !blockingStats.enabled && (
                   <p className="mt-2 text-[11px] text-muted">
