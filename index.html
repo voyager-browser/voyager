@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Voyager — A browser that feels like yours</title>
+    <meta
+      name="description"
+      content="Voyager is a modern, open-source browser built with Electron. Explore profiles, split view, tracker blocking, autofill, and more."
+    />
+    <meta name="theme-color" content="#04120f" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <svg class="icon-defs" aria-hidden="true" focusable="false">
+      <symbol id="i-shield" viewBox="0 0 24 24">
+        <path d="M12 3 5 6v5c0 4.4 2.9 8.4 7 10 4.1-1.6 7-5.6 7-10V6l-7-3Z" />
+        <path d="m9 12 2 2 4-4" />
+      </symbol>
+      <symbol id="i-layers" viewBox="0 0 24 24">
+        <path d="m12 3 9 5-9 5-9-5 9-5Z" />
+        <path d="m3 13 9 5 9-5" />
+      </symbol>
+      <symbol id="i-split" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M12 4v16" />
+      </symbol>
+      <symbol id="i-user" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 21a8 8 0 0 1 16 0" />
+      </symbol>
+      <symbol id="i-form" viewBox="0 0 24 24">
+        <rect x="4" y="3" width="16" height="18" rx="2" />
+        <path d="M8 8h8M8 12h8M8 16h5" />
+      </symbol>
+      <symbol id="i-network" viewBox="0 0 24 24">
+        <circle cx="12" cy="5" r="2" />
+        <circle cx="5" cy="18" r="2" />
+        <circle cx="19" cy="18" r="2" />
+        <path d="M12 7v4M6 16l5-5m7 5-5-5" />
+      </symbol>
+      <symbol id="i-code" viewBox="0 0 24 24">
+        <path d="m8 8-4 4 4 4m8-8 4 4-4 4m-3-11-2 18" />
+      </symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24">
+        <rect x="5" y="10" width="14" height="11" rx="2" />
+        <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+      </symbol>
+      <symbol id="i-bolt" viewBox="0 0 24 24">
+        <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" />
+      </symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24">
+        <path d="M5 12h14m-6-6 6 6-6 6" />
+      </symbol>
+      <symbol id="i-github" viewBox="0 0 24 24">
+        <path
+          d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5a3 3 0 0 0-.8-2.3c2.7-.3 5.5-1.3 5.5-6A4.6 4.6 0 0 0 18.4 6a4.3 4.3 0 0 0-.1-3.2S17 2.4 14 4.5a12 12 0 0 0-6 0C5 2.4 3.7 2.8 3.7 2.8A4.3 4.3 0 0 0 3.6 6a4.6 4.6 0 0 0-1.3 3.2c0 4.7 2.8 5.7 5.5 6a3 3 0 0 0-.8 2.3V21"
+        />
+      </symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24">
+        <path d="M4 7h16M4 12h16M4 17h16" />
+      </symbol>
+    </svg>
+
+    <header class="site-header">
+      <div class="wrap header-inner">
+        <a class="brand" href="#top" aria-label="Voyager home">
+          <img src="icon.svg" alt="" width="36" height="36" />
+          <span>Voyager</span>
+        </a>
+
+        <button
+          class="nav-toggle"
+          id="nav-toggle"
+          type="button"
+          aria-label="Open navigation"
+          aria-expanded="false"
+          aria-controls="site-nav"
+        >
+          <svg class="icon" aria-hidden="true"><use href="#i-menu" /></svg>
+        </button>
+
+        <nav class="site-nav" id="site-nav" aria-label="Main navigation">
+          <a href="#features">Features</a>
+          <a href="#privacy">Privacy</a>
+          <a href="#performance">Performance</a>
+          <a href="#open-source">Open source</a>
+        </nav>
+
+        <a
+          class="button button--small button--ghost header-cta"
+          href="https://github.com/voyager-browser/voyager"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <svg class="icon" aria-hidden="true"><use href="#i-github" /></svg>
+          GitHub
+        </a>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top">
+        <div class="hero__glow" aria-hidden="true"></div>
+        <div class="wrap hero__grid">
+          <div class="hero__copy">
+            <p class="eyebrow reveal">Open-source · Electron · Built for people</p>
+            <h1 class="reveal">A browser that feels like <em>yours.</em></h1>
+            <p class="lede reveal">
+              Voyager is a fast, modern browser with the little things done right: separate
+              profiles, split view, visible privacy controls, and an interface that stays out of
+              your way.
+            </p>
+            <div class="hero__actions reveal">
+              <a
+                class="button button--primary"
+                href="https://github.com/voyager-browser/voyager/releases"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Get Voyager
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg>
+              </a>
+              <a class="button button--ghost" href="#features">Explore features</a>
+            </div>
+            <dl class="hero__stats reveal">
+              <div><dt>Browser engine</dt><dd>Electron 44</dd></div>
+              <div><dt>Chrome UI</dt><dd>React 19</dd></div>
+              <div><dt>License</dt><dd>MIT</dd></div>
+            </dl>
+          </div>
+
+          <div class="hero__visual reveal" aria-label="Voyager browser preview" role="img">
+            <div class="browser">
+              <div class="browser__bar">
+                <span class="browser__lights" aria-hidden="true"><i></i><i></i><i></i></span>
+                <div class="browser__tabs" aria-hidden="true">
+                  <span class="browser__tab is-active">
+                    <img src="icon.svg" alt="" /> Voyager
+                  </span>
+                  <span class="browser__tab">Docs</span>
+                  <span class="browser__tab">Plus</span>
+                </div>
+              </div>
+              <div class="browser__toolbar">
+                <svg class="icon" aria-hidden="true"><use href="#i-lock" /></svg>
+                <span class="browser__url">voyager://start</span>
+                <svg class="icon browser__shield" aria-hidden="true"><use href="#i-shield" /></svg>
+              </div>
+              <div class="browser__body">
+                <aside class="browser__rail" aria-hidden="true">
+                  <span class="is-active"></span><span></span><span></span><span></span>
+                </aside>
+                <div class="browser__page">
+                  <p class="browser__eyebrow">New tab</p>
+                  <h2>Where to today?</h2>
+                  <div class="browser__search">Search or enter a URL</div>
+                  <div class="browser__tiles" aria-hidden="true">
+                    <span></span><span></span><span></span><span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="floating-chip floating-chip--privacy">
+              <svg class="icon" aria-hidden="true"><use href="#i-shield" /></svg>
+              Trackers blocked
+            </div>
+            <div class="floating-chip floating-chip--split">
+              <svg class="icon" aria-hidden="true"><use href="#i-split" /></svg>
+              Split view
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="ticker" aria-hidden="true">
+        <div class="wrap ticker__inner">
+          <span>Profiles</span><b>·</b><span>Split view</span><b>·</b><span>Tracker blocking</span
+          ><b>·</b><span>Autofill</span><b>·</b><span>Proxy support</span><b>·</b
+          ><span>Memory Saver</span>
+        </div>
+      </div>
+
+      <section class="section" id="features">
+        <div class="wrap">
+          <div class="section__head reveal">
+            <p class="eyebrow">Everything in its place</p>
+            <h2>Built for the way you actually browse.</h2>
+            <p class="section__sub">
+              Thoughtful tools that are there when you need them and quiet when you don't.
+            </p>
+          </div>
+
+          <div class="feature-grid">
+            <article class="feature reveal">
+              <div class="feature__icon"><svg class="icon"><use href="#i-user" /></svg></div>
+              <h3>Profiles that stay separate</h3>
+              <p>
+                Give every part of your life its own space, with independent tabs, history,
+                bookmarks, and settings.
+              </p>
+            </article>
+            <article class="feature reveal">
+              <div class="feature__icon"><svg class="icon"><use href="#i-split" /></svg></div>
+              <h3>Tabs without the clutter</h3>
+              <p>
+                Multi-select tabs, split the view in two, or switch to a vertical rail when your
+                tab bar gets crowded.
+              </p>
+            </article>
+            <article class="feature reveal">
+              <div class="feature__icon"><svg class="icon"><use href="#i-shield" /></svg></div>
+              <h3>Privacy you can see</h3>
+              <p>
+                Block ads and trackers with built-in and custom filter lists, then tune exceptions
+                site by site from the privacy dashboard.
+              </p>
+            </article>
+            <article class="feature reveal">
+              <div class="feature__icon"><svg class="icon"><use href="#i-form" /></svg></div>
+              <h3>Forms fill themselves</h3>
+              <p>
+                Save addresses, contacts, and payment methods, and let Voyager recall the form
+                values you use most.
+              </p>
+            </article>
+            <article class="feature reveal">
+              <div class="feature__icon"><svg class="icon"><use href="#i-network" /></svg></div>
+              <h3>Your network, your rules</h3>
+              <p>
+                System, direct, or fixed-server proxy modes, custom user agents, and per-profile
+                filter lists keep you in control.
+              </p>
+            </article>
+            <article class="feature reveal">
+              <div class="feature__icon"><svg class="icon"><use href="#i-code" /></svg></div>
+              <h3>Friendly to developers</h3>
+              <p>
+                Docked DevTools, developer options, keyboard shortcuts, and a Memory Saver that
+                keeps idle tabs from weighing you down.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section--tint" id="privacy">
+        <div class="wrap privacy-grid">
+          <div class="privacy-copy reveal">
+            <p class="eyebrow">Privacy, made visible</p>
+            <h2>Know what the browser is doing for you.</h2>
+            <p class="section__sub">
+              Tracker blocking is off until you turn it on. Once it's running, Voyager shows you
+              exactly what it stopped — on the current page and across your session.
+            </p>
+            <ul class="check-list">
+              <li>Per-site toggle in the page information popover</li>
+              <li>Busiest blocked hosts, ranked for the session</li>
+              <li>Allowed sites you can re-enable with one click</li>
+              <li>Exceptions stored per profile, not globally</li>
+            </ul>
+            <a class="text-link" href="#features">
+              See all features
+              <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg>
+            </a>
+          </div>
+
+          <div class="dashboard reveal" aria-label="Example privacy dashboard">
+            <div class="dashboard__head">
+              <div>
+                <span class="dashboard__eyebrow">Content blocking</span>
+                <h3>Privacy dashboard</h3>
+              </div>
+              <span class="dashboard__badge"><i></i> Active</span>
+            </div>
+            <div class="dashboard__hero">
+              <span class="dashboard__value" data-count="1284">0</span>
+              <p>requests blocked this session</p>
+            </div>
+            <div class="dashboard__block">
+              <p class="dashboard__label">Top blocked hosts</p>
+              <div class="dashboard__row"><span>analytics.example.net</span><b>482</b></div>
+              <div class="dashboard__bar"><i style="width: 88%"></i></div>
+              <div class="dashboard__row"><span>ads.example.com</span><b>317</b></div>
+              <div class="dashboard__bar"><i style="width: 62%"></i></div>
+              <div class="dashboard__row"><span>pixel.example.org</span><b>146</b></div>
+              <div class="dashboard__bar"><i style="width: 35%"></i></div>
+            </div>
+            <div class="dashboard__block">
+              <p class="dashboard__label">Allowed sites</p>
+              <div class="dashboard__allowed">
+                <span>news.example.com</span><span class="dashboard__turn-on">Turn on</span>
+              </div>
+            </div>
+            <p class="dashboard__note">Illustrative preview of the dashboard UI.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="performance">
+        <div class="wrap">
+          <div class="section__head reveal">
+            <p class="eyebrow">Light on your machine</p>
+            <h2>Speed you can measure.</h2>
+            <p class="section__sub">
+              A snapshot of Voyager's resource use while viewing an MDN page. Your numbers will
+              depend on the sites and tabs you keep open.
+            </p>
+          </div>
+          <div class="perf-grid">
+            <div class="perf reveal">
+              <svg class="icon" aria-hidden="true"><use href="#i-layers" /></svg>
+              <span class="perf__value">265.5 <small>MB</small></span>
+              <span class="perf__label">Memory</span>
+            </div>
+            <div class="perf reveal">
+              <svg class="icon" aria-hidden="true"><use href="#i-bolt" /></svg>
+              <span class="perf__value">~0.6 <small>%</small></span>
+              <span class="perf__label">CPU</span>
+            </div>
+            <div class="perf reveal">
+              <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg>
+              <span class="perf__value">14.2 <small>MB</small></span>
+              <span class="perf__label">Disk written in 5 min</span>
+            </div>
+            <div class="perf reveal">
+              <svg class="icon" aria-hidden="true"><use href="#i-network" /></svg>
+              <span class="perf__value">957.55 <small>MB</small></span>
+              <span class="perf__label">Disk read in 5 min</span>
+            </div>
+          </div>
+          <p class="perf__footnote reveal">
+            Figures from the Voyager README, measured on an MDN page.
+          </p>
+        </div>
+      </section>
+
+      <section class="section section--cta" id="open-source">
+        <div class="wrap">
+          <div class="cta reveal">
+            <div class="cta__glow" aria-hidden="true"></div>
+            <div class="cta__content">
+              <p class="eyebrow">Built in the open</p>
+              <h2>Curious how it works? Come take a look.</h2>
+              <p>
+                Voyager is an experiment in browser-building, written mostly with OpenCode and
+                reviewed by a human. The code, issues, and roadmap are all public.
+              </p>
+              <div class="cta__actions">
+                <a
+                  class="button button--primary"
+                  href="https://github.com/voyager-browser/voyager"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  View the repository
+                  <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg>
+                </a>
+                <a
+                  class="button button--ghost"
+                  href="https://github.com/voyager-browser/voyager/blob/master/CONTRIBUTING.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >Contribute</a
+                >
+              </div>
+              <p class="cta__stack">Electron 44 · React 19 · TypeScript · Tailwind CSS · Vite</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap footer-inner">
+        <a class="brand brand--footer" href="#top">
+          <img src="icon.svg" alt="" width="30" height="30" />
+          <span>Voyager</span>
+        </a>
+        <p>A modern, pretty web browser built with Electron.</p>
+        <nav aria-label="Footer navigation">
+          <a
+            href="https://github.com/voyager-browser/voyager"
+            target="_blank"
+            rel="noopener noreferrer"
+            >GitHub</a
+          >
+          <a
+            href="https://github.com/voyager-browser/voyager/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Issues</a
+          >
+          <a
+            href="https://github.com/voyager-browser/voyager/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Releases</a
+          >
+        </nav>
+        <p class="footer__meta">© <span id="year">2026</span> Voyager · MIT License</p>
+      </div>
+    </footer>
+  </body>
+</html>
