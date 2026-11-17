@@ -100,13 +100,13 @@ export function PageInfoPopover({ url, title }: PageInfoPopoverProps): React.JSX
         <div className="border-t border-border px-3.5 py-3">
           <div className="flex items-center justify-between gap-3">
             <p className="text-[12.5px] font-medium text-fg">Tracker blocking</p>
-            {stats.enabled && stats.site && (
+            {stats.site && (
               <label className="flex shrink-0 items-center gap-1.5 text-[11.5px] text-muted">
                 <input
                   type="checkbox"
                   aria-label="Block trackers on this site"
-                  checked={stats.siteEnabled}
-                  disabled={siteBusy}
+                  checked={stats.enabled && stats.siteEnabled}
+                  disabled={siteBusy || !stats.enabled}
                   onChange={(event) => void setSiteBlocking(event.target.checked)}
                 />
                 <span>Block here</span>
@@ -116,8 +116,8 @@ export function PageInfoPopover({ url, title }: PageInfoPopoverProps): React.JSX
 
           {!stats.enabled ? (
             <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
-              Tracker blocking is off for this profile. Turn it on in Settings to stop ads and
-              trackers from loading.
+              Tracker blocking is off for this profile. Turn it on in Settings to use the Block
+              here toggle and stop ads and trackers from loading.
             </p>
           ) : (
             <>
