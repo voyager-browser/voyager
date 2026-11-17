@@ -795,6 +795,18 @@ h3 {
   background: linear-gradient(90deg, var(--accent), var(--cyan));
 }
 
+.dashboard__bar i.fill--88 {
+  width: 88%;
+}
+
+.dashboard__bar i.fill--62 {
+  width: 62%;
+}
+
+.dashboard__bar i.fill--35 {
+  width: 35%;
+}
+
 .dashboard__allowed {
   display: flex;
   align-items: center;
