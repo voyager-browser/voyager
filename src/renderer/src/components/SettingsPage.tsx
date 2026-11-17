@@ -79,7 +79,8 @@ const SETTINGS_NAV_GROUPS: SettingsNavItem[][] = [
     { id: 'appearance', label: 'Appearance', icon: Palette },
     { id: 'startup', label: 'On startup', icon: Power },
     { id: 'search', label: 'Search', icon: Search },
-    { id: 'content-blocking', label: 'Content blocking', icon: Shield }
+    { id: 'content-blocking', label: 'Content blocking', icon: Shield },
+    { id: 'privacy-dashboard', label: 'Privacy dashboard', icon: ShieldCheck }
   ],
   [
     {
@@ -282,6 +283,8 @@ export function SettingsPage(): React.JSX.Element {
   }
 
   const blockingExceptions = blockingStats?.exceptions ?? preferences.contentBlockingExceptions
+  const topHosts = blockingStats?.topHosts ?? []
+  const maxHostCount = topHosts[0]?.count ?? 1
 
   const clearSelected = async () => {
     setClearing(true)
@@ -975,83 +978,6 @@ export function SettingsPage(): React.JSX.Element {
                 plus any remote lists you enable below. Off by default.
               </p>
 
-              <div className="mt-3 rounded-md border border-border bg-bg p-3">
-                <div>
-                  <p className="text-[12px] font-medium text-fg">Privacy dashboard</p>
-                  <p className="mt-0.5 text-[11.5px] text-muted tabular-nums">
-                    {blockingStats?.sessionBlocked ?? 0} requests blocked this session
-                  </p>
-                </div>
-
-                <div className="mt-3">
-                  <p className="text-[12px] font-medium text-fg">Top blocked hosts</p>
-                  {(blockingStats?.topHosts.length ?? 0) > 0 ? (
-                    <ul className="mt-1 space-y-1">
-                      {blockingStats?.topHosts.map((entry) => (
-                        <li
-                          key={entry.host}
-                          className="flex items-center justify-between gap-3 text-[11.5px]"
-                        >
-                          <span className="min-w-0 truncate text-muted">{entry.host}</span>
-                          <span className="shrink-0 text-fg tabular-nums">{entry.count}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="mt-1 text-[11.5px] text-muted">
-                      No requests blocked yet. Blocked hosts will appear here.
-                    </p>
-                  )}
-                </div>
-
-                <div className="mt-3">
-                  <p className="text-[12px] font-medium text-fg">Allowed sites</p>
-                  <p className="mt-0.5 text-[11.5px] text-muted">
-                    Tracker blocking is off for these sites.
-                  </p>
-                  {blockingExceptions.length > 0 ? (
-                    <ul className="mt-1.5 space-y-1.5">
-                      {blockingExceptions.map((host) => (
-                        <li
-                          key={host}
-                          className="flex items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5"
-                        >
-                          <span
-                            className="min-w-0 flex-1 truncate text-[11.5px] text-fg"
-                            title={host}
-                          >
-                            {host}
-                          </span>
-                          <button
-                            type="button"
-                            className="shrink-0 text-[11.5px] text-accent hover:underline"
-                            onClick={() => {
-                              const next = blockingExceptions.filter((entry) => entry !== host)
-                              setBlockingStats((current) =>
-                                current ? { ...current, exceptions: next } : current
-                              )
-                              void setPreference('contentBlockingExceptions', next)
-                            }}
-                          >
-                            Turn on
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="mt-1 text-[11.5px] text-muted">
-                      No allowed sites yet. Allow a site from its page info popover.
-                    </p>
-                  )}
-                </div>
-
-                {blockingStats && !blockingStats.enabled && (
-                  <p className="mt-2 text-[11px] text-muted">
-                    Tracker blocking is off for this profile.
-                  </p>
-                )}
-              </div>
-
               <div className="mt-3 space-y-2">
                 <p className="text-[12px] font-medium text-fg">Filter lists</p>
                 <label className="flex items-start gap-2 text-[12.5px] text-fg">
@@ -1268,6 +1194,99 @@ export function SettingsPage(): React.JSX.Element {
                 <p className="text-[11.5px] text-muted">
                   Enabled lists are downloaded when content blocking is on and refreshed every 7
                   days. Until a list finishes downloading, the built-in and cached domains are used.
+                </p>
+              </div>
+            </section>
+
+            <section
+              data-settings-section="privacy-dashboard"
+              className="rounded-lg border border-border bg-surface p-5"
+            >
+              <h2 className="mb-4 text-[15px] font-semibold text-fg">Privacy dashboard</h2>
+              <div className="privacy-dashboard">
+                <div className="privacy-dashboard__head">
+                  <div>
+                    <span className="privacy-dashboard__eyebrow">Content blocking</span>
+                    <p className="privacy-dashboard__title">Privacy dashboard</p>
+                  </div>
+                  <span
+                    className={`privacy-dashboard__badge${
+                      blockingStats?.enabled ? '' : ' privacy-dashboard__badge--off'
+                    }`}
+                  >
+                    <i></i> {blockingStats?.enabled ? 'Active' : 'Off'}
+                  </span>
+                </div>
+
+                <div className="privacy-dashboard__hero">
+                  <span className="privacy-dashboard__value">
+                    {blockingStats?.sessionBlocked ?? 0}
+                  </span>
+                  <p>requests blocked this session</p>
+                </div>
+
+                <div className="privacy-dashboard__block">
+                  <p className="privacy-dashboard__label">Top blocked hosts</p>
+                  {topHosts.length > 0 ? (
+                    topHosts.map((entry) => (
+                      <div key={entry.host}>
+                        <div className="privacy-dashboard__row">
+                          <span className="min-w-0 truncate">{entry.host}</span>
+                          <b>{entry.count}</b>
+                        </div>
+                        <div className="privacy-dashboard__bar">
+                          <i
+                            style={{
+                              width: `${Math.round((entry.count / maxHostCount) * 100)}%`
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="privacy-dashboard__empty">
+                      No requests blocked yet. Blocked hosts will appear here.
+                    </p>
+                  )}
+                </div>
+
+                <div className="privacy-dashboard__block">
+                  <p className="privacy-dashboard__label">Allowed sites</p>
+                  <p className="privacy-dashboard__empty mb-2">
+                    Tracker blocking is off for these sites.
+                  </p>
+                  {blockingExceptions.length > 0 ? (
+                    blockingExceptions.map((host) => (
+                      <div className="privacy-dashboard__allowed" key={host}>
+                        <span className="privacy-dashboard__allowed-host" title={host}>
+                          {host}
+                        </span>
+                        <button
+                          type="button"
+                          className="privacy-dashboard__turn-on"
+                          onClick={() => {
+                            const next = blockingExceptions.filter((entry) => entry !== host)
+                            setBlockingStats((current) =>
+                              current ? { ...current, exceptions: next } : current
+                            )
+                            void setPreference('contentBlockingExceptions', next)
+                          }}
+                        >
+                          Turn on
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="privacy-dashboard__empty">
+                      No allowed sites yet. Allow a site from its page info popover.
+                    </p>
+                  )}
+                </div>
+
+                <p className="privacy-dashboard__note">
+                  {blockingStats?.enabled
+                    ? 'Live stats for this profile. Updates every few seconds.'
+                    : 'Tracker blocking is off for this profile. Turn it on in Content blocking.'}
                 </p>
               </div>
             </section>
