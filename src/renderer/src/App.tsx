@@ -6,9 +6,11 @@ import { DownloadsPanel } from './components/DownloadsPanel'
 import { MainMenu } from './components/MainMenu'
 import { FindBar } from './components/FindBar'
 import { HistoryPanel } from './components/HistoryPanel'
+import { NameWindowDialog } from './components/NameWindowDialog'
 import { PermissionPrompt } from './components/PermissionPrompt'
 import { PromptDialog } from './components/PromptDialog'
 import { QrCodeDialog } from './components/QrCodeDialog'
+import { SplitViewPicker } from './components/SplitViewPicker'
 import { TabSearchPalette } from './components/TabSearchPalette'
 import { TitleBar } from './components/TitleBar'
 import { Toolbar } from './components/Toolbar'
@@ -29,6 +31,7 @@ export default function App(): React.JSX.Element {
   const [downloadsOpen, setDownloadsOpen] = useState(false)
   const [mainMenuOpen, setMainMenuOpen] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
+  const [nameWindowOpen, setNameWindowOpen] = useState(false)
   const bookmarksManagerOpen = useUiStore((state) => state.bookmarksManagerOpen)
   const verticalTabs = useBrowserStore((state) => state.verticalTabs)
 
@@ -92,6 +95,7 @@ export default function App(): React.JSX.Element {
     const openDownloads = (): void => setDownloadsOpen(true)
     const openMainMenu = (): void => setMainMenuOpen(true)
     const openFind = (): void => setFindOpen(true)
+    const openNameWindow = (): void => setNameWindowOpen(true)
     const openHistoryClear = (): void => {
       setHistoryOpen(true)
       setHistoryClearPrompt((value) => value + 1)
@@ -101,6 +105,7 @@ export default function App(): React.JSX.Element {
     window.addEventListener('voyager:open-downloads', openDownloads)
     window.addEventListener('voyager:open-main-menu', openMainMenu)
     window.addEventListener('voyager:open-find', openFind)
+    window.addEventListener('voyager:name-window', openNameWindow)
     window.addEventListener('voyager:open-history-clear', openHistoryClear)
 
     const unsubFocus = window.voyager.ui.onFocusOmnibox(focusOmnibox)
@@ -119,6 +124,7 @@ export default function App(): React.JSX.Element {
       window.removeEventListener('voyager:open-downloads', openDownloads)
       window.removeEventListener('voyager:open-main-menu', openMainMenu)
       window.removeEventListener('voyager:open-find', openFind)
+      window.removeEventListener('voyager:name-window', openNameWindow)
       window.removeEventListener('voyager:open-history-clear', openHistoryClear)
       unsubFocus()
       unsubSearch()
@@ -165,6 +171,8 @@ export default function App(): React.JSX.Element {
       <PermissionPrompt />
       <PromptDialog />
       <QrCodeDialog />
+      <NameWindowDialog open={nameWindowOpen} onClose={() => setNameWindowOpen(false)} />
+      <SplitViewPicker />
       <BookmarksManager
         open={bookmarksManagerOpen}
         onClose={() => useUiStore.getState().closeBookmarksManager()}

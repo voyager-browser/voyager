@@ -19,6 +19,7 @@ interface BookmarksStore extends BookmarksState {
     folderId?: string | null
   ) => void
   bookmarkActivePage: () => void
+  bookmarkAllTabs: () => void
   removeBookmark: (id: string) => void
   updateBookmark: (id: string, patch: BookmarkPatch) => void
   addFolder: (title: string, parentId?: string | null) => void
@@ -70,6 +71,41 @@ export const useBookmarksStore = create<BookmarksStore>()((set, get) => ({
         favicon: tab.favicon
       })
     )
+  },
+  bookmarkAllTabs: () => {
+    const browser = useBrowserStore.getState()
+    const candidates = browser.tabs.filter((tab) => !isNewTab(tab.url))
+    if (candidates.length === 0) return
+
+    const folderTitle = 'All Tabs'
+    const findFolder = (folders: BookmarksState['folders']) =>
+      folders.find(
+        (folder) => folder.title === folderTitle && (folder.parentId ?? null) === null
+      )
+    const existing = findFolder(get().folders)
+    const ready = existing
+      ? Promise.resolve(get() as BookmarksState)
+      : window.voyager.bookmarks.addFolder({ title: folderTitle, parentId: null })
+
+    void ready
+      .then((state) => {
+        const folder = findFolder(state.folders) ?? existing
+        if (!folder) return []
+        return Promise.all(
+          candidates.map((tab) =>
+            window.voyager.bookmarks.add({
+              title: tab.title || tab.url,
+              url: tab.url,
+              favicon: tab.favicon,
+              folderId: folder.id
+            })
+          )
+        )
+      })
+      .then((states) => {
+        const latest = states.at(-1)
+        if (latest) useBookmarksStore.getState().applyState(latest)
+      })
   },
   removeBookmark: (id) => {
     apply(window.voyager.bookmarks.remove(id))

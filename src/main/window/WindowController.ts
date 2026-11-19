@@ -193,6 +193,11 @@ export class WindowController {
     this.applyLayout()
   }
 
+  /** Set a user-defined window name (used by "Name Window..."). */
+  setWindowTitle(title: string): void {
+    this.window.setTitle(title.trim() || 'Voyager')
+  }
+
   /** Switch between the horizontal tab strip and the vertical tab rail. */
   setVerticalTabs(enabled: boolean): void {
     if (this.verticalTabs === enabled) return

@@ -28,6 +28,7 @@ interface BrowserStore extends BrowserState {
   activatePrevious: () => void
   activateTabAt: (index: number) => void
   closeTab: (id: string) => void
+  moveTabToWindow: (id: string) => void
   createTab: (request?: NewTabRequest) => void
   reorderTabs: (ids: string[]) => void
   pinToggle: (id: string) => void
@@ -103,6 +104,14 @@ export const useBrowserStore = create<BrowserStore>()((set, get) => ({
   },
   closeTab: (id) => {
     void window.voyager.tabs.close(id)
+  },
+  moveTabToWindow: (id) => {
+    const state = get()
+    const tab = state.tabs.find((candidate) => candidate.id === id)
+    if (!tab) return
+    const open = state.incognito ? window.voyager.windows.openIncognito : window.voyager.windows.open
+    void open(tab.url)
+    state.closeTab(id)
   },
   createTab: (request) => {
     void window.voyager.tabs.create(request)

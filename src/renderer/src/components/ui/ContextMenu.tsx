@@ -16,6 +16,8 @@ export interface ContextMenuItem {
   disabled?: boolean
   danger?: boolean
   checked?: boolean
+  /** Right-aligned keyboard shortcut hint. */
+  shortcut?: string
   /** Nested items rendered as a submenu. */
   children?: ContextMenuItem[]
   /** When true, render a divider instead of an item. */
@@ -87,6 +89,9 @@ function MenuList({
                 <span className="flex h-4 w-4 items-center justify-center">{item.icon}</span>
               )}
               <span className="flex-1 truncate">{item.label}</span>
+              {item.shortcut && (
+                <span className="ml-4 shrink-0 text-[11px] text-muted">{item.shortcut}</span>
+              )}
               {item.checked && <span className="text-accent">✓</span>}
               {item.children && <span className="text-muted">›</span>}
             </button>

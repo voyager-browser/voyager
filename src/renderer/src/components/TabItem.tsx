@@ -60,11 +60,13 @@ export function TabItem({
         onMouseDown={(event) => {
           if (event.button === 2) {
             event.preventDefault()
+            event.stopPropagation()
             onContextMenu(event.clientX, event.clientY)
           }
         }}
         onContextMenu={(event) => {
           event.preventDefault()
+          event.stopPropagation()
           onContextMenu(event.clientX, event.clientY)
         }}
         className={cn(
@@ -106,6 +108,7 @@ export function TabItem({
       onMouseDown={(event) => {
         if (event.button === 2) {
           event.preventDefault()
+          event.stopPropagation()
           onContextMenu(event.clientX, event.clientY)
         }
       }}

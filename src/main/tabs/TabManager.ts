@@ -152,7 +152,12 @@ export class TabManager {
     }
 
     this.entries.set(entry.id, entry)
-    this.order.push(entry.id)
+    if (request.index === undefined) {
+      this.order.push(entry.id)
+    } else {
+      const index = Math.max(0, Math.min(request.index, this.order.length))
+      this.order.splice(index, 0, entry.id)
+    }
     this.window.attachTabView(entry.view)
     this.wireEvents(entry)
 
