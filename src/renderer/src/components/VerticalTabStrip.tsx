@@ -159,16 +159,6 @@ export function VerticalTabStrip(): React.JSX.Element {
         aria-label="Tabs"
         className="no-drag flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-1.5 pb-2"
       >
-        <button
-          type="button"
-          aria-label="New tab"
-          title="New tab"
-          onClick={() => createTab()}
-          className="flex h-8 w-8 shrink-0 items-center justify-center self-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg"
-        >
-          <Plus className="h-4 w-4 shrink-0" />
-        </button>
-
         {tabs.map((tab) => (
           <VerticalTabItem
             key={tab.id}
@@ -193,6 +183,16 @@ export function VerticalTabStrip(): React.JSX.Element {
             }}
           />
         ))}
+
+        <button
+          type="button"
+          aria-label="New tab"
+          title="New tab"
+          onClick={() => createTab()}
+          className="mt-auto flex h-8 w-8 shrink-0 items-center justify-center self-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg"
+        >
+          <Plus className="h-4 w-4 shrink-0" />
+        </button>
       </div>
 
       {menu && (
