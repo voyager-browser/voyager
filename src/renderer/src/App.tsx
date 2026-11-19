@@ -138,11 +138,15 @@ export default function App(): React.JSX.Element {
   return (
     <ThemeProvider>
       {verticalTabs ? (
-        <div className="flex h-full overflow-hidden">
-          <VerticalTabStrip />
-          <div className="flex min-w-0 flex-1 flex-col">
-            <Toolbar />
-            <BookmarksBar />
+        // Keep the URL bar pinned across the top on every platform so it never
+        // sits underneath the macOS traffic lights. Tabs live in the rail below.
+        <div className="flex h-full flex-col overflow-hidden">
+          <Toolbar dragHandle />
+          <div className="flex min-h-0 flex-1">
+            <VerticalTabStrip />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <BookmarksBar />
+            </div>
           </div>
         </div>
       ) : (
