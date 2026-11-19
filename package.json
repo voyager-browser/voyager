@@ -23,6 +23,7 @@
     "dist": "npm run build && electron-builder",
     "dist:linux": "npm run build && electron-builder --linux --publish never",
     "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "dist:mac:test": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64 --dir --publish never -c.mac.notarize=false",
     "dist:win": "npm run build && electron-builder --win --publish never"
   },
   "build": {
@@ -30,7 +31,7 @@
     "productName": "Voyager",
     "artifactName": "Voyager-${version}-${os}-${arch}.${ext}",
     "copyright": "Copyright \u00a9 2026 InfiniteVoid_",
-    "asar": false,
+    "asar": true,
     "npmRebuild": false,
     "directories": {
       "output": "dist",
@@ -73,8 +74,7 @@
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": true,
-      "x64ArchFiles": "Contents/Resources/app/node_modules/objc-js/prebuilds/**"
+      "notarize": true
     },
     "win": {
       "target": [
