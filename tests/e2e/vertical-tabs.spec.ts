@@ -22,7 +22,7 @@ test('renders a full-window vertical tab rail when enabled', async ({ launchVoya
 
 test('toggles vertical tabs from the tab context menu', async ({ voyager }) => {
   await voyager.chrome.getByRole('tab').first().click({ button: 'right' })
-  await voyager.chrome.getByRole('menuitem', { name: 'Turn on vertical tabs' }).click()
+  await voyager.chrome.getByRole('menuitem', { name: 'Show Tabs Vertically' }).click()
 
   const rail = voyager.chrome.locator('aside[aria-label="Tabs"]')
   await expect(rail).toBeVisible()
@@ -33,7 +33,7 @@ test('toggles vertical tabs from the tab context menu', async ({ voyager }) => {
     .toBe(true)
 
   await rail.getByRole('tab').first().click({ button: 'right' })
-  await voyager.chrome.getByRole('menuitem', { name: 'Turn off vertical tabs' }).click()
+  await voyager.chrome.getByRole('menuitem', { name: 'Show Tabs Horizontally' }).click()
 
   await expect(rail).toHaveCount(0)
   await expect

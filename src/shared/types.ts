@@ -54,6 +54,8 @@ export interface BrowserState {
 export interface NewTabRequest {
   url?: string
   active?: boolean
+  /** Zero-based insertion position; omit to append to the end. */
+  index?: number
 }
 
 /* ---- TLS certificates -------------------------------------------------- */

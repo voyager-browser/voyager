@@ -212,7 +212,9 @@ const api = {
     open: (url?: string): Promise<void> => ipcRenderer.invoke(IpcChannels.WindowsOpen, url),
     openIncognito: (url?: string): Promise<void> =>
       ipcRenderer.invoke(IpcChannels.WindowsOpenIncognito, url),
-    getState: (): Promise<WindowState> => ipcRenderer.invoke(IpcChannels.WindowsGetState)
+    getState: (): Promise<WindowState> => ipcRenderer.invoke(IpcChannels.WindowsGetState),
+    setTitle: (title: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannels.WindowsSetTitle, title)
   },
 
   profiles: {

@@ -857,6 +857,10 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   })
 
+  ipcMain.handle(IpcChannels.WindowsSetTitle, (event, title: string) => {
+    context.getWindow(event as any)?.setWindowTitle(title)
+  })
+
   ipcMain.handle(IpcChannels.BookmarksClear, (event) => {
     const profileId = profileFor(event as any)
     return clearBookmarks(profileId, broadcastBookmarks(profileId), (visible) =>

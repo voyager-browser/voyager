@@ -6,7 +6,7 @@ import { cn } from '../lib/cn'
 import { useBrowserStore } from '../state/browserStore'
 import { reorderTabs } from './TabStrip'
 import { TabIcon } from './TabItem'
-import { buildTabMenuItems } from './tabContextMenu'
+import { buildTabBarMenuItems, buildTabMenuItems } from './tabContextMenu'
 import { ContextMenu } from './ui/ContextMenu'
 
 interface RailMenuState {
@@ -112,20 +112,10 @@ export function VerticalTabStrip(): React.JSX.Element {
         onToggleVerticalTabs: toggleVerticalTabs,
         selectedTabIds: selectedIds
       })
-    : [
-        {
-          label: 'New tab',
-          icon: <Plus className="h-3.5 w-3.5" />,
-          onSelect: () => createTab()
-        },
-        { separator: true },
-        {
-          label: 'Turn off vertical tabs',
-          icon: <PanelLeft className="h-3.5 w-3.5" />,
-          checked: true,
-          onSelect: toggleVerticalTabs
-        }
-      ]
+    : buildTabBarMenuItems({
+        verticalTabs: true,
+        onToggleVerticalTabs: toggleVerticalTabs
+      })
 
   return (
     <aside
