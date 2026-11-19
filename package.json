@@ -22,7 +22,7 @@
     "test:e2e": "playwright test",
     "dist": "npm run build && electron-builder",
     "dist:linux": "npm run build && electron-builder --linux --publish never",
-    "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "dist:mac": "npm run build && node --env-file-if-exists=.env.signing ./node_modules/.bin/electron-builder --mac --publish never",
     "dist:mac:test": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64 --dir --publish never -c.mac.notarize=false",
     "dist:win": "npm run build && electron-builder --win --publish never"
   },
@@ -74,7 +74,7 @@
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": true
+      "notarize": false
     },
     "win": {
       "target": [

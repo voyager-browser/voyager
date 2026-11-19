@@ -53,7 +53,16 @@ jobs:
       - name: Package
         run: npx electron-builder --${{ matrix.platform }} --publish never
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # macOS only. electron-builder reads CSC_LINK / CSC_KEY_PASSWORD and
+          # imports the p12 into its own temporary keychain, so no runner
+          # keychain setup is needed. The APPLE_* values are for notarization
+          # and are inert while mac.notarize is false. APPLE_KEYCHAIN_PASSWORD
+          # is intentionally unused: electron-builder manages its own keychain.
+          CSC_LINK: ${{ matrix.platform == 'mac' && secrets.APPLE_CERTIFICATE || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.platform == 'mac' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_ID: ${{ matrix.platform == 'mac' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.platform == 'mac' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.platform == 'mac' && secrets.APPLE_TEAM_ID || '' }}
 
       - name: Upload installer and updater metadata
         uses: actions/upload-artifact@v4
