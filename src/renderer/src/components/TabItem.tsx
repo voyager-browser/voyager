@@ -114,6 +114,7 @@ export function TabItem({
       }}
       onContextMenu={(event) => {
         event.preventDefault()
+        event.stopPropagation()
         onContextMenu(event.clientX, event.clientY)
       }}
       title={tab.url || tab.title}
