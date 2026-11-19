@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { ChevronRight, Folder, FolderPlus, Globe, Plus, X } from 'lucide-react'
+import { ChevronRight, Folder, FolderPlus, Plus, X } from 'lucide-react'
 import { useOverlaySignal } from '../lib/overlay'
 import { isNewTab } from '../../../shared/url'
 import { useActiveTab, useBrowserStore } from '../state/browserStore'
 import { useBookmarksStore } from '../state/bookmarksStore'
 import { BookmarkDialog } from './BookmarkDialog'
 import { ContextMenu, type ContextMenuItem } from './ui/ContextMenu'
+import { Favicon } from './ui/Favicon'
 import { IconButton } from './ui/IconButton'
 
 type DialogState =
@@ -359,11 +360,7 @@ export function BookmarksManager({
                 }}
                 className="group flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-hover"
               >
-                {bookmark.favicon ? (
-                  <img src={bookmark.favicon} alt="" className="h-4 w-4 shrink-0 rounded-sm" />
-                ) : (
-                  <Globe className="h-4 w-4 shrink-0 text-muted" />
-                )}
+                <Favicon src={bookmark.favicon} className="h-4 w-4" />
                 <button
                   type="button"
                   onClick={() => navigate(bookmark.url)}
