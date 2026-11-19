@@ -5,6 +5,7 @@ import { useActiveTab, useBrowserStore } from '../state/browserStore'
 import { useBookmarksStore, useIsBookmarked } from '../state/bookmarksStore'
 import { useDownloadsStore } from '../state/downloadsStore'
 import { IconButton } from './ui/IconButton'
+import { WindowControls } from './ui/WindowControls'
 import { Omnibox } from './Omnibox'
 
 const RING_RADIUS = 8
@@ -174,6 +175,7 @@ export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element
       <IconButton label="Menu" onClick={() => window.dispatchEvent(new Event('voyager:open-main-menu'))}>
         <EllipsisVertical className="h-4 w-4" />
       </IconButton>
+      {dragHandle && <WindowControls />}
     </div>
   )
 }

@@ -132,6 +132,9 @@ export const IpcChannels = {
   WindowsOpenIncognito: 'windows:open-incognito',
   WindowsGetState: 'windows:get-state',
   WindowsSetTitle: 'windows:set-title',
+  WindowsMinimize: 'windows:minimize',
+  WindowsToggleMaximize: 'windows:toggle-maximize',
+  WindowsClose: 'windows:close',
 
   UiFocusOmnibox: 'ui:focus-omnibox',
   UiFindInPage: 'ui:find-in-page',
