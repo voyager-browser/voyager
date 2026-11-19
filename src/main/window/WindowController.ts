@@ -219,8 +219,8 @@ export class WindowController {
 
   /**
    * Recompute the chrome height for the current tab-strip mode and bookmarks
-   * bar state. Vertical tabs put the toolbar at the top of the content area and
-   * use the rail for tabs, so the horizontal tab strip height is not reserved.
+   * bar state. Vertical tabs pin the toolbar across the top of the window and
+   * put tabs in the rail below it, so no tab-strip height is reserved.
    */
   private updateChromeHeight(): void {
     const base = this.verticalTabs ? TOOLBAR_HEIGHT : DEFAULT_CHROME_HEIGHT

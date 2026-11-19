@@ -46,7 +46,13 @@ function DownloadProgressRing({ progress }: { progress: number | null }): React.
   )
 }
 
-export function Toolbar(): React.JSX.Element {
+interface ToolbarProps {
+  /** Make the toolbar the frameless window's drag region (used in vertical mode). */
+  dragHandle?: boolean
+}
+
+export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element {
+  const isMac = window.voyager.platform === 'darwin'
   const activeTab = useActiveTab()
   const incognito = useBrowserStore((state) => state.incognito)
   const goBack = useBrowserStore((state) => state.goBack)
@@ -94,7 +100,13 @@ export function Toolbar(): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-[44px] shrink-0 items-center gap-1 border-b border-border bg-bg px-2">
+    <div
+      className={cn(
+        'flex h-[44px] shrink-0 items-center gap-1 border-b border-border bg-bg',
+        dragHandle && 'drag',
+        dragHandle && isMac ? 'pl-[76px] pr-2' : 'px-2'
+      )}
+    >
       <IconButton label="Back" disabled={!canGoBack} onClick={goBack}>
         <ArrowLeft className="h-4 w-4" />
       </IconButton>

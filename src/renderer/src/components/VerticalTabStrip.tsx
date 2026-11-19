@@ -15,9 +15,6 @@ interface RailMenuState {
   tabId: string | null
 }
 
-/** Header height that clears the macOS traffic lights. */
-const RAIL_HEADER_HEIGHT = 40
-
 /**
  * Chrome-style vertical tab rail. It stays compact (favicons only) and expands
  * over the page while the pointer is inside it so tab titles become readable.
@@ -25,6 +22,10 @@ const RAIL_HEADER_HEIGHT = 40
  * above the page for the duration of the hover.
  */
 export function VerticalTabStrip(): React.JSX.Element {
+  const isMac = window.voyager.platform === 'darwin'
+  // The toolbar above the rail owns the drag region, so no traffic-light
+  // clearance is needed here.
+  const railHeaderHeight = isMac ? 4 : 36
   const tabs = useBrowserStore((state) => state.tabs)
   const activeTabId = useBrowserStore((state) => state.activeTabId)
   const createTab = useBrowserStore((state) => state.createTab)
@@ -135,8 +136,8 @@ export function VerticalTabStrip(): React.JSX.Element {
       }}
     >
       <div
-        className="drag flex shrink-0 items-end justify-end px-2 pb-1"
-        style={{ height: RAIL_HEADER_HEIGHT }}
+        className="flex shrink-0 items-center justify-end px-2"
+        style={{ height: railHeaderHeight }}
       >
         {window.voyager.platform !== 'darwin' && (
           <button
