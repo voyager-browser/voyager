@@ -2,6 +2,7 @@ import { Columns2, Loader2, Volume2, VolumeX, X } from 'lucide-react'
 import type { TabState } from '../../../shared/types'
 import { cn } from '../lib/cn'
 import { useBrowserStore } from '../state/browserStore'
+import { Favicon } from './ui/Favicon'
 
 interface TabItemProps {
   tab: TabState
@@ -151,22 +152,5 @@ export function TabIcon({ tab }: { tab: TabState }): React.JSX.Element {
   if (tab.loading) {
     return <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted" />
   }
-  if (tab.favicon) {
-    return (
-      <img
-        src={tab.favicon}
-        alt=""
-        className="h-4 w-4 shrink-0 rounded-sm"
-        onError={(event) => {
-          event.currentTarget.style.display = 'none'
-        }}
-      />
-    )
-  }
-  const letter = (tab.title || '?').trim().charAt(0).toUpperCase() || '·'
-  return (
-    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-hover text-[10px] font-semibold text-muted">
-      {letter}
-    </span>
-  )
+  return <Favicon src={tab.favicon} className="h-4 w-4" />
 }

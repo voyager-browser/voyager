@@ -5,6 +5,7 @@ import { useOverlaySignal } from '../lib/overlay'
 import { isNewTab } from '../../../shared/url'
 import { useBrowserStore } from '../state/browserStore'
 import { useUiStore } from '../state/uiStore'
+import { Favicon } from './ui/Favicon'
 
 function prettifyUrl(url: string): string {
   if (isNewTab(url)) return 'New tab'
@@ -109,12 +110,8 @@ export function TabSearchPalette(): React.JSX.Element | null {
               >
                 {tab.loading ? (
                   <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted" />
-                ) : tab.favicon ? (
-                  <img src={tab.favicon} alt="" className="h-4 w-4 shrink-0 rounded-sm" />
                 ) : (
-                  <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-hover text-[9px] font-semibold text-muted">
-                    {(tab.title || '·').charAt(0).toUpperCase()}
-                  </span>
+                  <Favicon src={tab.favicon} className="h-4 w-4" />
                 )}
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px] text-fg">
