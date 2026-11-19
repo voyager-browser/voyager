@@ -2,10 +2,11 @@ import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { WebContentsView, type WebContents, type Input } from 'electron'
 import { DEFAULT_NEW_TAB_URL, SETTINGS_URL } from '../../shared/constants'
+import { VOYAGER_FAVICON } from '../../shared/favicons'
 import { IpcChannels } from '../../shared/ipc-channels'
 import { matchShortcut, type BrowserAction } from '../../shared/keyboard'
 import type { BrowserState, NewTabRequest, TabState } from '../../shared/types'
-import { isNewTab, startPageUrl } from '../../shared/url'
+import { isNewTab, isVoyagerInternalUrl, startPageUrl } from '../../shared/url'
 import { currentHistoryState, recordVisit, updateHistoryTitle } from '../history/history'
 import {
   clearContentBlockingPage,
@@ -72,6 +73,15 @@ export class TabManager {
   /** Numeric WebContents id for the active tab, when there is one. */
   activeWebContentsId(): number | null {
     return this.activeWebContents()?.id ?? null
+  }
+
+  /** Keep internal pages on the Voyager favicon without shadowing site icons. */
+  private syncInternalFavicon(entry: TabEntry, url: string): void {
+    if (isVoyagerInternalUrl(url)) {
+      entry.favicon = VOYAGER_FAVICON
+    } else if (entry.favicon === VOYAGER_FAVICON) {
+      entry.favicon = null
+    }
   }
 
   snapshot(): BrowserState {
@@ -158,6 +168,7 @@ export class TabManager {
 
     const requestedUrl = request.url ?? DEFAULT_NEW_TAB_URL
     const url = isNewTab(requestedUrl) ? this.startUrl() : requestedUrl
+    this.syncInternalFavicon(entry, url)
     void entry.view.webContents.loadURL(url)
 
     if (request.active ?? true) {
@@ -335,10 +346,14 @@ export class TabManager {
     }
     const wc = this.activeWebContents()
     if (!wc) return
+    const entry = this.entries.get(this.activeId ?? '') ?? null
     if (isNewTab(url)) {
-      void wc.loadURL(this.startUrl())
+      const target = this.startUrl()
+      if (entry) this.syncInternalFavicon(entry, target)
+      void wc.loadURL(target)
       return
     }
+    if (entry) this.syncInternalFavicon(entry, url)
     if (url.startsWith('javascript:')) {
       let code = url.slice('javascript:'.length)
       try {
@@ -563,7 +578,8 @@ export class TabManager {
     })
     wc.on('page-favicon-updated', (_event, favicons) => {
       if (entry.discarding || entry.discarded) return
-      entry.favicon = favicons[0] ?? null
+      this.syncInternalFavicon(entry, entry.url)
+      if (!isVoyagerInternalUrl(entry.url)) entry.favicon = favicons[0] ?? null
       this.broadcast()
     })
     wc.on('did-start-loading', () => {
@@ -588,6 +604,7 @@ export class TabManager {
     wc.on('did-navigate', (_event, url) => {
       if (entry.discarding || (entry.discarded && url === 'about:blank')) return
       entry.url = url
+      this.syncInternalFavicon(entry, url)
       trackContentBlockingPage(wc.id, this.window.profile, url)
       // Record history for main frame navigations to real pages.
       if (!isNewTab(url) && url.startsWith('http') && !this.window.isIncognito) {
@@ -605,6 +622,7 @@ export class TabManager {
       if (isMainFrame) {
         if (entry.discarding || (entry.discarded && url === 'about:blank')) return
         entry.url = url
+        this.syncInternalFavicon(entry, url)
         trackContentBlockingPage(wc.id, this.window.profile, url)
         if (!isNewTab(url) && url.startsWith('http') && !this.window.isIncognito) {
           try {
@@ -624,6 +642,7 @@ export class TabManager {
     wc.on('did-fail-load', (_event, _code, _description, url, isMainFrame) => {
       if (isMainFrame) {
         entry.url = url
+        this.syncInternalFavicon(entry, url)
         trackContentBlockingPage(wc.id, this.window.profile, url)
       }
       this.broadcast()
