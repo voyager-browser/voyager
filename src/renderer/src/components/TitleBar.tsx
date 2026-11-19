@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { Settings } from 'lucide-react'
 import { useBrowserStore } from '../state/browserStore'
+import { cn } from '../lib/cn'
 import { TabStrip } from './TabStrip'
 import { buildTabBarMenuItems } from './tabContextMenu'
 import { ContextMenu } from './ui/ContextMenu'
+import { WindowControls } from './ui/WindowControls'
 
 interface BarMenuState {
   x: number
@@ -18,7 +20,10 @@ export function TitleBar(): React.JSX.Element {
 
   return (
     <header
-      className="drag flex h-10 shrink-0 items-center border-b border-border bg-bg pl-[76px]"
+      className={cn(
+        'drag flex h-10 shrink-0 items-center border-b border-border bg-bg',
+        isMac ? 'pl-[76px]' : 'pl-2'
+      )}
       onContextMenu={(event) => {
         event.preventDefault()
         // Tabs and already-open menus handle their own right-clicks. A gesture
@@ -53,6 +58,7 @@ export function TitleBar(): React.JSX.Element {
           onClose={() => setMenu(null)}
         />
       )}
+      <WindowControls />
     </header>
   )
 }

@@ -214,7 +214,10 @@ const api = {
       ipcRenderer.invoke(IpcChannels.WindowsOpenIncognito, url),
     getState: (): Promise<WindowState> => ipcRenderer.invoke(IpcChannels.WindowsGetState),
     setTitle: (title: string): Promise<void> =>
-      ipcRenderer.invoke(IpcChannels.WindowsSetTitle, title)
+      ipcRenderer.invoke(IpcChannels.WindowsSetTitle, title),
+    minimize: (): Promise<void> => ipcRenderer.invoke(IpcChannels.WindowsMinimize),
+    toggleMaximize: (): Promise<void> => ipcRenderer.invoke(IpcChannels.WindowsToggleMaximize),
+    close: (): Promise<void> => ipcRenderer.invoke(IpcChannels.WindowsClose)
   },
 
   profiles: {
