@@ -34,9 +34,11 @@ import {
 } from './ChromeLayout'
 
 /**
- * Owns the single application window: a frameless BaseWindow whose chrome UI
- * (tab strip + toolbar) lives in a fixed-height WebContentsView pinned to the
- * top, with the active tab's WebContentsView filling the space below.
+ * Owns the single application window. Chrome UI (tab strip + toolbar) lives in
+ * a fixed-height WebContentsView pinned to the top of the content view, with the
+ * active tab's WebContentsView filling the space below. macOS keeps native
+ * traffic lights, Windows is frameless with custom controls, and Linux keeps
+ * native decorations so the desktop environment owns its title bar and buttons.
  */
 export class WindowController {
   readonly window: BaseWindow
@@ -77,7 +79,9 @@ export class WindowController {
       backgroundColor: '#1a1b22',
       ...(process.platform === 'darwin'
         ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 8, y: 13 } }
-        : { frame: false as const })
+        : process.platform === 'win32'
+          ? { frame: false as const }
+          : { frame: true as const })
     })
 
     this.chrome = new WebContentsView({

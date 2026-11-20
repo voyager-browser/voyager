@@ -35,7 +35,7 @@ export function TitleBar(): React.JSX.Element {
       }}
     >
       <TabStrip />
-      {/* Trailing area stays draggable for the frameless window */}
+      {/* Trailing area stays draggable where the app owns the title bar */}
       <div className="h-full flex-1" />
       {!isMac && (
         <button
