@@ -126,6 +126,11 @@ export function VerticalTabStrip(): React.JSX.Element {
       onMouseLeave={() => setExpanded(false)}
       onContextMenu={(event) => {
         event.preventDefault()
+        // Tabs and already-open menus handle their own right-clicks. A gesture
+        // can produce a second contextmenu that lands on the menu just opened,
+        // so exclude those targets to keep the rail menu exclusive.
+        const target = event.target as HTMLElement
+        if (target.closest('[role="tab"], [role="menu"]')) return
         setMenu({ x: event.clientX, y: event.clientY, tabId: null })
       }}
     >

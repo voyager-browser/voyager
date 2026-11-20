@@ -21,6 +21,11 @@ export function TitleBar(): React.JSX.Element {
       className="drag flex h-10 shrink-0 items-center border-b border-border bg-bg pl-[76px]"
       onContextMenu={(event) => {
         event.preventDefault()
+        // Tabs and already-open menus handle their own right-clicks. A gesture
+        // can produce a second contextmenu that lands on the menu just opened,
+        // so exclude those targets to keep the strip menu exclusive.
+        const target = event.target as HTMLElement
+        if (target.closest('[role="tab"], [role="menu"]')) return
         setMenu({ x: event.clientX, y: event.clientY })
       }}
     >
