@@ -22,10 +22,13 @@ interface RailMenuState {
  * above the page for the duration of the hover.
  */
 export function VerticalTabStrip(): React.JSX.Element {
-  const isMac = window.voyager.platform === 'darwin'
-  // The toolbar above the rail owns the drag region, so no traffic-light
-  // clearance is needed here.
-  const railHeaderHeight = isMac ? 4 : 36
+  const platform = window.voyager.platform
+  const isMac = platform === 'darwin'
+  // The toolbar above owns the drag region, but the rail still needs visible
+  // breathing room below the traffic-light/control row instead of starting
+  // flush under it.
+  const railHeaderHeight = isMac ? 32 : 36
+  const railTopPadding = isMac ? 8 : 4
   const tabs = useBrowserStore((state) => state.tabs)
   const activeTabId = useBrowserStore((state) => state.activeTabId)
   const createTab = useBrowserStore((state) => state.createTab)
@@ -157,6 +160,7 @@ export function VerticalTabStrip(): React.JSX.Element {
         aria-orientation="vertical"
         aria-label="Tabs"
         className="no-drag flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-1.5 pb-2"
+        style={{ paddingTop: railTopPadding }}
       >
         <button
           type="button"
