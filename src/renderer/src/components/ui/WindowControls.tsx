@@ -28,7 +28,7 @@ export function WindowControls(): React.JSX.Element | null {
   }
 
   return (
-    <div className="no-drag flex shrink-0 items-center self-stretch" aria-label="Window controls">
+    <div className="no-drag flex h-full shrink-0 items-center" aria-label="Window controls">
       <button
         type="button"
         aria-label="Minimize window"
