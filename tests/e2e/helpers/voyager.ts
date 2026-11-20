@@ -186,17 +186,7 @@ export async function launchVoyager(options: LaunchOptions): Promise<VoyagerApp>
   const close = async (): Promise<void> => {
     if (closed) return
     closed = true
-    // A busy Linux WM can occasionally stall graceful shutdown long enough to
-    // hit Playwright's 60s teardown timeout. Force the main process to exit if
-    // the graceful close does not finish promptly.
-    const forceExit = setTimeout(() => {
-      void app.evaluate(({ app }) => app.exit(0)).catch(() => undefined)
-    }, 5_000)
-    try {
-      await app.close().catch(() => undefined)
-    } finally {
-      clearTimeout(forceExit)
-    }
+    await app.close().catch(() => undefined)
   }
 
   const voyager: VoyagerApp = {
