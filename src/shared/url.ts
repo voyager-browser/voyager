@@ -105,6 +105,11 @@ export function isNewTab(url: string): boolean {
   return parsed?.pathname === '/start.html'
 }
 
+/** Whether a URL is served by Voyager itself rather than by a website. */
+export function isVoyagerInternalUrl(url: string): boolean {
+  return url.startsWith('voyager://') || isNewTab(url)
+}
+
 /**
  * Build the internal start page URL. The search engine travels in the query
  * string so the page can render without access to privileged IPC APIs.
