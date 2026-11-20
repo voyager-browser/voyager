@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { Copy, Minus, Square, X } from 'lucide-react'
 
 /**
- * Native-style window buttons for frameless non-macOS windows. macOS keeps its
- * red/yellow/green controls on the left and is handled by the drag padding in
- * the top chrome row instead.
+ * Native-style window buttons for frameless Windows. macOS keeps its built-in
+ * traffic lights, and Linux defers to the desktop environment's decorations
+ * (which may show no buttons at all, or a title/icon/button row of their own),
+ * so this renders only on win32.
  */
 export function WindowControls(): React.JSX.Element | null {
   const platform = window.voyager.platform
@@ -20,7 +21,7 @@ export function WindowControls(): React.JSX.Element | null {
     return () => window.removeEventListener('resize', refresh)
   }, [])
 
-  if (platform === 'darwin') return null
+  if (platform !== 'win32') return null
 
   const toggleMaximize = (): void => {
     void window.voyager.windows.toggleMaximize().then(refresh)

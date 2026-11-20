@@ -48,7 +48,7 @@ function DownloadProgressRing({ progress }: { progress: number | null }): React.
 }
 
 interface ToolbarProps {
-  /** Make the toolbar the frameless window's drag region (used in vertical mode). */
+  /** Make the toolbar the drag region where the app owns the title bar (vertical mode). */
   dragHandle?: boolean
 }
 
