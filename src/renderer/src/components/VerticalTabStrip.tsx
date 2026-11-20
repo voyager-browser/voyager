@@ -260,12 +260,6 @@ function VerticalTabItem({
         onDrop()
       }}
       onDragEnd={onDragEnd}
-      onMouseDown={(event) => {
-        if (event.button === 2) {
-          event.preventDefault()
-          onContextMenu(event.clientX, event.clientY)
-        }
-      }}
       onContextMenu={(event) => {
         event.preventDefault()
         event.stopPropagation()

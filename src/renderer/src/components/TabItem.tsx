@@ -57,13 +57,6 @@ export function TabItem({
           onDrop(tab.id)
         }}
         onDragEnd={onDragEnd}
-        onMouseDown={(event) => {
-          if (event.button === 2) {
-            event.preventDefault()
-            event.stopPropagation()
-            onContextMenu(event.clientX, event.clientY)
-          }
-        }}
         onContextMenu={(event) => {
           event.preventDefault()
           event.stopPropagation()
@@ -105,13 +98,6 @@ export function TabItem({
         onDrop(tab.id)
       }}
       onDragEnd={onDragEnd}
-      onMouseDown={(event) => {
-        if (event.button === 2) {
-          event.preventDefault()
-          event.stopPropagation()
-          onContextMenu(event.clientX, event.clientY)
-        }
-      }}
       onContextMenu={(event) => {
         event.preventDefault()
         event.stopPropagation()
