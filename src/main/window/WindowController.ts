@@ -54,6 +54,7 @@ export class WindowController {
   private railExpanded = false
   private overlayOpen = false
   private layout: WindowLayout
+  private layoutSettleTimer: NodeJS.Timeout | null = null
   private disposed = false
   private incognito: boolean
   private incognitoPartition: string | null
@@ -113,6 +114,7 @@ export class WindowController {
 
     this.window.on('closed', () => {
       this.disposed = true
+      if (this.layoutSettleTimer) clearTimeout(this.layoutSettleTimer)
     })
     this.setBookmarksBarVisible(currentBookmarksState(this.profileId).barVisible)
     this.applyLayout()
@@ -370,6 +372,18 @@ export class WindowController {
     }
     this.restoreSession(initialUrl)
     this.window.show()
+    this.settleLayout()
+  }
+
+  /**
+   * Linux window managers can apply native frame extents after the window is
+   * mapped, changing the content area without emitting a resize event. Refresh
+   * briefly so the chrome view ends up sized to the real content area.
+   */
+  private settleLayout(attempts = 0): void {
+    if (this.disposed || attempts >= 10) return
+    this.handleWindowShapeChange()
+    this.layoutSettleTimer = setTimeout(() => this.settleLayout(attempts + 1), 50)
   }
 
   /** Focus this window and open `url` in a new active tab. */
