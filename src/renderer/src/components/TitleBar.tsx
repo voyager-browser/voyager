@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Settings } from 'lucide-react'
 import {
+  HORIZONTAL_TAB_STRIP_LEFT_OFFSET,
   MAC_TRAFFIC_LIGHT_CLEARANCE,
   WINDOW_CONTROLS_RESERVED_WIDTH
 } from '../../../shared/constants'
@@ -27,7 +28,7 @@ export function TitleBar(): React.JSX.Element {
     <header
       className="drag relative flex h-10 shrink-0 items-center border-b border-border bg-bg"
       style={{
-        paddingLeft: isMac ? MAC_TRAFFIC_LIGHT_CLEARANCE : 8,
+        paddingLeft: (isMac ? MAC_TRAFFIC_LIGHT_CLEARANCE : 8) + HORIZONTAL_TAB_STRIP_LEFT_OFFSET,
         paddingRight: isWindows ? WINDOW_CONTROLS_RESERVED_WIDTH : 8
       }}
       onContextMenu={(event) => {

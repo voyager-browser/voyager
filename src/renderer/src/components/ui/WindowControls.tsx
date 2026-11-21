@@ -29,6 +29,8 @@ export function WindowControls(): React.JSX.Element | null {
 
   return (
     <div className="no-drag flex h-full shrink-0 items-center" aria-label="Window controls">
+      {/* Only the custom Windows cluster needs a visual separator from the UI. */}
+      <span aria-hidden="true" className="mr-1.5 h-4 w-px shrink-0 bg-border" />
       <button
         type="button"
         aria-label="Minimize window"

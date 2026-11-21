@@ -164,13 +164,9 @@ export function VerticalTabStrip(): React.JSX.Element {
           aria-label="New tab"
           title="New tab"
           onClick={() => createTab()}
-          className={cn(
-            'flex h-8 shrink-0 items-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg',
-            expanded ? 'gap-2 px-2' : 'justify-center'
-          )}
+          className="flex h-8 w-8 shrink-0 items-center justify-center self-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg"
         >
           <Plus className="h-4 w-4 shrink-0" />
-          {expanded && <span className="truncate text-[12.5px]">New tab</span>}
         </button>
 
         {tabs.map((tab) => (
@@ -269,7 +265,7 @@ function VerticalTabItem({
       }}
       className={cn(
         'group flex h-8 shrink-0 items-center rounded-md transition-colors',
-        expanded ? 'gap-2 px-2' : 'justify-center',
+        expanded ? 'w-full gap-2 px-2' : 'w-8 self-center justify-center',
         active ? 'bg-surface text-fg' : 'text-muted hover:bg-hover hover:text-fg',
         selected && !active && 'bg-hover/70 text-fg',
         split && 'ring-1 ring-inset ring-accent/60',
