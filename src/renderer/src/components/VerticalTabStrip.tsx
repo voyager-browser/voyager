@@ -189,7 +189,10 @@ export function VerticalTabStrip(): React.JSX.Element {
           aria-label="New tab"
           title="New tab"
           onClick={() => createTab()}
-          className="mt-auto flex h-8 w-8 shrink-0 items-center justify-center self-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg"
+          className={cn(
+            'flex h-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg',
+            expanded ? 'w-full' : 'w-8 self-center'
+          )}
         >
           <Plus className="h-4 w-4 shrink-0" />
         </button>
