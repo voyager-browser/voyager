@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Copy, Minus, Square, X } from 'lucide-react'
+import { MAC_TRAFFIC_LIGHT_CLEARANCE } from '../../../../shared/constants'
+import { cn } from '../../lib/cn'
 
 /**
  * Native-style window buttons for frameless Windows. macOS keeps its built-in
@@ -29,8 +31,7 @@ export function WindowControls(): React.JSX.Element | null {
 
   return (
     <div className="no-drag flex h-full shrink-0 items-center" aria-label="Window controls">
-      {/* Only the custom Windows cluster needs a visual separator from the UI. */}
-      <span aria-hidden="true" className="mr-1.5 h-4 w-px shrink-0 bg-border" />
+      <WindowControlsSeparator className="mr-1.5" />
       <button
         type="button"
         aria-label="Minimize window"
@@ -58,6 +59,39 @@ export function WindowControls(): React.JSX.Element | null {
       >
         <X className="h-3.5 w-3.5" />
       </button>
+    </div>
+  )
+}
+
+/** Divider between the app chrome and native/custom window controls. */
+export function WindowControlsSeparator({
+  className
+}: {
+  className?: string
+}): React.JSX.Element | null {
+  const platform = window.voyager.platform
+  if (platform !== 'darwin' && platform !== 'win32') return null
+
+  return (
+    <span aria-hidden="true" className={cn('no-drag h-4 w-px shrink-0 bg-border', className)} />
+  )
+}
+
+/**
+ * macOS puts its window controls at the leading edge. The toolbar is the drag
+ * region there, so this divider sits just inside the traffic-light clearance.
+ */
+export function LeadingWindowControlsSeparator(): React.JSX.Element | null {
+  const platform = window.voyager.platform
+  if (platform !== 'darwin') return null
+
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-y-0 flex items-center"
+      style={{ left: MAC_TRAFFIC_LIGHT_CLEARANCE - 6 }}
+    >
+      <WindowControlsSeparator />
     </div>
   )
 }

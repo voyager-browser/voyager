@@ -6,6 +6,7 @@ test('renders a full-window vertical tab rail when enabled', async ({ launchVoya
 
   const rail = voyager.chrome.locator('aside[aria-label="Tabs"]')
   await expect(rail).toBeVisible()
+  await expect(rail).toHaveCSS('width', '50px')
   await expect(rail.getByRole('tab')).toHaveCount(1)
 
   const [width, height] = await voyager.app.evaluate(({ BaseWindow }) => {

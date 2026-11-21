@@ -5,8 +5,8 @@ export const SETTINGS_URL = 'voyager://settings'
 export const INCOGNITO_PARTITION_PREFIX = 'incognito-'
 /** Width of the vertical tab rail when expanded to show labels. */
 export const VERTICAL_TAB_RAIL_WIDTH = 200
-/** Compact rail width; wide enough to clear the macOS traffic lights. */
-export const VERTICAL_TAB_RAIL_COMPACT_WIDTH = 72
+/** Compact rail width; keeps the favicon column a roughly 50px square bar. */
+export const VERTICAL_TAB_RAIL_COMPACT_WIDTH = 50
 /** Left clearance for macOS traffic lights in the top chrome rows. */
 export const MAC_TRAFFIC_LIGHT_CLEARANCE = 88
 /** Reserved right space for the custom Windows window-control cluster. */

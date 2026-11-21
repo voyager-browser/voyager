@@ -9,7 +9,7 @@ import { useBrowserStore } from '../state/browserStore'
 import { TabStrip } from './TabStrip'
 import { buildTabBarMenuItems } from './tabContextMenu'
 import { ContextMenu } from './ui/ContextMenu'
-import { WindowControls } from './ui/WindowControls'
+import { LeadingWindowControlsSeparator, WindowControls } from './ui/WindowControls'
 
 interface BarMenuState {
   x: number
@@ -41,6 +41,7 @@ export function TitleBar(): React.JSX.Element {
         setMenu({ x: event.clientX, y: event.clientY })
       }}
     >
+      <LeadingWindowControlsSeparator />
       <TabStrip />
       {/* Trailing area stays draggable where the app owns the title bar */}
       <div className="h-full flex-1" />
