@@ -16,6 +16,7 @@ import { TitleBar } from './components/TitleBar'
 import { Toolbar } from './components/Toolbar'
 import { VerticalTabStrip } from './components/VerticalTabStrip'
 import { focusOmnibox, installChromeShortcuts } from './lib/shortcuts'
+import type { MenuAnchor } from './lib/menuAnchor'
 import { DEFAULT_SEARCH_ENGINE, isSearchEngineId } from '../../shared/search'
 import type { UserPreferences } from '../../shared/types'
 import { useBookmarksStore } from './state/bookmarksStore'
@@ -29,7 +30,7 @@ export default function App(): React.JSX.Element {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyClearPrompt, setHistoryClearPrompt] = useState(0)
   const [downloadsOpen, setDownloadsOpen] = useState(false)
-  const [mainMenuOpen, setMainMenuOpen] = useState(false)
+  const [mainMenuAnchor, setMainMenuAnchor] = useState<MenuAnchor | null>(null)
   const [findOpen, setFindOpen] = useState(false)
   const [nameWindowOpen, setNameWindowOpen] = useState(false)
   const bookmarksManagerOpen = useUiStore((state) => state.bookmarksManagerOpen)
@@ -93,7 +94,9 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     const openHistory = (): void => setHistoryOpen(true)
     const openDownloads = (): void => setDownloadsOpen(true)
-    const openMainMenu = (): void => setMainMenuOpen(true)
+    const openMainMenu = (event: Event): void => {
+      setMainMenuAnchor((event as CustomEvent<MenuAnchor>).detail ?? null)
+    }
     const openFind = (): void => setFindOpen(true)
     const openNameWindow = (): void => setNameWindowOpen(true)
     const openHistoryClear = (): void => {
@@ -170,7 +173,7 @@ export default function App(): React.JSX.Element {
           void window.voyager.downloads.clear()
         }}
       />
-      <MainMenu open={mainMenuOpen} onClose={() => setMainMenuOpen(false)} />
+      <MainMenu anchor={mainMenuAnchor} onClose={() => setMainMenuAnchor(null)} />
       <FindBar open={findOpen} onClose={() => setFindOpen(false)} />
       <PermissionPrompt />
       <PromptDialog />

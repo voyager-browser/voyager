@@ -3,10 +3,11 @@ import { PROFILE_COLOR_CLASSES } from '../../../shared/profiles'
 import { useActiveTab, useBrowserStore } from '../state/browserStore'
 import { useUiStore } from '../state/uiStore'
 import { useOverlaySignal } from '../lib/overlay'
+import type { MenuAnchor } from '../lib/menuAnchor'
 import { cn } from '../lib/cn'
 
 interface MainMenuProps {
-  open: boolean
+  anchor: MenuAnchor | null
   onClose: () => void
 }
 
@@ -34,13 +35,13 @@ function MenuButton({
   )
 }
 
-export function MainMenu({ open, onClose }: MainMenuProps): React.JSX.Element | null {
-  useOverlaySignal(open)
+export function MainMenu({ anchor, onClose }: MainMenuProps): React.JSX.Element | null {
+  useOverlaySignal(anchor !== null)
   const profile = useBrowserStore((state) => state.profile)
   const incognito = useBrowserStore((state) => state.incognito)
   const activeTab = useActiveTab()
 
-  if (!open) return null
+  if (anchor === null) return null
 
   const run = (action: () => void): void => {
     onClose()
@@ -55,7 +56,10 @@ export function MainMenu({ open, onClose }: MainMenuProps): React.JSX.Element | 
   return (
     <div className="fixed inset-0 z-40" onMouseDown={onClose}>
       <div
-        className="no-drag absolute right-3 top-[84px] flex w-[280px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl shadow-black/20"
+        role="menu"
+        aria-label="Browser menu"
+        className="no-drag absolute flex w-[280px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl shadow-black/20"
+        style={{ top: anchor.top, right: anchor.right }}
         onMouseDown={(event) => event.stopPropagation()}
       >
         {profile && !incognito && (
@@ -69,7 +73,8 @@ export function MainMenu({ open, onClose }: MainMenuProps): React.JSX.Element | 
                 className={cn(
                   'flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden text-[12px] font-semibold text-white',
                   profile.picture ? 'rounded-full' : 'rounded-lg',
-                  !profile.picture && (PROFILE_COLOR_CLASSES[profile.color] ?? PROFILE_COLOR_CLASSES.blue)
+                  !profile.picture &&
+                    (PROFILE_COLOR_CLASSES[profile.color] ?? PROFILE_COLOR_CLASSES.blue)
                 )}
                 style={
                   profile.backgroundColor && !profile.picture
@@ -84,7 +89,9 @@ export function MainMenu({ open, onClose }: MainMenuProps): React.JSX.Element | 
                 )}
               </span>
               <span className="min-w-0">
-                <span className="block truncate text-[13px] font-medium text-fg">{profile.name}</span>
+                <span className="block truncate text-[13px] font-medium text-fg">
+                  {profile.name}
+                </span>
                 <span className="block text-[11.5px] text-muted">Manage profiles</span>
               </span>
             </button>
@@ -110,7 +117,11 @@ export function MainMenu({ open, onClose }: MainMenuProps): React.JSX.Element | 
         </div>
 
         <div className="border-t border-border p-1.5">
-          <MenuButton icon={<QrCode className="h-4 w-4" />} label="Generate QR code" onClick={() => run(openQr)} />
+          <MenuButton
+            icon={<QrCode className="h-4 w-4" />}
+            label="Generate QR code"
+            onClick={() => run(openQr)}
+          />
         </div>
 
         <div className="border-t border-border p-1.5">

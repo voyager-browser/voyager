@@ -1,5 +1,17 @@
-import { ArrowLeft, ArrowRight, Download, EllipsisVertical, Home, RotateCw, Star, VenetianMask, X } from 'lucide-react'
+import {
+  ArrowLeft,
+  ArrowRight,
+  Download,
+  EllipsisVertical,
+  Home,
+  RotateCw,
+  Star,
+  VenetianMask,
+  X
+} from 'lucide-react'
+import type { MouseEvent } from 'react'
 import { cn } from '../lib/cn'
+import { menuAnchorFromElement, type MenuAnchor } from '../lib/menuAnchor'
 import {
   MAC_TRAFFIC_LIGHT_CLEARANCE,
   WINDOW_CONTROLS_RESERVED_WIDTH
@@ -106,6 +118,11 @@ export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element
     }
   }
 
+  const openMainMenu = (event: MouseEvent<HTMLButtonElement>): void => {
+    const detail: MenuAnchor = menuAnchorFromElement(event.currentTarget)
+    window.dispatchEvent(new CustomEvent<MenuAnchor>('voyager:open-main-menu', { detail }))
+  }
+
   return (
     <div
       className={cn(
@@ -182,7 +199,7 @@ export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element
           <Download className="h-4 w-4" />
         )}
       </IconButton>
-      <IconButton label="Menu" onClick={() => window.dispatchEvent(new Event('voyager:open-main-menu'))}>
+      <IconButton label="Menu" onClick={openMainMenu}>
         <EllipsisVertical className="h-4 w-4" />
       </IconButton>
       {dragHandle && isWindows && (

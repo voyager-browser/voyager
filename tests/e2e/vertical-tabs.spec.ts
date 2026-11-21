@@ -43,3 +43,24 @@ test('toggles vertical tabs from the tab context menu', async ({ voyager }) => {
     )
     .toBe(false)
 })
+
+test('opens the main menu directly below its toolbar button', async ({ launchVoyager }) => {
+  const voyager = await launchVoyager({ seed: { settings: { verticalTabs: true } } })
+  const button = voyager.chrome.getByRole('button', { name: 'Menu' })
+  const buttonBox = await button.boundingBox()
+  if (!buttonBox) throw new Error('Menu button has no bounding box')
+
+  await button.click()
+
+  const menu = voyager.chrome.getByRole('menu', { name: 'Browser menu' })
+  await expect(menu).toBeVisible()
+  const menuBox = await menu.boundingBox()
+  if (!menuBox) throw new Error('Main menu has no bounding box')
+
+  expect(Math.abs(menuBox.y - (buttonBox.y + buttonBox.height))).toBeLessThanOrEqual(1)
+  expect(Math.abs(menuBox.x + menuBox.width - (buttonBox.x + buttonBox.width))).toBeLessThanOrEqual(
+    1
+  )
+
+  await voyager.close()
+})
