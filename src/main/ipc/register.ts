@@ -854,6 +854,8 @@ export function registerIpcHandlers(context: IpcContext): void {
         createdAt: 0,
         isDefault: true
       },
+      // Maximize is distinct from fullscreen: window chrome and its reserved
+      // clearance remain present in maximized and normal states alike.
       maximized: window?.window.isMaximized() ?? false
     }
   })
