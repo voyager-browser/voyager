@@ -112,9 +112,12 @@ export class WindowController {
     this.window.on('enter-full-screen', this.handleWindowShapeChange)
     this.window.on('leave-full-screen', this.handleWindowShapeChange)
 
+    // Cancel the post-show layout refresh as soon as teardown starts; the
+    // timer must not re-enter the window while it is closing.
+    this.window.on('close', () => this.cancelLayoutSettle())
     this.window.on('closed', () => {
       this.disposed = true
-      if (this.layoutSettleTimer) clearTimeout(this.layoutSettleTimer)
+      this.cancelLayoutSettle()
     })
     this.setBookmarksBarVisible(currentBookmarksState(this.profileId).barVisible)
     this.applyLayout()
@@ -381,9 +384,18 @@ export class WindowController {
    * briefly so the chrome view ends up sized to the real content area.
    */
   private settleLayout(attempts = 0): void {
-    if (this.disposed || attempts >= 10) return
+    this.layoutSettleTimer = null
+    if (this.disposed || this.window.isDestroyed() || attempts >= 10) return
     this.handleWindowShapeChange()
+    if (this.disposed || this.window.isDestroyed()) return
     this.layoutSettleTimer = setTimeout(() => this.settleLayout(attempts + 1), 50)
+  }
+
+  /** Stop any pending Linux frame-extent layout refresh. */
+  private cancelLayoutSettle(): void {
+    if (!this.layoutSettleTimer) return
+    clearTimeout(this.layoutSettleTimer)
+    this.layoutSettleTimer = null
   }
 
   /** Focus this window and open `url` in a new active tab. */
@@ -459,7 +471,7 @@ export class WindowController {
   }
 
   private applyLayout(): void {
-    if (this.disposed) return
+    if (this.disposed || this.window.isDestroyed()) return
     const [width, height] = this.window.getContentSize()
     const railWidth = verticalRailExtent(this.verticalTabs)
     this.layout = computeLayout(width, height, this.chromeHeight, railWidth)
