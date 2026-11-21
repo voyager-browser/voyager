@@ -28,7 +28,6 @@ export function VerticalTabStrip(): React.JSX.Element {
   // breathing room below the traffic-light/control row instead of starting
   // flush under it.
   const railHeaderHeight = isMac ? 32 : 36
-  const railTopPadding = isMac ? 8 : 4
   const tabs = useBrowserStore((state) => state.tabs)
   const activeTabId = useBrowserStore((state) => state.activeTabId)
   const createTab = useBrowserStore((state) => state.createTab)
@@ -160,7 +159,6 @@ export function VerticalTabStrip(): React.JSX.Element {
         aria-orientation="vertical"
         aria-label="Tabs"
         className="no-drag flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-1.5 pb-2"
-        style={{ paddingTop: railTopPadding }}
       >
         <button
           type="button"
