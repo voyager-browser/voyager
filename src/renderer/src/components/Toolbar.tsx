@@ -9,7 +9,7 @@ import { useActiveTab, useBrowserStore } from '../state/browserStore'
 import { useBookmarksStore, useIsBookmarked } from '../state/bookmarksStore'
 import { useDownloadsStore } from '../state/downloadsStore'
 import { IconButton } from './ui/IconButton'
-import { WindowControls } from './ui/WindowControls'
+import { LeadingWindowControlsSeparator, WindowControls } from './ui/WindowControls'
 import { Omnibox } from './Omnibox'
 
 const RING_RADIUS = 8
@@ -117,6 +117,7 @@ export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element
         paddingRight: dragHandle && isWindows ? WINDOW_CONTROLS_RESERVED_WIDTH : 8
       }}
     >
+      {dragHandle && <LeadingWindowControlsSeparator />}
       <IconButton label="Back" disabled={!canGoBack} onClick={goBack}>
         <ArrowLeft className="h-4 w-4" />
       </IconButton>
