@@ -194,8 +194,7 @@ test('bookmarks manager adds folders and bookmarks and allows duplicates per fol
 })
 
 test('shows favicons for bookmarks inside a folder', async ({ voyager, server }) => {
-  const favicon =
-    'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%228%22 fill=%22%2334d399%22/%3E%3C/svg%3E'
+  const favicon = server.url('/favicon.svg')
 
   await voyager.chrome.evaluate(
     async (input: { url: string; favicon: string }) => {
