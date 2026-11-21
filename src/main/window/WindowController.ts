@@ -379,9 +379,9 @@ export class WindowController {
   }
 
   /**
-   * Linux window managers can apply native frame extents after the window is
-   * mapped, changing the content area without emitting a resize event. Refresh
-   * briefly so the chrome view ends up sized to the real content area.
+   * Native frames can apply their final extents after a window is mapped,
+   * changing the content area without emitting a resize event. Refresh briefly
+   * so chrome and page views settle to the real content area on every platform.
    */
   private settleLayout(attempts = 0): void {
     this.layoutSettleTimer = null
@@ -391,7 +391,7 @@ export class WindowController {
     this.layoutSettleTimer = setTimeout(() => this.settleLayout(attempts + 1), 50)
   }
 
-  /** Stop any pending Linux frame-extent layout refresh. */
+  /** Stop any pending post-show layout refresh. */
   private cancelLayoutSettle(): void {
     if (!this.layoutSettleTimer) return
     clearTimeout(this.layoutSettleTimer)
