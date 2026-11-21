@@ -193,6 +193,33 @@ test('bookmarks manager adds folders and bookmarks and allows duplicates per fol
     .toBe(2)
 })
 
+test('shows favicons for bookmarks inside a folder', async ({ voyager, server }) => {
+  const favicon =
+    'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%228%22 fill=%22%2334d399%22/%3E%3C/svg%3E'
+
+  await voyager.chrome.evaluate(
+    async (input: { url: string; favicon: string }) => {
+      const state = await window.voyager.bookmarks.addFolder({ title: 'Research' })
+      const folder = state.folders.find((candidate) => candidate.title === 'Research')
+      if (!folder) throw new Error('Folder not created')
+      await window.voyager.bookmarks.add({
+        title: 'Favicon Site',
+        url: input.url,
+        favicon: input.favicon,
+        folderId: folder.id
+      })
+    },
+    { url: server.url('/home'), favicon }
+  )
+
+  const folderButton = voyager.chrome.getByRole('button', { name: 'Folder Research' })
+  await expect(folderButton).toBeVisible()
+  await folderButton.click()
+
+  const item = voyager.chrome.getByRole('menu').getByRole('menuitem', { name: 'Favicon Site' })
+  await expect(item.locator('img')).toHaveAttribute('src', favicon)
+})
+
 test.skip('bookmark context menu opens, edits, copies and deletes a bookmark (pending context-menu trigger fix)', async ({
   voyager,
   server

@@ -82,6 +82,7 @@ export function BookmarksBar(): React.JSX.Element | null {
       })),
       ...childItems.map((item) => ({
         label: item.title,
+        icon: <Favicon src={item.favicon} className="h-4 w-4" />,
         onSelect: () => navigate(item.url)
       }))
     ]
