@@ -208,6 +208,7 @@ const api = {
       subscribe<SitePermissionsState>(IpcChannels.PermissionsStateChanged, listener)
   },
 
+  /** Window actions apply to the window whose renderer invokes them. */
   windows: {
     open: (url?: string): Promise<void> => ipcRenderer.invoke(IpcChannels.WindowsOpen, url),
     openIncognito: (url?: string): Promise<void> =>
