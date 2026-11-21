@@ -219,6 +219,13 @@ async function handle(req: URL, res: ServerResponse, counts: Map<string, number>
     res.end()
     return
   }
+  if (path === '/favicon.svg') {
+    res.setHeader('content-type', 'image/svg+xml')
+    res.end(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#34d399"/></svg>'
+    )
+    return
+  }
   if (path === '/favicon.ico') {
     res.statusCode = 204
     res.end()
