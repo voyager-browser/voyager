@@ -864,6 +864,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     context.getWindow(event as any)?.setWindowTitle(title)
   })
 
+  // Resolve the sender's window so a control affects only the window that owns it.
   ipcMain.handle(IpcChannels.WindowsMinimize, (event) => {
     context.getWindow(event as any)?.window.minimize()
   })

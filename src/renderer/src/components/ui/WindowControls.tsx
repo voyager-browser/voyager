@@ -7,7 +7,8 @@ import { cn } from '../../lib/cn'
  * Native-style window buttons for frameless Windows. macOS keeps its built-in
  * traffic lights, and Linux defers to the desktop environment's decorations
  * (which may show no buttons at all, or a title/icon/button row of their own),
- * so this renders only on win32.
+ * so this renders only on win32. The IPC handlers resolve the sender's window,
+ * so these buttons affect only the window whose chrome renders them.
  */
 export function WindowControls(): React.JSX.Element | null {
   const platform = window.voyager.platform
