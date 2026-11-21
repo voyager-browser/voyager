@@ -11,3 +11,5 @@ export const VERTICAL_TAB_RAIL_COMPACT_WIDTH = 72
 export const MAC_TRAFFIC_LIGHT_CLEARANCE = 88
 /** Reserved right space for the custom Windows window-control cluster. */
 export const WINDOW_CONTROLS_RESERVED_WIDTH = 140
+/** Extra left offset so horizontal tabs line up better with the page. */
+export const HORIZONTAL_TAB_STRIP_LEFT_OFFSET = 10
