@@ -170,6 +170,7 @@ export interface SettingsTarget {
 export interface WindowState {
   incognito: boolean
   profile: ProfileInfo
+  maximized: boolean
 }
 
 export interface NewBookmarkFolderInput {

@@ -34,9 +34,11 @@ import {
 } from './ChromeLayout'
 
 /**
- * Owns the single application window: a frameless BaseWindow whose chrome UI
- * (tab strip + toolbar) lives in a fixed-height WebContentsView pinned to the
- * top, with the active tab's WebContentsView filling the space below.
+ * Owns the single application window. Chrome UI (tab strip + toolbar) lives in
+ * a fixed-height WebContentsView pinned to the top of the content view, with the
+ * active tab's WebContentsView filling the space below. macOS keeps native
+ * traffic lights, Windows is frameless with custom controls, and Linux keeps
+ * native decorations so the desktop environment owns its title bar and buttons.
  */
 export class WindowController {
   readonly window: BaseWindow
@@ -52,6 +54,7 @@ export class WindowController {
   private railExpanded = false
   private overlayOpen = false
   private layout: WindowLayout
+  private layoutSettleTimer: NodeJS.Timeout | null = null
   private disposed = false
   private incognito: boolean
   private incognitoPartition: string | null
@@ -77,7 +80,9 @@ export class WindowController {
       backgroundColor: '#1a1b22',
       ...(process.platform === 'darwin'
         ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 8, y: 13 } }
-        : { frame: false as const })
+        : process.platform === 'win32'
+          ? { frame: false as const }
+          : { frame: true as const })
     })
 
     this.chrome = new WebContentsView({
@@ -107,8 +112,12 @@ export class WindowController {
     this.window.on('enter-full-screen', this.handleWindowShapeChange)
     this.window.on('leave-full-screen', this.handleWindowShapeChange)
 
+    // Cancel the post-show layout refresh as soon as teardown starts; the
+    // timer must not re-enter the window while it is closing.
+    this.window.on('close', () => this.cancelLayoutSettle())
     this.window.on('closed', () => {
       this.disposed = true
+      this.cancelLayoutSettle()
     })
     this.setBookmarksBarVisible(currentBookmarksState(this.profileId).barVisible)
     this.applyLayout()
@@ -219,8 +228,8 @@ export class WindowController {
 
   /**
    * Recompute the chrome height for the current tab-strip mode and bookmarks
-   * bar state. Vertical tabs put the toolbar at the top of the content area and
-   * use the rail for tabs, so the horizontal tab strip height is not reserved.
+   * bar state. Vertical tabs pin the toolbar across the top of the window and
+   * put tabs in the rail below it, so no tab-strip height is reserved.
    */
   private updateChromeHeight(): void {
     const base = this.verticalTabs ? TOOLBAR_HEIGHT : DEFAULT_CHROME_HEIGHT
@@ -366,6 +375,27 @@ export class WindowController {
     }
     this.restoreSession(initialUrl)
     this.window.show()
+    this.settleLayout()
+  }
+
+  /**
+   * Native frames can apply their final extents after a window is mapped,
+   * changing the content area without emitting a resize event. Refresh briefly
+   * so chrome and page views settle to the real content area on every platform.
+   */
+  private settleLayout(attempts = 0): void {
+    this.layoutSettleTimer = null
+    if (this.disposed || this.window.isDestroyed() || attempts >= 10) return
+    this.handleWindowShapeChange()
+    if (this.disposed || this.window.isDestroyed()) return
+    this.layoutSettleTimer = setTimeout(() => this.settleLayout(attempts + 1), 50)
+  }
+
+  /** Stop any pending post-show layout refresh. */
+  private cancelLayoutSettle(): void {
+    if (!this.layoutSettleTimer) return
+    clearTimeout(this.layoutSettleTimer)
+    this.layoutSettleTimer = null
   }
 
   /** Focus this window and open `url` in a new active tab. */
@@ -441,7 +471,7 @@ export class WindowController {
   }
 
   private applyLayout(): void {
-    if (this.disposed) return
+    if (this.disposed || this.window.isDestroyed()) return
     const [width, height] = this.window.getContentSize()
     const railWidth = verticalRailExtent(this.verticalTabs)
     this.layout = computeLayout(width, height, this.chromeHeight, railWidth)

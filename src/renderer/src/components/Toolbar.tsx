@@ -1,10 +1,15 @@
 import { ArrowLeft, ArrowRight, Download, EllipsisVertical, Home, RotateCw, Star, VenetianMask, X } from 'lucide-react'
 import { cn } from '../lib/cn'
+import {
+  MAC_TRAFFIC_LIGHT_CLEARANCE,
+  WINDOW_CONTROLS_RESERVED_WIDTH
+} from '../../../shared/constants'
 import { isNewTab } from '../../../shared/url'
 import { useActiveTab, useBrowserStore } from '../state/browserStore'
 import { useBookmarksStore, useIsBookmarked } from '../state/bookmarksStore'
 import { useDownloadsStore } from '../state/downloadsStore'
 import { IconButton } from './ui/IconButton'
+import { WindowControls } from './ui/WindowControls'
 import { Omnibox } from './Omnibox'
 
 const RING_RADIUS = 8
@@ -46,7 +51,15 @@ function DownloadProgressRing({ progress }: { progress: number | null }): React.
   )
 }
 
-export function Toolbar(): React.JSX.Element {
+interface ToolbarProps {
+  /** Make the toolbar the drag region where the app owns the title bar (vertical mode). */
+  dragHandle?: boolean
+}
+
+export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element {
+  const platform = window.voyager.platform
+  const isMac = platform === 'darwin'
+  const isWindows = platform === 'win32'
   const activeTab = useActiveTab()
   const incognito = useBrowserStore((state) => state.incognito)
   const goBack = useBrowserStore((state) => state.goBack)
@@ -94,7 +107,16 @@ export function Toolbar(): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-[44px] shrink-0 items-center gap-1 border-b border-border bg-bg px-2">
+    <div
+      className={cn(
+        'relative flex h-[44px] shrink-0 items-center gap-1 border-b border-border bg-bg',
+        dragHandle && 'drag'
+      )}
+      style={{
+        paddingLeft: dragHandle && isMac ? MAC_TRAFFIC_LIGHT_CLEARANCE : 8,
+        paddingRight: dragHandle && isWindows ? WINDOW_CONTROLS_RESERVED_WIDTH : 8
+      }}
+    >
       <IconButton label="Back" disabled={!canGoBack} onClick={goBack}>
         <ArrowLeft className="h-4 w-4" />
       </IconButton>
@@ -162,6 +184,11 @@ export function Toolbar(): React.JSX.Element {
       <IconButton label="Menu" onClick={() => window.dispatchEvent(new Event('voyager:open-main-menu'))}>
         <EllipsisVertical className="h-4 w-4" />
       </IconButton>
+      {dragHandle && isWindows && (
+        <div className="absolute right-0 top-0 h-full">
+          <WindowControls />
+        </div>
+      )}
     </div>
   )
 }

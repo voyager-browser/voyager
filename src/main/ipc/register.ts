@@ -853,12 +853,30 @@ export function registerIpcHandlers(context: IpcContext): void {
         color: 'blue',
         createdAt: 0,
         isDefault: true
-      }
+      },
+      // Maximize is distinct from fullscreen: window chrome and its reserved
+      // clearance remain present in maximized and normal states alike.
+      maximized: window?.window.isMaximized() ?? false
     }
   })
 
   ipcMain.handle(IpcChannels.WindowsSetTitle, (event, title: string) => {
     context.getWindow(event as any)?.setWindowTitle(title)
+  })
+
+  ipcMain.handle(IpcChannels.WindowsMinimize, (event) => {
+    context.getWindow(event as any)?.window.minimize()
+  })
+
+  ipcMain.handle(IpcChannels.WindowsToggleMaximize, (event) => {
+    const window = context.getWindow(event as any)?.window
+    if (!window) return
+    if (window.isMaximized()) window.unmaximize()
+    else window.maximize()
+  })
+
+  ipcMain.handle(IpcChannels.WindowsClose, (event) => {
+    context.getWindow(event as any)?.window.close()
   })
 
   ipcMain.handle(IpcChannels.BookmarksClear, (event) => {
