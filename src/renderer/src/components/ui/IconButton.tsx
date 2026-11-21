@@ -1,10 +1,10 @@
-import type { ReactNode } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
 import { cn } from '../../lib/cn'
 
 interface IconButtonProps {
   children: ReactNode
   label: string
-  onClick?: () => void
+  onClick?: (event: MouseEvent<HTMLButtonElement>) => void
   disabled?: boolean
   className?: string
   'aria-valuenow'?: number
