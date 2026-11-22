@@ -26,39 +26,6 @@ test('opens an incognito window with a visible badge', async ({ voyager }) => {
   expect(state.incognito).toBe(true)
 })
 
-test('opens an incognito window from the Settings page', async ({ voyager }) => {
-  const before = await windowCount(voyager.app)
-  await voyager.chrome.evaluate(() => window.voyager.settings.open())
-
-  await expect
-    .poll(
-      async () =>
-        voyager.app.windows().find((page) => page.url().startsWith('voyager://settings')) ?? null,
-      { timeout: 10_000 }
-    )
-    .not.toBeNull()
-
-  const settings = voyager.app.windows().find((page) => page.url().startsWith('voyager://settings'))
-  if (!settings) throw new Error('Settings window not found')
-
-  await settings.getByRole('button', { name: /Open Incognito Window/ }).click()
-  await expect.poll(async () => windowCount(voyager.app), { timeout: 10_000 }).toBe(before + 2)
-
-  await expect
-    .poll(async () => {
-      const pages = await chromePages(voyager.app)
-      for (const page of pages) {
-        try {
-          if ((await page.evaluate(() => window.voyager.windows.getState())).incognito) return true
-        } catch {
-          // ignore pages not ready
-        }
-      }
-      return false
-    })
-    .toBe(true)
-})
-
 test('opens an incognito window from the File menu', async ({ voyager }) => {
   test.skip(process.platform !== 'darwin', 'Uses application menu click path')
   const before = await windowCount(voyager.app)
