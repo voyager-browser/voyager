@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <title>Settings - Voyager</title>
+    <script>
+      if (new URLSearchParams(window.location.search).has('dev')) {
+        document.title = 'Settings - Voyager (Dev)'
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

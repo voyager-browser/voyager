@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { BrowserWindow, type WebContents } from 'electron'
+import { app, BrowserWindow, type WebContents } from 'electron'
 import { SETTINGS_URL } from '../../shared/constants'
 import { DEFAULT_PROFILE_ID } from '../../shared/profiles'
 import type { SettingsTarget } from '../../shared/types'
@@ -15,7 +15,12 @@ let settingsProfileId: string = DEFAULT_PROFILE_ID
  */
 function settingsBaseUrl(): string {
   const devServerUrl = process.env['ELECTRON_RENDERER_URL']
-  return devServerUrl ? `${devServerUrl.replace(/\/$/, '')}/settings.html` : SETTINGS_URL
+  const base = devServerUrl ? `${devServerUrl.replace(/\/$/, '')}/settings.html` : SETTINGS_URL
+  // The renderer owns document.title on macOS, so pass the build flag in the
+  // URL to let it apply the dev suffix synchronously without an IPC round trip.
+  if (app.isPackaged) return base
+  const separator = base.includes('?') ? '&' : '?'
+  return `${base}${separator}dev=1`
 }
 
 function settingsUrlFor(target?: SettingsTarget): string {
@@ -48,7 +53,7 @@ export function openSettingsWindow(target?: SettingsTarget, profileId?: string):
   const win = new BrowserWindow({
     width: 1100,
     height: 720,
-    title: 'Settings - Voyager',
+    title: app.isPackaged ? 'Settings - Voyager' : 'Settings - Voyager (Dev)',
     backgroundColor: '#1a1b22',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

@@ -21,6 +21,7 @@ export interface AppVersionInfo {
   electron: string
   chrome: string
   node: string
+  dev: boolean
 }
 
 /** Callback signature returned by event subscription APIs. */

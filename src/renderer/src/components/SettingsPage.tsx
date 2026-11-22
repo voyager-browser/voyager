@@ -257,10 +257,6 @@ export function SettingsPage(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    document.title = 'Settings - Voyager'
-  }, [])
-
-  useEffect(() => {
     if (!profilesRoute()) return
     const id = window.setTimeout(() => scrollToSection('profiles'), 0)
     return () => window.clearTimeout(id)
@@ -484,7 +480,10 @@ export function SettingsPage(): React.JSX.Element {
       <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-surface">
         <div className="px-4 pb-3 pt-5">
           <h1 className="text-[17px] font-semibold text-fg">Settings</h1>
-          <p className="mt-0.5 text-[11.5px] text-muted">Voyager {appInfo?.app ?? '1.0.0'}</p>
+          <p className="mt-0.5 text-[11.5px] text-muted">
+            Voyager {appInfo?.app ?? '1.0.0'}
+            {appInfo?.dev ? ' (Dev)' : ''}
+          </p>
         </div>
         <nav aria-label="Settings sections" className="flex-1 overflow-y-auto px-2 pb-4">
           {SETTINGS_NAV_GROUPS.map((group, groupIndex) => (
@@ -1713,6 +1712,9 @@ export function SettingsPage(): React.JSX.Element {
               <h2 className="mb-4 text-[15px] font-semibold text-fg">About</h2>
               <div className="space-y-1 text-[13px] text-fg">
                 <div>Version {appInfo?.app ?? '1.0.0'}</div>
+                <div className="text-[12px] text-muted">
+                  {appInfo?.dev ? 'Developer build' : 'Stable build'}
+                </div>
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
                 <button

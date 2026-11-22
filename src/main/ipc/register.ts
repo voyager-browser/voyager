@@ -266,7 +266,8 @@ export function registerIpcHandlers(context: IpcContext): void {
     app: app.getVersion(),
     electron: process.versions.electron ?? '',
     chrome: process.versions.chrome ?? '',
-    node: process.versions.node ?? ''
+    node: process.versions.node ?? '',
+    dev: !app.isPackaged
   }))
 
   ipcMain.handle(IpcChannels.CertificateGet, (event, url: string) => {

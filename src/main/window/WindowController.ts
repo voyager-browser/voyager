@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { BaseWindow, WebContentsView, session, type WebContents } from 'electron'
+import { app, BaseWindow, WebContentsView, session, type WebContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { IpcChannels } from '../../shared/ipc-channels'
 import type { BrowserState } from '../../shared/types'
@@ -32,6 +32,10 @@ import {
   verticalRailExtent,
   type WindowLayout
 } from './ChromeLayout'
+
+function withDevSuffix(title: string): string {
+  return app.isPackaged ? title : `${title} (Dev)`
+}
 
 /**
  * Owns the single application window. Chrome UI (tab strip + toolbar) lives in
@@ -76,7 +80,7 @@ export class WindowController {
       minWidth: 640,
       minHeight: 480,
       show: false,
-      title: this.incognito ? 'Incognito - Voyager' : 'Voyager',
+      title: withDevSuffix(this.incognito ? 'Incognito - Voyager' : 'Voyager'),
       backgroundColor: this.incognito ? '#101018' : '#1a1b22',
       ...(process.platform === 'darwin'
         ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 8, y: 13 } }
@@ -203,7 +207,7 @@ export class WindowController {
 
   /** Set a user-defined window name (used by "Name Window..."). */
   setWindowTitle(title: string): void {
-    this.window.setTitle(title.trim() || 'Voyager')
+    this.window.setTitle(withDevSuffix(title.trim() || 'Voyager'))
   }
 
   /** Switch between the horizontal tab strip and the vertical tab rail. */

@@ -109,7 +109,8 @@ test('reports application and runtime versions', async ({ voyager }) => {
     app: app.getVersion(),
     electron: process.versions.electron,
     chrome: process.versions.chrome,
-    node: process.versions.node
+    node: process.versions.node,
+    dev: !app.isPackaged
   }))
 
   expect(info).toEqual(runtime)
