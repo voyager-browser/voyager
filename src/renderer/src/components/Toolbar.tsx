@@ -9,7 +9,7 @@ import {
   VenetianMask,
   X
 } from 'lucide-react'
-import type { MouseEvent } from 'react'
+import { useEffect, useState, type MouseEvent } from 'react'
 import { cn } from '../lib/cn'
 import { menuAnchorFromElement, type MenuAnchor } from '../lib/menuAnchor'
 import {
@@ -74,6 +74,17 @@ export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element
   const isWindows = platform === 'win32'
   const activeTab = useActiveTab()
   const incognito = useBrowserStore((state) => state.incognito)
+  const [devBuild, setDevBuild] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    void window.voyager.appInfo().then((info) => {
+      if (!cancelled) setDevBuild(info.dev)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const goBack = useBrowserStore((state) => state.goBack)
   const goForward = useBrowserStore((state) => state.goForward)
   const reload = useBrowserStore((state) => state.reload)
@@ -164,6 +175,16 @@ export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element
       />
 
       <Omnibox />
+
+      {devBuild && (
+        <span
+          className="no-drag ml-1 rounded border border-amber-400/30 bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-500 dark:text-amber-300"
+          title="Developer build"
+          aria-label="Developer build"
+        >
+          DEV
+        </span>
+      )}
 
       {incognito && (
         <span

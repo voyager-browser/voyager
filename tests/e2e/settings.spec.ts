@@ -28,7 +28,8 @@ test('opens settings in a separate managed popup window', async ({ voyager }) =>
   const before = await windowCount(voyager.app)
   const settings = await openSettings(voyager)
 
-  await expect(settings).toHaveTitle('Settings - Voyager')
+  const dev = await voyager.chrome.evaluate(() => window.voyager.appInfo().then((info) => info.dev))
+  await expect(settings).toHaveTitle(dev ? 'Settings - Voyager (Dev)' : 'Settings - Voyager')
   expect(settings.url()).toContain('voyager://settings')
   expect(await windowCount(voyager.app)).toBe(before + 1)
 })
