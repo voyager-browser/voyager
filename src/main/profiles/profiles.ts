@@ -4,8 +4,6 @@ import { join } from 'node:path'
 import { app } from 'electron'
 import {
   DEFAULT_PROFILE_ID,
-  PROFILE_COLORS,
-  isProfileColor,
   type CreateProfileInput,
   type ProfileInfo,
   type RenameProfileInput
@@ -28,7 +26,7 @@ function registryPath(): string {
 }
 
 function builtinProfile(): ProfileInfo {
-  return { id: DEFAULT_PROFILE_ID, name: 'Default', color: 'blue', createdAt: 0, isDefault: true }
+  return { id: DEFAULT_PROFILE_ID, name: 'Default', createdAt: 0, isDefault: true }
 }
 
 function normalizePicture(value: unknown): string | undefined {
@@ -38,30 +36,17 @@ function normalizePicture(value: unknown): string | undefined {
   return trimmed
 }
 
-function normalizeBackgroundColor(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined
-  const trimmed = value.trim()
-  if (!trimmed || trimmed.length > 64) return undefined
-  // allow hex/rgb/hsl and simple named colors; reject obvious injection
-  if (!/^(#[0-9a-fA-F]{3,8}|rgba?\([^\)]+\)|hsla?\([^\)]+\)|[a-zA-Z]{1,32})$/.test(trimmed))
-    return undefined
-  return trimmed
-}
-
 function normalizeProfile(value: unknown): ProfileInfo | null {
   if (!value || typeof value !== 'object') return null
   const candidate = value as Partial<ProfileInfo> & Record<string, unknown>
   if (typeof candidate.id !== 'string' || candidate.id.trim() === '') return null
   if (typeof candidate.name !== 'string' || candidate.name.trim() === '') return null
   const picture = normalizePicture(candidate.picture)
-  const backgroundColor = normalizeBackgroundColor(candidate.backgroundColor)
   return {
     id: candidate.id,
     name: candidate.name.trim(),
-    color: isProfileColor(candidate.color) ? candidate.color : 'blue',
     createdAt: typeof candidate.createdAt === 'number' ? candidate.createdAt : Date.now(),
     ...(picture ? { picture } : {}),
-    ...(backgroundColor ? { backgroundColor } : {}),
     ...(candidate.id === DEFAULT_PROFILE_ID ? { isDefault: true } : {})
   }
 }
@@ -138,18 +123,12 @@ function assertUniqueName(name: string, exceptId?: string): string {
 export function createProfile(input: CreateProfileInput): ProfileInfo {
   const name = assertUniqueName(input.name)
   const id = randomUUID()
-  const color = isProfileColor(input.color)
-    ? input.color
-    : PROFILE_COLORS[registry().profiles.length % PROFILE_COLORS.length]
   const picture = normalizePicture(input.picture)
-  const backgroundColor = normalizeBackgroundColor(input.backgroundColor)
   const profile: ProfileInfo = {
     id,
     name,
-    color,
     createdAt: Date.now(),
-    ...(picture ? { picture } : {}),
-    ...(backgroundColor ? { backgroundColor } : {})
+    ...(picture ? { picture } : {})
   }
   mkdirSync(profileDataDir(id), { recursive: true })
   registry().profiles.push(profile)
@@ -157,21 +136,15 @@ export function createProfile(input: CreateProfileInput): ProfileInfo {
   return { ...profile }
 }
 
-/** Rename/recolor a profile. The built-in profile can be renamed but not removed. */
+/** Rename a profile or update its picture. The built-in profile can be renamed but not removed. */
 export function updateProfile(input: RenameProfileInput): ProfileInfo {
   const profile = registry().profiles.find((candidate) => candidate.id === input.id)
   if (!profile) throw new Error('Profile not found')
   profile.name = assertUniqueName(input.name, input.id)
-  if (isProfileColor(input.color)) profile.color = input.color
   if (input.picture !== undefined) {
     const picture = normalizePicture(input.picture)
     if (picture) profile.picture = picture
     else delete profile.picture
-  }
-  if (input.backgroundColor !== undefined) {
-    const backgroundColor = normalizeBackgroundColor(input.backgroundColor)
-    if (backgroundColor) profile.backgroundColor = backgroundColor
-    else delete profile.backgroundColor
   }
   persist()
   return { ...profile }
