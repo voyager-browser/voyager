@@ -35,6 +35,12 @@ export default function App(): React.JSX.Element {
   const [nameWindowOpen, setNameWindowOpen] = useState(false)
   const bookmarksManagerOpen = useUiStore((state) => state.bookmarksManagerOpen)
   const verticalTabs = useBrowserStore((state) => state.verticalTabs)
+  const incognito = useBrowserStore((state) => state.incognito)
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('incognito', incognito)
+    return () => document.documentElement.classList.remove('incognito')
+  }, [incognito])
 
   useEffect(() => {
     const { applyState } = useBrowserStore.getState()

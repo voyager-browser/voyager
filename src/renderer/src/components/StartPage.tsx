@@ -34,7 +34,11 @@ export function StartPage(): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-full flex-col items-center justify-center overflow-auto bg-bg px-6 text-fg">
+    <div
+      className={`flex h-full flex-col items-center justify-center overflow-auto bg-bg px-6 text-fg ${
+        incognito ? 'incognito' : ''
+      }`}
+    >
       <main className="w-full max-w-[560px] pb-16">
         <header className="mb-8 flex flex-col items-center gap-3">
           <img
@@ -46,8 +50,9 @@ export function StartPage(): React.JSX.Element {
           <h1 className="text-[28px] font-semibold tracking-tight">Voyager</h1>
           {incognito && (
             <span
-              className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-[12px] text-muted"
+              className="flex items-center gap-1.5 rounded-full border border-accent bg-accent px-3 py-1 text-[12px] font-medium text-accent-fg"
               title="You are in incognito mode"
+              aria-label="You are in incognito mode"
             >
               <VenetianMask className="h-3.5 w-3.5" aria-hidden="true" />
               Incognito
