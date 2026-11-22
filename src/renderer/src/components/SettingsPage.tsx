@@ -1203,67 +1203,71 @@ export function SettingsPage(): React.JSX.Element {
               className="rounded-lg border border-border bg-surface p-5"
             >
               <h2 className="mb-4 text-[15px] font-semibold text-fg">Privacy dashboard</h2>
-              <div className="privacy-dashboard">
-                <div className="privacy-dashboard__head">
+              <div className="rounded-md border border-border bg-bg p-4">
+                <p className="text-[10.5px] font-medium uppercase tracking-wide text-muted">
+                  Content blocking
+                </p>
+                <div className="mt-2 flex items-end justify-between gap-4">
                   <div>
-                    <span className="privacy-dashboard__eyebrow">Content blocking</span>
-                    <p className="privacy-dashboard__title">Privacy dashboard</p>
+                    <p className="text-[13px] font-medium text-fg">
+                      Requests blocked this session
+                    </p>
+                    <p className="mt-0.5 text-[11.5px] text-muted">
+                      Live stats for this profile. Updates every few seconds.
+                    </p>
                   </div>
-                  <span
-                    className={`privacy-dashboard__badge${
-                      blockingStats?.enabled ? '' : ' privacy-dashboard__badge--off'
-                    }`}
-                  >
-                    <i></i> {blockingStats?.enabled ? 'Active' : 'Off'}
-                  </span>
-                </div>
-
-                <div className="privacy-dashboard__hero">
-                  <span className="privacy-dashboard__value">
+                  <span className="text-[26px] font-semibold leading-none tabular-nums text-fg">
                     {blockingStats?.sessionBlocked ?? 0}
                   </span>
-                  <p>requests blocked this session</p>
                 </div>
+              </div>
 
-                <div className="privacy-dashboard__block">
-                  <p className="privacy-dashboard__label">Top blocked hosts</p>
-                  {topHosts.length > 0 ? (
-                    topHosts.map((entry) => (
+              <div className="mt-4">
+                <p className="mb-2 text-[12px] font-medium text-fg">Top blocked hosts</p>
+                {topHosts.length > 0 ? (
+                  <div className="space-y-3">
+                    {topHosts.map((entry) => (
                       <div key={entry.host}>
-                        <div className="privacy-dashboard__row">
+                        <div className="flex items-center justify-between gap-3 text-[11.5px] text-muted">
                           <span className="min-w-0 truncate">{entry.host}</span>
-                          <b>{entry.count}</b>
+                          <span className="shrink-0 tabular-nums text-fg">{entry.count}</span>
                         </div>
-                        <div className="privacy-dashboard__bar">
-                          <i
+                        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-border">
+                          <div
+                            className="h-full rounded-full bg-accent"
                             style={{
                               width: `${Math.round((entry.count / maxHostCount) * 100)}%`
                             }}
                           />
                         </div>
                       </div>
-                    ))
-                  ) : (
-                    <p className="privacy-dashboard__empty">
-                      No requests blocked yet. Blocked hosts will appear here.
-                    </p>
-                  )}
-                </div>
-
-                <div className="privacy-dashboard__block">
-                  <p className="privacy-dashboard__label">Allowed sites</p>
-                  <p className="privacy-dashboard__empty mb-2">
-                    Tracker blocking is off for these sites.
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11.5px] text-muted">
+                    No requests blocked yet. Blocked hosts will appear here.
                   </p>
-                  {blockingExceptions.length > 0 ? (
-                    blockingExceptions.map((host) => (
-                      <div className="privacy-dashboard__allowed" key={host}>
-                        <span className="privacy-dashboard__allowed-host" title={host}>
+                )}
+              </div>
+
+              <div className="mt-4 border-t border-border pt-4">
+                <p className="mb-1 text-[12px] font-medium text-fg">Allowed sites</p>
+                <p className="mb-2 text-[11.5px] text-muted">
+                  Tracker blocking is off for these sites.
+                </p>
+                {blockingExceptions.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {blockingExceptions.map((host) => (
+                      <div
+                        className="flex items-center justify-between gap-3 rounded-md border border-border bg-bg px-2.5 py-2 text-[11.5px]"
+                        key={host}
+                      >
+                        <span className="min-w-0 truncate text-fg" title={host}>
                           {host}
                         </span>
                         <button
                           type="button"
-                          className="privacy-dashboard__turn-on"
+                          className="shrink-0 font-medium text-accent hover:underline"
                           onClick={() => {
                             const next = blockingExceptions.filter((entry) => entry !== host)
                             setBlockingStats((current) =>
@@ -1275,19 +1279,13 @@ export function SettingsPage(): React.JSX.Element {
                           Turn on
                         </button>
                       </div>
-                    ))
-                  ) : (
-                    <p className="privacy-dashboard__empty">
-                      No allowed sites yet. Allow a site from its page info popover.
-                    </p>
-                  )}
-                </div>
-
-                <p className="privacy-dashboard__note">
-                  {blockingStats?.enabled
-                    ? 'Live stats for this profile. Updates every few seconds.'
-                    : 'Tracker blocking is off for this profile. Turn it on in Content blocking.'}
-                </p>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11.5px] text-muted">
+                    No allowed sites yet. Allow a site from its page info popover.
+                  </p>
+                )}
               </div>
             </section>
 
