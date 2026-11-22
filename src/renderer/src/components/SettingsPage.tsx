@@ -1178,23 +1178,6 @@ export function SettingsPage(): React.JSX.Element {
               className="rounded-lg border border-border bg-surface p-5"
             >
               <h2 className="mb-4 text-[15px] font-semibold text-fg">Privacy and security</h2>
-
-              <button
-                type="button"
-                className="flex w-full items-center justify-between gap-4 rounded-md border border-border bg-bg px-3 py-2.5 text-left transition-colors hover:bg-hover"
-                onClick={() => {
-                  void window.voyager.windows.openIncognito()
-                }}
-              >
-                <span>
-                  <span className="block text-[13px] text-fg">Open Incognito Window</span>
-                  <span className="mt-0.5 block text-[11.5px] text-muted">
-                    Browse in a separate in-memory profile that is not saved.
-                  </span>
-                </span>
-                <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
-              </button>
-
               <button
                 type="button"
                 className="mt-2 flex w-full items-center justify-between gap-4 rounded-md border border-border bg-bg px-3 py-2.5 text-left transition-colors hover:bg-hover"
