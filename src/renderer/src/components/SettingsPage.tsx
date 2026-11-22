@@ -45,9 +45,6 @@ import type {
 import { BUILTIN_BLOCKED_DOMAINS } from '../../../shared/content-blocking'
 import {
   DEFAULT_PROFILE_ID,
-  PROFILE_COLOR_CLASSES,
-  PROFILE_COLORS,
-  type ProfileColor,
   type ProfileInfo,
   type ProfilesState
 } from '../../../shared/profiles'
@@ -196,15 +193,11 @@ export function SettingsPage(): React.JSX.Element {
     activeProfileId: DEFAULT_PROFILE_ID
   })
   const [newProfileName, setNewProfileName] = useState('')
-  const [newProfileColor, setNewProfileColor] = useState<ProfileColor>('blue')
   const [newProfilePicture, setNewProfilePicture] = useState<string | null>(null)
-  const [newProfileBackground, setNewProfileBackground] = useState('')
   const [profileError, setProfileError] = useState<string | null>(null)
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
-  const [editingColor, setEditingColor] = useState<ProfileColor>('blue')
   const [editingPicture, setEditingPicture] = useState<string | null>(null)
-  const [editingBackground, setEditingBackground] = useState('')
   const [autofill, setAutofill] = useState<AutofillState>({
     addresses: [],
     contacts: [],
@@ -418,14 +411,11 @@ export function SettingsPage(): React.JSX.Element {
     try {
       const profile = await window.voyager.profiles.create({
         name,
-        color: newProfileColor,
-        picture: newProfilePicture,
-        backgroundColor: newProfileBackground || null
+        picture: newProfilePicture
       })
       setProfiles((current) => ({ ...current, profiles: [...current.profiles, profile] }))
       setNewProfileName('')
       setNewProfilePicture(null)
-      setNewProfileBackground('')
       setProfileError(null)
     } catch (error) {
       setProfileError(error instanceof Error ? error.message : 'Could not create profile.')
@@ -435,9 +425,7 @@ export function SettingsPage(): React.JSX.Element {
   const startEditingProfile = (profile: ProfileInfo): void => {
     setEditingProfileId(profile.id)
     setEditingName(profile.name)
-    setEditingColor(profile.color)
     setEditingPicture(profile.picture ?? null)
-    setEditingBackground(profile.backgroundColor ?? '')
     setProfileError(null)
   }
 
@@ -447,9 +435,7 @@ export function SettingsPage(): React.JSX.Element {
       const profile = await window.voyager.profiles.update({
         id: editingProfileId,
         name: editingName,
-        color: editingColor,
-        picture: editingPicture,
-        backgroundColor: editingBackground || null
+        picture: editingPicture
       })
       setProfiles((current) => ({
         ...current,
@@ -598,21 +584,6 @@ export function SettingsPage(): React.JSX.Element {
                             className="w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[13px] text-fg"
                             aria-label="Profile name"
                           />
-                          <div className="flex flex-wrap gap-1.5">
-                            {PROFILE_COLORS.map((color) => (
-                              <button
-                                key={color}
-                                type="button"
-                                aria-label={`Color ${color}`}
-                                onClick={() => setEditingColor(color)}
-                                className={`h-6 w-6 rounded-full ${PROFILE_COLOR_CLASSES[color]} ${
-                                  editingColor === color
-                                    ? 'ring-2 ring-accent ring-offset-1 ring-offset-bg'
-                                    : ''
-                                }`}
-                              />
-                            ))}
-                          </div>
                           <div className="flex items-center gap-2">
                             {editingPicture ? (
                               <img
@@ -652,25 +623,6 @@ export function SettingsPage(): React.JSX.Element {
                               </button>
                             )}
                           </div>
-                          <label className="flex items-center gap-2 text-[12px] text-fg">
-                            <span className="text-muted">Background color</span>
-                            <input
-                              type="color"
-                              value={editingBackground || '#0ea5e9'}
-                              onChange={(event) => setEditingBackground(event.target.value)}
-                              className="h-7 w-9 cursor-pointer rounded border border-border bg-bg p-0.5"
-                              aria-label="Custom background color"
-                            />
-                            {editingBackground && (
-                              <button
-                                type="button"
-                                onClick={() => setEditingBackground('')}
-                                className="text-[12px] text-muted hover:text-danger"
-                              >
-                                Use preset
-                              </button>
-                            )}
-                          </label>
                           <div className="flex gap-2">
                             <button
                               type="button"
@@ -690,12 +642,20 @@ export function SettingsPage(): React.JSX.Element {
                         </div>
                       ) : (
                         <div className="flex items-center gap-3">
-                          <span
-                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold text-white ${PROFILE_COLOR_CLASSES[profile.color] ?? PROFILE_COLOR_CLASSES.blue}`}
-                            aria-hidden="true"
-                          >
-                            {(profile.name.trim()[0] ?? '?').toUpperCase()}
-                          </span>
+                          {profile.picture ? (
+                            <img
+                              src={profile.picture}
+                              alt=""
+                              className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-border"
+                            />
+                          ) : (
+                            <span
+                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface text-[13px] font-semibold text-fg ring-1 ring-border"
+                              aria-hidden="true"
+                            >
+                              {(profile.name.trim()[0] ?? '?').toUpperCase()}
+                            </span>
+                          )}
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <span className="truncate text-[13px] font-medium text-fg">
@@ -774,21 +734,6 @@ export function SettingsPage(): React.JSX.Element {
                     Add
                   </button>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {PROFILE_COLORS.map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      aria-label={`New profile color ${color}`}
-                      onClick={() => setNewProfileColor(color)}
-                      className={`h-6 w-6 rounded-full ${PROFILE_COLOR_CLASSES[color]} ${
-                        newProfileColor === color
-                          ? 'ring-2 ring-accent ring-offset-1 ring-offset-surface'
-                          : ''
-                      }`}
-                    />
-                  ))}
-                </div>
                 <div className="mt-2 flex items-center gap-2">
                   {newProfilePicture ? (
                     <img
@@ -826,25 +771,6 @@ export function SettingsPage(): React.JSX.Element {
                     </button>
                   )}
                 </div>
-                <label className="mt-2 flex items-center gap-2 text-[12px] text-fg">
-                  <span className="text-muted">Background color</span>
-                  <input
-                    type="color"
-                    value={newProfileBackground || '#0ea5e9'}
-                    onChange={(event) => setNewProfileBackground(event.target.value)}
-                    className="h-7 w-9 cursor-pointer rounded border border-border bg-bg p-0.5"
-                    aria-label="Custom background color"
-                  />
-                  {newProfileBackground && (
-                    <button
-                      type="button"
-                      onClick={() => setNewProfileBackground('')}
-                      className="text-[12px] text-muted hover:text-danger"
-                    >
-                      Use preset
-                    </button>
-                  )}
-                </label>
               </div>
             </section>
 
