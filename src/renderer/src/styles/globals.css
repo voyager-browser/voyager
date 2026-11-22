@@ -32,6 +32,21 @@
   --voyager-danger: #ff6369;
 }
 
+/* Incognito windows get their own high-contrast palette regardless of theme. */
+.incognito {
+  color-scheme: dark;
+  --voyager-bg: #101018;
+  --voyager-surface: #1d1a2c;
+  --voyager-hover: rgba(198, 174, 255, 0.12);
+  --voyager-fg: #f2efff;
+  --voyager-muted: #b4aacf;
+  --voyager-border: rgba(198, 174, 255, 0.22);
+  --voyager-accent: #a78bfa;
+  --voyager-accent-fg: #130f22;
+  --voyager-ring: rgba(167, 139, 250, 0.45);
+  --voyager-danger: #ff7a8a;
+}
+
 /* Expose the tokens to Tailwind utilities (inline => resolves at runtime). */
 @theme inline {
   --color-bg: var(--voyager-bg);

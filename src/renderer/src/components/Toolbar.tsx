@@ -167,7 +167,7 @@ export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element
 
       {incognito && (
         <span
-          className="no-drag ml-1 flex shrink-0 items-center rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-muted"
+          className="no-drag ml-1 flex shrink-0 items-center rounded-md border border-accent bg-accent px-2 py-1 text-[11px] font-semibold text-accent-fg shadow-sm shadow-black/20"
           title="You are in incognito mode"
           aria-label="You are in incognito mode"
         >

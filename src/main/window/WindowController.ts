@@ -76,8 +76,8 @@ export class WindowController {
       minWidth: 640,
       minHeight: 480,
       show: false,
-      title: 'Voyager',
-      backgroundColor: '#1a1b22',
+      title: this.incognito ? 'Incognito - Voyager' : 'Voyager',
+      backgroundColor: this.incognito ? '#101018' : '#1a1b22',
       ...(process.platform === 'darwin'
         ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 8, y: 13 } }
         : process.platform === 'win32'
