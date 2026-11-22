@@ -3,7 +3,6 @@ import { IpcChannels } from '../../shared/ipc-channels'
 import { isPermissionKind, isPermissionRequestChoice } from '../../shared/permissions'
 import {
   DEFAULT_PROFILE_ID,
-  isProfileColor,
   type CreateProfileInput,
   type ProfilesState,
   type RenameProfileInput
@@ -850,7 +849,6 @@ export function registerIpcHandlers(context: IpcContext): void {
       profile: window?.profileInfo ?? {
         id: DEFAULT_PROFILE_ID,
         name: 'Default',
-        color: 'blue',
         createdAt: 0,
         isDefault: true
       },
@@ -1119,7 +1117,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     if (!input || typeof input.name !== 'string') throw new Error('Profile name is required')
     const profile = createProfile({
       name: input.name,
-      color: isProfileColor(input.color) ? input.color : undefined
+      picture: input.picture
     })
     ensureProfileSession(profile.id)
     broadcastProfiles()
@@ -1134,7 +1132,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     const profile = updateProfile({
       id: input.id,
       name: input.name,
-      color: isProfileColor(input.color) ? input.color : undefined
+      picture: input.picture
     })
     broadcastProfiles()
     void event

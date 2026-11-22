@@ -139,7 +139,6 @@ export class WindowController {
       profileById(this.profileId) ?? {
         id: DEFAULT_PROFILE_ID,
         name: 'Default',
-        color: 'blue',
         createdAt: 0,
         isDefault: true
       }

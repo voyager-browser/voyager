@@ -1,10 +1,8 @@
 import { Bookmark, Download, ExternalLink, Plus, QrCode, VenetianMask } from 'lucide-react'
-import { PROFILE_COLOR_CLASSES } from '../../../shared/profiles'
 import { useActiveTab, useBrowserStore } from '../state/browserStore'
 import { useUiStore } from '../state/uiStore'
 import { useOverlaySignal } from '../lib/overlay'
 import type { MenuAnchor } from '../lib/menuAnchor'
-import { cn } from '../lib/cn'
 
 interface MainMenuProps {
   anchor: MenuAnchor | null
@@ -70,17 +68,9 @@ export function MainMenu({ anchor, onClose }: MainMenuProps): React.JSX.Element 
               onClick={() => run(() => void window.voyager.settings.open({ page: 'profiles' }))}
             >
               <span
-                className={cn(
-                  'flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden text-[12px] font-semibold text-white',
-                  profile.picture ? 'rounded-full' : 'rounded-lg',
-                  !profile.picture &&
-                    (PROFILE_COLOR_CLASSES[profile.color] ?? PROFILE_COLOR_CLASSES.blue)
-                )}
-                style={
-                  profile.backgroundColor && !profile.picture
-                    ? { backgroundColor: profile.backgroundColor }
-                    : undefined
-                }
+                className={`flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden bg-surface text-[12px] font-semibold text-fg ring-1 ring-border ${
+                  profile.picture ? 'rounded-full' : 'rounded-lg'
+                }`}
               >
                 {profile.picture ? (
                   <img src={profile.picture} alt="" className="h-full w-full object-cover" />
