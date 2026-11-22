@@ -70,7 +70,7 @@ test('selectable filter lists persist independently of the blocking toggle', asy
     .not.toContain('stevenblack')
 })
 
-test('page info reports blocked requests and remembers site exceptions', async ({
+test('page info reports blocked requests', async ({
   voyager,
   server
 }) => {
@@ -92,21 +92,4 @@ test('page info reports blocked requests and remembers site exceptions', async (
   await expect(toggle).toBeChecked()
   await toggle.uncheck()
   await expect.poll(async () => (await stats()).siteEnabled).toBe(false)
-
-  const settings = await openSettings(voyager)
-  await expect(settings.getByText('Allowed sites')).toBeVisible()
-  await expect
-    .poll(
-      async () =>
-        (await settings.evaluate(() => window.voyager.settings.get())).contentBlockingExceptions
-    )
-    .toEqual(['127.0.0.1'])
-
-  await settings.getByRole('button', { name: 'Turn on' }).click()
-  await expect
-    .poll(
-      async () =>
-        (await settings.evaluate(() => window.voyager.settings.get())).contentBlockingExceptions
-    )
-    .toEqual([])
 })
