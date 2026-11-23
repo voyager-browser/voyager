@@ -30,9 +30,34 @@ const NATIVE_SEND_BRIDGE = '__voyagerExtensionNativeSend'
  * This function is serialized into the main world by `executeInMainWorld`, so
  * it must not close over anything outside its own body.
  */
-function install(): void {
+const install = function install(): void {
+  const self = install as any
+  self.attempts = (self.attempts ?? 0) + 1
   const chrome = (globalThis as any).chrome
-  if (!chrome) return
+  if (!chrome) {
+    // Extension bindings can be injected after the preload runs.
+    if (self.attempts < 500) setTimeout(install, 10)
+    return
+  }
+
+  const define = (target: any, key: string, value: any): boolean => {
+    try {
+      Object.defineProperty(target, key, {
+        value,
+        enumerable: true,
+        configurable: true,
+        writable: true
+      })
+      return true
+    } catch {
+      try {
+        target[key] = value
+        return true
+      } catch {
+        return false
+      }
+    }
+  }
 
   if (!chrome.webNavigation) {
     const listeners = new Map<string, Set<Listener>>()
@@ -101,27 +126,23 @@ function install(): void {
   }
 
   const createTab = (globalThis as any).__voyagerExtensionTabsCreate
-  if (typeof createTab === 'function' && !chrome.tabs?.create) {
+  if (typeof createTab === 'function') {
     try {
       const tabs = chrome.tabs ?? {}
-      Object.defineProperty(tabs, 'create', {
-        value: (
-          details?: ExtensionTabsCreateDetails,
-          callback?: (tab: { id: number; url?: string }) => void
-        ): Promise<{ id: number; url?: string }> => {
-          const input = details && typeof details === 'object' ? details : {}
-          const result = Promise.resolve(createTab(input)).then((id: unknown) => ({
-            id: typeof id === 'number' ? id : 0,
-            url: typeof input.url === 'string' ? input.url : undefined
-          }))
-          if (typeof callback === 'function') void result.then(callback)
-          return result
-        },
-        enumerable: true,
-        configurable: true
-      })
-      if (!chrome.tabs) {
-        Object.defineProperty(chrome, 'tabs', { value: tabs, enumerable: true, configurable: true })
+      const create = (
+        details?: ExtensionTabsCreateDetails,
+        callback?: (tab: { id: number; url?: string }) => void
+      ): Promise<{ id: number; url?: string }> => {
+        const input = details && typeof details === 'object' ? details : {}
+        const result = Promise.resolve(createTab(input)).then((id: unknown) => ({
+          id: typeof id === 'number' ? id : 0,
+          url: typeof input.url === 'string' ? input.url : undefined
+        }))
+        if (typeof callback === 'function') void result.then(callback)
+        return result
+      }
+      if (define(tabs, 'create', create) && !chrome.tabs) {
+        define(chrome, 'tabs', tabs)
       }
     } catch (error) {
       console.warn('[voyager] Could not install chrome.tabs.create shim:', error)
@@ -129,13 +150,7 @@ function install(): void {
   }
 
   const permissionBridge = (globalThis as any).__voyagerExtensionPermissions
-  if (
-    typeof permissionBridge === 'function' &&
-    (!chrome.permissions?.request ||
-      !chrome.permissions?.contains ||
-      !chrome.permissions?.getAll ||
-      !chrome.permissions?.remove)
-  ) {
+  if (typeof permissionBridge === 'function') {
     try {
       const permissions = chrome.permissions ?? {}
       const call =
@@ -146,17 +161,11 @@ function install(): void {
           if (typeof callback === 'function') void result.then(callback)
           return result
         }
-      if (!permissions.request) permissions.request = call('request')
-      if (!permissions.contains) permissions.contains = call('contains')
-      if (!permissions.getAll) permissions.getAll = call('getAll')
-      if (!permissions.remove) permissions.remove = call('remove')
-      if (!chrome.permissions) {
-        Object.defineProperty(chrome, 'permissions', {
-          value: permissions,
-          enumerable: true,
-          configurable: true
-        })
-      }
+      define(permissions, 'request', call('request'))
+      define(permissions, 'contains', call('contains'))
+      define(permissions, 'getAll', call('getAll'))
+      define(permissions, 'remove', call('remove'))
+      if (!chrome.permissions) define(chrome, 'permissions', permissions)
     } catch (error) {
       console.warn('[voyager] Could not install chrome.permissions shim:', error)
     }
@@ -170,8 +179,7 @@ function install(): void {
     typeof nativeConnect === 'function' &&
     typeof nativePost === 'function' &&
     typeof nativeDisconnect === 'function' &&
-    typeof nativeSend === 'function' &&
-    (!chrome.runtime?.connectNative || !chrome.runtime?.sendNativeMessage)
+    typeof nativeSend === 'function'
   ) {
     try {
       const portRecords = new Map<
@@ -224,52 +232,42 @@ function install(): void {
           : `port-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
       const runtime = chrome.runtime ?? {}
-      if (!runtime.connectNative) {
-        runtime.connectNative = (hostName: string): any => {
-          const portId = makePortId()
-          const record: {
-            message: Set<(message: any) => void>
-            disconnect: Set<() => void>
-          } = { message: new Set(), disconnect: new Set() }
-          portRecords.set(portId, record)
-          void Promise.resolve(nativeConnect(hostName, portId)).then((result: unknown) => {
-            if (typeof result !== 'string') {
-              portRecords.delete(portId)
-              emit(record.disconnect)
-            }
-          })
-          return {
-            name: hostName,
-            onMessage: makeEvent(record.message),
-            onDisconnect: makeEvent(record.disconnect),
-            postMessage(message: any): void {
-              void nativePost(portId, message)
-            },
-            disconnect(): void {
-              portRecords.delete(portId)
-              void nativeDisconnect(portId)
-            }
+      define(runtime, 'connectNative', (hostName: string): any => {
+        const portId = makePortId()
+        const record: {
+          message: Set<(message: any) => void>
+          disconnect: Set<() => void>
+        } = { message: new Set(), disconnect: new Set() }
+        portRecords.set(portId, record)
+        void Promise.resolve(nativeConnect(hostName, portId)).then((result: unknown) => {
+          if (typeof result !== 'string') {
+            portRecords.delete(portId)
+            emit(record.disconnect)
+          }
+        })
+        return {
+          name: hostName,
+          onMessage: makeEvent(record.message),
+          onDisconnect: makeEvent(record.disconnect),
+          postMessage(message: any): void {
+            void nativePost(portId, message)
+          },
+          disconnect(): void {
+            portRecords.delete(portId)
+            void nativeDisconnect(portId)
           }
         }
-      }
-      if (!runtime.sendNativeMessage) {
-        runtime.sendNativeMessage = (
-          hostName: string,
-          message: any,
-          callback?: (response: any) => void
-        ): Promise<any> => {
+      })
+      define(
+        runtime,
+        'sendNativeMessage',
+        (hostName: string, message: any, callback?: (response: any) => void): Promise<any> => {
           const result = Promise.resolve(nativeSend(hostName, message))
           if (typeof callback === 'function') void result.then(callback)
           return result
         }
-      }
-      if (!chrome.runtime) {
-        Object.defineProperty(chrome, 'runtime', {
-          value: runtime,
-          enumerable: true,
-          configurable: true
-        })
-      }
+      )
+      if (!chrome.runtime) define(chrome, 'runtime', runtime)
     } catch (error) {
       console.warn('[voyager] Could not install native messaging shim:', error)
     }
