@@ -22,24 +22,16 @@ async function panelBounds(
   voyager: VoyagerApp,
   prefix: string
 ): Promise<{ x: number; y: number; width: number; height: number } | null> {
-  return voyager.app.evaluate(({ webContents, BrowserWindow }, urlPrefix) => {
+  return voyager.app.evaluate(({ webContents, BaseWindow }, urlPrefix) => {
     const contents = webContents
       .getAllWebContents()
       .find((candidate) => candidate.getURL().startsWith(urlPrefix))
     if (!contents) return null
-    for (const window of BrowserWindow.getAllWindows()) {
-      const contentView = window.contentView as unknown as { getChildViews?(): unknown[] }
-      if (typeof contentView.getChildViews !== 'function') continue
-      const view = contentView
-        .getChildViews()
-        .find((child) => (child as { webContents?: unknown }).webContents === contents)
-      if (view) {
-        return (
-          view as unknown as {
-            getBounds(): { x: number; y: number; width: number; height: number }
-          }
-        ).getBounds()
-      }
+    for (const window of BaseWindow.getAllWindows()) {
+      const view = window.contentView.children.find(
+        (child) => (child as unknown as { webContents?: unknown }).webContents === contents
+      )
+      if (view) return view.getBounds()
     }
     return null
   }, prefix)
