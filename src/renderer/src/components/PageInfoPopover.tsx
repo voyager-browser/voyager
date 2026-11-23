@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Globe, Lock, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { PERMISSION_LABELS, permissionOriginForUrl } from '../../../shared/permissions'
 import type { ContentBlockingStats } from '../../../shared/types'
-import { safeParseUrl, securityLevelFor } from '../../../shared/url'
+import { hasTlsCertificate, safeParseUrl, securityLevelFor } from '../../../shared/url'
 import { cn } from '../lib/cn'
 import { useOriginPermissions, usePermissionsStore } from '../state/permissionsStore'
 import { CertificateDialog } from './CertificateDialog'
@@ -163,7 +163,7 @@ export function PageInfoPopover({ url, title }: PageInfoPopoverProps): React.JSX
         </div>
       )}
 
-      {level === 'secure' && (
+      {hasTlsCertificate(url) && (
         <div className="border-t border-border px-3.5 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
