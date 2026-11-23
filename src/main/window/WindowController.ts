@@ -180,8 +180,8 @@ export class WindowController {
 
   /**
    * Attach session-scoped integrations to the incognito partition: downloads
-   * (never persisted to history) and the permission prompt handlers, which
-   * are shared with the default session so behavior is consistent.
+   * (never persisted to history) and permission handlers whose site-wide
+   * decisions stay in memory instead of the normal profile's store.
    */
   private attachIncognitoSession(): void {
     if (!this.incognitoPartition) return
@@ -195,7 +195,7 @@ export class WindowController {
       (state) => this.sendToChrome(IpcChannels.DownloadsStateChanged, state),
       { persist: false }
     )
-    attachPermissionHandlers(ses, this.profileId)
+    attachPermissionHandlers(ses, this.profileId, { persist: false })
   }
 
   /** Grow or shrink the chrome region for the bookmarks bar. */
