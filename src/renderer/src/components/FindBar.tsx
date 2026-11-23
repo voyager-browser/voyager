@@ -18,15 +18,18 @@ export function FindBar({ open, onClose }: FindBarProps): React.JSX.Element | nu
   }, [open])
 
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
         onClose()
       }
     }
     if (open) {
-      window.addEventListener('keydown', handleKey)
+      // Capture so the global shortcut handler sees the prevented Escape
+      // regardless of which find-bar control has focus (or listener order).
+      window.addEventListener('keydown', handleKey, true)
     }
-    return () => window.removeEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey, true)
   }, [open, onClose])
 
   if (!open) return null
@@ -51,10 +54,6 @@ export function FindBar({ open, onClose }: FindBarProps): React.JSX.Element | nu
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               void window.voyager.navigation.findInPage(query, forward)
-            } else if (e.key === 'Escape') {
-              e.preventDefault()
-              e.stopPropagation()
-              onClose()
             }
           }}
         />
