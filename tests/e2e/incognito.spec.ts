@@ -26,6 +26,32 @@ async function chromePageForProfile(
   })
 }
 
+/**
+ * Playwright's Page handle for an Electron WebContentsView can report a tab's
+ * URL while evaluating in the chrome view of the same window. Query the live
+ * tab WebContents from the main process instead so the UA comes from the page
+ * under test.
+ */
+async function tabUserAgent(app: ElectronApplication, url: string): Promise<string | undefined> {
+  return app.evaluate(async ({ webContents }, targetUrl) => {
+    const candidates = webContents
+      .getAllWebContents()
+      .filter((contents) => !contents.isDestroyed() && contents.getURL() === targetUrl)
+    for (const contents of candidates) {
+      try {
+        const ua = await Promise.race([
+          contents.executeJavaScript('navigator.userAgent'),
+          new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 1_000))
+        ])
+        if (typeof ua === 'string' && ua.length > 0) return ua
+      } catch {
+        // The view may have been replaced; try the next matching one.
+      }
+    }
+    return undefined
+  }, url)
+}
+
 test('opens an incognito window with a visible badge', async ({ voyager }) => {
   const before = await windowCount(voyager.app)
   await voyager.chrome.evaluate(() => window.voyager.windows.openIncognito())
@@ -64,8 +90,7 @@ test('incognito tabs use the user agent of the profile that opened them', async 
   // Create the tab after setting the preference because the tab preload reads
   // the profile UA once, when its WebContents is created.
   await workChrome.evaluate((url) => window.voyager.tabs.create({ url }), server.url('/home'))
-  const workTab = await voyager.tabPage('/home')
-  await expect.poll(() => workTab.evaluate(() => navigator.userAgent)).toBe(workUA)
+  await expect.poll(() => tabUserAgent(voyager.app, server.url('/home'))).toBe(workUA)
 
   await workChrome.evaluate(
     (url) => window.voyager.windows.openIncognito(url),
@@ -76,8 +101,7 @@ test('incognito tabs use the user agent of the profile that opened them', async 
   expect(incognitoState.incognito).toBe(true)
   expect(incognitoState.profile.id).toBe(profile.id)
 
-  const incognitoTab = await voyager.tabPage('/second')
-  await expect.poll(() => incognitoTab.evaluate(() => navigator.userAgent)).toBe(workUA)
+  await expect.poll(() => tabUserAgent(voyager.app, server.url('/second'))).toBe(workUA)
 })
 
 test('opens an incognito window from the File menu', async ({ voyager }) => {
