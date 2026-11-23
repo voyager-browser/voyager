@@ -5,7 +5,10 @@
   "description": "Minimal unpacked extension used to verify content script support.",
   "action": {
     "default_title": "Voyager E2E Password Filler",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.png"
+    }
   },
   "content_scripts": [
     {

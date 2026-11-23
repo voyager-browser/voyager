@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, rmSync, statSync } from 'node:fs'
-import { join, resolve, sep } from 'node:path'
+import { extname, join, resolve, sep } from 'node:path'
 import type { Extension, Session } from 'electron'
 import type {
   ExtensionActionInfo,
@@ -40,6 +40,37 @@ function readAction(manifest: Record<string, unknown>): ExtensionActionInfo | nu
         : String(manifest.name ?? 'Extension'),
     icon,
     iconUrl: null
+  }
+}
+
+const ICON_MIME_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon'
+}
+
+/**
+ * Inline an extension's action icon as a data URL. The chrome renderer is in
+ * the browser's session, which may differ from the profile session that owns
+ * the extension, so `chrome-extension://` images can fail to load there.
+ */
+function actionIconDataUrl(extension: Extension, icon: string): string | null {
+  if (icon.startsWith('data:image/')) return icon
+  const root = resolve(extension.path)
+  const candidate = resolve(root, icon.replace(/^\/+/, ''))
+  if (candidate !== root && !candidate.startsWith(root + sep)) return null
+  try {
+    const stats = statSync(candidate)
+    if (!stats.isFile() || stats.size === 0 || stats.size > 512 * 1024) return null
+    const mime = ICON_MIME_TYPES[extname(candidate).toLowerCase()]
+    if (!mime) return null
+    return `data:${mime};base64,${readFileSync(candidate).toString('base64')}`
+  } catch {
+    return null
   }
 }
 
@@ -187,16 +218,7 @@ export function currentExtensionsState(ses: Session, profileId: string): Extensi
     if (extension) {
       const manifest = (extension.manifest ?? {}) as Record<string, unknown>
       const action = readAction(manifest)
-      const iconUrl =
-        action?.icon && extension.id
-          ? (() => {
-              try {
-                return extensionResourceUrl(extension, action.icon as string)
-              } catch {
-                return null
-              }
-            })()
-          : null
+      const iconUrl = action?.icon ? actionIconDataUrl(extension, action.icon) : null
       return {
         id: extension.id,
         name: extension.name,

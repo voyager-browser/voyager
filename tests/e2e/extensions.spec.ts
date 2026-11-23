@@ -22,6 +22,7 @@ test('runs content scripts from an unpacked extension installed at startup', asy
       loaded: true
     })
   ])
+  expect(state[0]?.action?.iconUrl).toMatch(/^data:image\/png;base64,/)
 
   const input = voyager.chrome.locator('#omnibox-input')
   await input.fill(server.url('/home'))
@@ -145,6 +146,14 @@ test('opens a Chrome-style HTML extension menu with grouped actions', async ({ l
   expect(menu).toBeDefined()
   await expect(menu!.getByRole('heading', { name: 'Extensions' })).toBeVisible()
   await expect(menu!.getByText('Voyager E2E Password Filler')).toBeVisible()
+  const icon = menu!.locator('[data-extension-row] img')
+  await expect(icon).toHaveAttribute('src', /^data:image\/png;base64,/)
+  expect(
+    await icon.evaluate((element) => {
+      const image = element as HTMLImageElement
+      return image.complete && image.naturalWidth > 0
+    })
+  ).toBe(true)
   await expect(menu!.getByRole('button', { name: 'Pin extension' })).toBeVisible()
   await expect(
     menu!.getByRole('button', { name: 'More options for Voyager E2E Password Filler' })
