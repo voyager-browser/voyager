@@ -1,8 +1,30 @@
 import { expect, test } from './fixtures'
-import type { Page } from '@playwright/test'
+import type { ElectronApplication, Page } from '@playwright/test'
 import type { BookmarkMoveInput } from '../../src/shared/types'
 import { isNewTab } from '../../src/shared/url'
-import { pressPageShortcut, primaryKey, primaryModifier } from './helpers/voyager'
+import { BOOKMARKS_BAR_HEIGHT, DEFAULT_CHROME_HEIGHT } from '../../src/main/window/ChromeLayout'
+import { pressPageShortcut, primaryKey, primaryModifier, windowCount } from './helpers/voyager'
+
+async function chromePages(app: ElectronApplication): Promise<Page[]> {
+  return app
+    .windows()
+    .filter((page) => !page.isClosed() && /\/renderer\/index\.html(?:[?#]|$)/.test(page.url()))
+}
+
+/** Chrome view height of every browser window, in main-process window order. */
+async function chromeHeights(app: ElectronApplication): Promise<number[]> {
+  return app.evaluate(({ BaseWindow, WebContentsView }) =>
+    BaseWindow.getAllWindows()
+      .filter((window) => !window.isDestroyed())
+      .map((window) => {
+        const chrome = window.contentView.children.find(
+          (view) => view instanceof WebContentsView && view.webContents.getURL().startsWith('file:')
+        )
+        if (!chrome) throw new Error('Chrome view not found')
+        return chrome.getBounds().height
+      })
+  )
+}
 
 test('bookmark bar toggles from the keyboard', async ({ voyager }) => {
   await expect
@@ -30,6 +52,72 @@ test('bookmark bar toggles from the keyboard', async ({ voyager }) => {
     )
     .toBe(false)
   await expect(voyager.chrome.locator('nav')).toHaveCount(0)
+})
+
+test('bar toggle resizes every window on the profile', async ({ voyager }) => {
+  await expect
+    .poll(
+      async () =>
+        (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).barVisible
+    )
+    .toBe(false)
+
+  await voyager.chrome.evaluate(() => window.voyager.windows.open())
+  await expect.poll(async () => windowCount(voyager.app)).toBe(2)
+  await expect.poll(async () => (await chromePages(voyager.app)).length).toBe(2)
+  const pages = await chromePages(voyager.app)
+  const second = pages.find((page) => page !== voyager.chrome)
+  if (!second) throw new Error('Second browser window not found')
+
+  const baseline = await chromeHeights(voyager.app)
+  expect(baseline).toEqual([DEFAULT_CHROME_HEIGHT, DEFAULT_CHROME_HEIGHT])
+  const expanded = baseline.map((height) => height + BOOKMARKS_BAR_HEIGHT)
+
+  // Chrome-level shortcut: the IPC handler broadcasts to the profile but must
+  // also grow the chrome view of the window that did not handle the keypress.
+  const mod = primaryKey()
+  await voyager.chrome.locator('body').press(`${mod}+Shift+B`)
+  await expect.poll(async () => chromeHeights(voyager.app)).toEqual(expanded)
+  await expect
+    .poll(async () => (await second.evaluate(() => window.voyager.bookmarks.getState())).barVisible)
+    .toBe(true)
+  await expect(second.locator('nav')).toBeVisible()
+
+  await voyager.chrome.locator('body').press(`${mod}+Shift+B`)
+  await expect.poll(async () => chromeHeights(voyager.app)).toEqual(baseline)
+
+  // Page-level shortcut: the main-process command path must be profile-wide too.
+  await pressPageShortcut(voyager, 'b', ['meta', 'shift'])
+  await expect.poll(async () => chromeHeights(voyager.app)).toEqual(expanded)
+  await expect
+    .poll(async () => (await second.evaluate(() => window.voyager.bookmarks.getState())).barVisible)
+    .toBe(true)
+
+  await pressPageShortcut(voyager, 'b', ['meta', 'shift'])
+  await expect.poll(async () => chromeHeights(voyager.app)).toEqual(baseline)
+})
+
+test('auto show and hide of the bar resizes every window on the profile', async ({ voyager }) => {
+  await voyager.chrome.evaluate(() => window.voyager.windows.open())
+  await expect.poll(async () => windowCount(voyager.app)).toBe(2)
+  await expect.poll(async () => (await chromePages(voyager.app)).length).toBe(2)
+  const baseline = await chromeHeights(voyager.app)
+  expect(baseline).toEqual([DEFAULT_CHROME_HEIGHT, DEFAULT_CHROME_HEIGHT])
+  const expanded = baseline.map((height) => height + BOOKMARKS_BAR_HEIGHT)
+
+  // Adding the first bookmark reveals the bar for the whole profile.
+  await voyager.chrome.evaluate(async () => {
+    await window.voyager.bookmarks.add({ title: 'Shared', url: 'https://example.test/' })
+  })
+  await expect.poll(async () => chromeHeights(voyager.app)).toEqual(expanded)
+
+  const items = await voyager.chrome.evaluate(async () => {
+    const state = await window.voyager.bookmarks.getState()
+    return state.items
+  })
+  expect(items).toHaveLength(1)
+  await voyager.chrome.evaluate(async (id) => window.voyager.bookmarks.remove(id), items[0].id)
+  await expect.poll(async () => chromeHeights(voyager.app)).toEqual(baseline)
 })
 
 test('adds, dedupes, navigates and removes a bookmark', async ({ voyager, server }) => {

@@ -31,6 +31,18 @@ export function allWindows(): WindowController[] {
   return [...controllers]
 }
 
+/**
+ * Resize the chrome layout of every window on a profile when the profile-wide
+ * bookmarks-bar visibility changes. Bookmark state is shared by the whole
+ * profile, so a per-window callback would leave other windows' chrome views at
+ * the old height and clip the bar mounted by their renderers.
+ */
+export function setBookmarksBarVisibleForProfile(profileId: string, visible: boolean): void {
+  for (const controller of controllers) {
+    if (controller.profile === profileId) controller.setBookmarksBarVisible(visible)
+  }
+}
+
 /** Find the window that owns a tab webContents. */
 export function windowForWebContents(webContents: WebContents): WindowController | null {
   for (const controller of controllers) {
