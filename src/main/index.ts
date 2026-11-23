@@ -111,7 +111,7 @@ app.whenReady().then(async (): Promise<void> => {
     incognito: getSettings(startupProfileId, 'incognito', false) === true
   })
   registerWindow(controller)
-  createAppMenu(() => activeWindow())
+  createAppMenu()
   autoUpdater.checkForUpdatesAndNotify()
   controller.onDestroyed(() => {
     if (controller?.window.isDestroyed()) controller = null

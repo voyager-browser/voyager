@@ -24,7 +24,7 @@ import {
 import { allWindows } from './windowRegistry'
 
 import { TabManager } from '../tabs/TabManager'
-import { createAppMenu } from '../menu/menu'
+import { refreshAppMenu } from '../menu/menu'
 import {
   DEFAULT_CHROME_HEIGHT,
   TOOLBAR_HEIGHT,
@@ -284,7 +284,7 @@ export class WindowController {
   }
 
   refreshClosedTabs(): void {
-    createAppMenu(() => this)
+    refreshAppMenu()
   }
 
   tabIdForWebContents(webContents: WebContents): string | null {
