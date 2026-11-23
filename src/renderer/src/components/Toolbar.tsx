@@ -157,7 +157,7 @@ export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element
           <X className="h-4 w-4" />
         </IconButton>
       ) : (
-        <IconButton label="Reload" onClick={reload}>
+        <IconButton label="Reload" onClick={() => reload()}>
           <RotateCw className="h-4 w-4" />
         </IconButton>
       )}

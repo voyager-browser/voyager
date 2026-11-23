@@ -139,7 +139,7 @@ const api = {
   navigation: {
     back: (): Promise<void> => ipcRenderer.invoke(IpcChannels.NavBack),
     forward: (): Promise<void> => ipcRenderer.invoke(IpcChannels.NavForward),
-    reload: (): Promise<void> => ipcRenderer.invoke(IpcChannels.NavReload),
+    reload: (id?: string): Promise<void> => ipcRenderer.invoke(IpcChannels.NavReload, id),
     stop: (): Promise<void> => ipcRenderer.invoke(IpcChannels.NavStop),
     go: (url: string): Promise<void> => ipcRenderer.invoke(IpcChannels.NavGo, url),
     forceReload: (): Promise<void> => ipcRenderer.invoke(IpcChannels.NavForceReload),

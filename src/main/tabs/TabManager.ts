@@ -316,7 +316,15 @@ export class TabManager {
     if (wc && wc.navigationHistory.canGoForward()) wc.navigationHistory.goForward()
   }
 
-  reload(): void {
+  /** Reload a specific tab when an id is given, otherwise the active tab. */
+  reload(id?: string): void {
+    if (id) {
+      const entry = this.entries.get(id)
+      if (!entry) return
+      if (entry.discarded) this.restoreDiscardedTab(entry)
+      else entry.view.webContents.reload()
+      return
+    }
     this.activeWebContents()?.reload()
   }
 
