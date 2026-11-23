@@ -51,6 +51,7 @@ export function isPermissionKind(value: unknown): value is PermissionKind {
  */
 export const EXTENSION_PERMISSION_LABELS: Record<string, string> = {
   privacy: 'Change your privacy-related settings',
+  'privacy.passwordSavingEnabled': "Turn off Voyager's password saving",
   tabs: 'See your browsing tabs and activity',
   nativeMessaging: 'Communicate with cooperating native applications',
   downloads: 'Download files',
