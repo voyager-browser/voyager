@@ -160,6 +160,48 @@ test('opens a Chrome-style HTML extension menu with grouped actions', async ({ l
   ).toBeVisible()
 })
 
+test('opens a popup when an extension row in the HTML menu is clicked', async ({
+  launchVoyager
+}) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
+  })
+  await voyager.chrome.evaluate(() => {
+    const button = [...document.querySelectorAll('button')].find(
+      (candidate) => candidate.getAttribute('aria-label') === 'Extensions'
+    )
+    const rect = button?.getBoundingClientRect()
+    return window.voyager.extensions.showActionMenu(rect?.right ?? 0, rect?.bottom ?? 0)
+  })
+
+  const isMenuPage = (url: string): boolean =>
+    url.includes('extensionMenu.html') || url.startsWith('voyager://extension-menu')
+  await expect.poll(() => voyager.app.windows().some((page) => isMenuPage(page.url()))).toBe(true)
+  const menu = voyager.app.windows().find((page) => isMenuPage(page.url()))
+  const row = menu!.getByRole('button', { name: 'Voyager E2E Password Filler', exact: true })
+  await expect(row).toBeVisible()
+  await row.click()
+
+  await expect
+    .poll(() =>
+      voyager.app.evaluate(({ webContents }) =>
+        webContents
+          .getAllWebContents()
+          .some((contents) => contents.getURL().startsWith('chrome-extension://'))
+      )
+    )
+    .toBe(true)
+  const popupText = await voyager.app.evaluate(({ webContents }) => {
+    const popup = webContents
+      .getAllWebContents()
+      .find((contents) => contents.getURL().startsWith('chrome-extension://'))
+    return popup?.executeJavaScript(
+      "document.querySelector('#voyager-extension-popup')?.textContent ?? ''"
+    )
+  })
+  expect(popupText).toBe('password-filler-popup')
+})
+
 test('pins an extension to the toolbar and persists its site access', async ({ launchVoyager }) => {
   const voyager = await launchVoyager({
     seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
