@@ -39,6 +39,9 @@
           },
           {
             "context": "Validate PR title"
+          },
+          {
+            "context": "Playwright E2E"
           }
         ]
       }
