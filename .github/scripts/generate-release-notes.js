@@ -5,7 +5,7 @@ const DEFAULT_REPO = 'voyager-browser/voyager'
 const FEATURE_TYPES = new Set(['feat'])
 const IMPROVEMENT_TYPES = new Set(['refactor', 'perf', 'style', 'test', 'docs'])
 const FIX_TYPES = new Set(['fix'])
-const OTHER_TYPES = new Set(['ci', 'chore', 'build', 'revert'])
+const OTHER_TYPES = new Set(['ci', 'chore', 'build', 'revert', 'ops'])
 
 function parseArgs(argv) {
   const options = {
