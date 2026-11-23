@@ -26,6 +26,7 @@ export function TitleBar(): React.JSX.Element {
 
   return (
     <header
+      data-chrome-surface
       className="drag relative flex h-10 shrink-0 items-center border-b border-border bg-bg"
       style={{
         paddingLeft: (isMac ? MAC_TRAFFIC_LIGHT_CLEARANCE : 8) + HORIZONTAL_TAB_STRIP_LEFT_OFFSET,

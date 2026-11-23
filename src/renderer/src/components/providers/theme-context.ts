@@ -1,10 +1,24 @@
 import { createContext, useContext } from 'react'
-import type { ThemeMode } from '../../../../shared/types'
+import type {
+  BrowserTheme,
+  StartPageBackground,
+  ThemeColorPatch,
+  ThemeFileInput,
+  ThemeMode,
+  ThemeStartPageInput,
+  ThemeState
+} from '../../../../shared/types'
 
 export interface ThemeContextValue {
   mode: ThemeMode
   dark: boolean
+  chrome: BrowserTheme
+  startPage: StartPageBackground
   setMode: (mode: ThemeMode) => void
+  setColors: (patch: ThemeColorPatch) => void
+  setStartPage: (input: ThemeStartPageInput) => Promise<ThemeState>
+  importFiles: (files: ThemeFileInput[]) => Promise<ThemeState>
+  resetTheme: () => void
 }
 
 export const ThemeContext = createContext<ThemeContextValue | null>(null)

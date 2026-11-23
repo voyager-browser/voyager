@@ -47,6 +47,18 @@
   --voyager-danger: #ff7a8a;
 }
 
+/* Imported theme artwork tints chrome surfaces without hiding their text. */
+[data-chrome-surface] {
+  background-image:
+    linear-gradient(
+      var(--voyager-theme-overlay, transparent),
+      var(--voyager-theme-overlay, transparent)
+    ),
+    var(--voyager-theme-image, none);
+  background-position: center;
+  background-size: cover;
+}
+
 /* Expose the tokens to Tailwind utilities (inline => resolves at runtime). */
 @theme inline {
   --color-bg: var(--voyager-bg);

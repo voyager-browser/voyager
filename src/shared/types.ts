@@ -10,10 +10,56 @@ import type { FilterListId } from './filter-lists'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 
-/** Resolved theme: `mode` is the user preference, `dark` the effective scheme. */
+/** Colors the chrome renderer exposes as CSS variables. */
+export type ThemeColorKey = 'background' | 'foreground' | 'accent' | 'border' | 'muted' | 'surface'
+
+export type BrowserThemeColors = Record<ThemeColorKey, string>
+
+/** Where a browser theme came from, used by Settings and reset behavior. */
+export type BrowserThemeSource = 'default' | 'custom' | 'chrome-crx' | 'chrome-manifest'
+
+/** Per-profile chrome theme. Images are URLs served from the profile's theme directory. */
+export interface BrowserTheme {
+  id: string
+  name: string
+  source: BrowserThemeSource
+  colors: BrowserThemeColors
+  backgroundImage?: string
+  version?: string
+  importedAt?: number
+}
+
+export type StartPageBackgroundKind = 'default' | 'color' | 'image'
+
+/** Per-profile New Tab background, independent from the chrome palette. */
+export interface StartPageBackground {
+  kind: StartPageBackgroundKind
+  color?: string
+  image?: string
+}
+
+/** A file selected in Settings and forwarded to the main process for import. */
+export interface ThemeFileInput {
+  name: string
+  mimeType: string
+  /** Base64-encoded file contents (without a data URL prefix). */
+  data: string
+}
+
+export type ThemeColorPatch = Partial<BrowserThemeColors>
+
+export interface ThemeStartPageInput {
+  kind: StartPageBackgroundKind
+  color?: string
+  image?: ThemeFileInput
+}
+
+/** Resolved theme: `mode` is app-wide, chrome/start-page data is per profile. */
 export interface ThemeState {
   mode: ThemeMode
   dark: boolean
+  chrome: BrowserTheme
+  startPage: StartPageBackground
 }
 
 export interface AppVersionInfo {

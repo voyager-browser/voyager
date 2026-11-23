@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { WebContentsView, type WebContents, type Input } from 'electron'
+import { nativeTheme, WebContentsView, type WebContents, type Input } from 'electron'
 import { DEFAULT_NEW_TAB_URL, SETTINGS_URL } from '../../shared/constants'
 import { VOYAGER_FAVICON } from '../../shared/favicons'
 import { IpcChannels } from '../../shared/ipc-channels'
 import { matchShortcut, type BrowserAction } from '../../shared/keyboard'
 import type { BrowserState, NewTabRequest, TabState } from '../../shared/types'
-import { isNewTab, isVoyagerInternalUrl, startPageUrl } from '../../shared/url'
+import { isNewTab, isVoyagerInternalUrl, startPageQuery, startPageUrl } from '../../shared/url'
 import { currentHistoryState, recordVisit, updateHistoryTitle } from '../history/history'
 import {
   clearContentBlockingPage,
@@ -14,6 +14,7 @@ import {
   trackContentBlockingPage
 } from '../contentBlocking/contentBlocking'
 import { openSettingsWindow } from '../window/settingsWindow'
+import { startPageAppearance } from '../theme/theme'
 import { getSettings } from '../store'
 import type { WindowController } from '../window/WindowController'
 
@@ -495,13 +496,17 @@ export class TabManager {
 
   /** Resolve the internal start page for this window's profile. */
   private startUrl(): string {
+    const appearance = startPageAppearance(
+      this.window.profile,
+      nativeTheme.shouldUseDarkColors,
+      this.window.isIncognito
+    )
     const devServerUrl = process.env['ELECTRON_RENDERER_URL']
     if (devServerUrl) {
-      const params = new URLSearchParams({ engine: this.window.searchEngine })
-      if (this.window.isIncognito) params.set('incognito', '1')
-      return `${devServerUrl}/start.html?${params.toString()}`
+      const query = startPageQuery(this.window.searchEngine, this.window.isIncognito, appearance)
+      return `${devServerUrl}/start.html?${query.toString()}`
     }
-    return startPageUrl(this.window.searchEngine, this.window.isIncognito)
+    return startPageUrl(this.window.searchEngine, this.window.isIncognito, appearance)
   }
 
   /** Pinned tabs always win the leftmost block, in their relative order. */

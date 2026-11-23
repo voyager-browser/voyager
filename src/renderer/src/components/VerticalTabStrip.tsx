@@ -122,6 +122,7 @@ export function VerticalTabStrip(): React.JSX.Element {
   return (
     <aside
       aria-label="Tabs"
+      data-chrome-surface
       className="relative flex h-full shrink-0 flex-col border-r border-border bg-bg transition-[width] duration-150 ease-out"
       style={{ width: expanded ? VERTICAL_TAB_RAIL_WIDTH : VERTICAL_TAB_RAIL_COMPACT_WIDTH }}
       onMouseEnter={() => setExpanded(true)}
