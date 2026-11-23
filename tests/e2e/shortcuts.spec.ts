@@ -88,6 +88,22 @@ test('page-level find-in-page shortcut opens the find bar', async ({ voyager, se
   await expect(voyager.chrome.locator('input[placeholder="Find in page"]')).toHaveCount(0)
 })
 
+test('dismissing the find bar does not stop a loading page', async ({ voyager, server }) => {
+  await voyager.navigate(server.url('/home'))
+  await pressPageShortcut(voyager, 'f', ['meta'])
+  const findInput = voyager.chrome.locator('input[placeholder="Find in page"]')
+  await expect(findInput).toBeVisible()
+
+  const slowUrl = server.url('/slow?ms=9000')
+  await voyager.chrome.evaluate((url) => window.voyager.navigation.go(url), slowUrl)
+  await expect.poll(async () => (await voyager.activeTab()).loading).toBe(true)
+
+  await findInput.press('Escape')
+  await expect(findInput).toHaveCount(0)
+  await expect(voyager.tab.locator('#heading')).toHaveText('Slow Page', { timeout: 20_000 })
+  await expect.poll(async () => (await voyager.activeTab()).loading).toBe(false)
+})
+
 test('page-level tab-search shortcut opens the palette', async ({ voyager, server }) => {
   await voyager.navigate(server.url('/home'))
   await pressPageShortcut(voyager, 'a', ['meta', 'shift'])
