@@ -253,8 +253,10 @@ export class WindowController {
     const state = this.tabs.snapshot()
     const tab = state.tabs.find((candidate) => candidate.id === state.activeTabId)
     if (!tab || isNewTab(tab.url)) return
+    // Match the toolbar star: any bookmark for this URL counts, no matter
+    // which folder holds it.
     const existing = currentBookmarksState(this.profileId).items.find(
-      (item) => item.url === tab.url && (item.folderId ?? null) === null
+      (item) => item.url === tab.url
     )
     const publish = (next: ReturnType<typeof currentBookmarksState>): void => {
       for (const window of allWindows()) {

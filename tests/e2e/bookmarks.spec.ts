@@ -2,7 +2,7 @@ import { expect, test } from './fixtures'
 import type { Page } from '@playwright/test'
 import type { BookmarkMoveInput } from '../../src/shared/types'
 import { isNewTab } from '../../src/shared/url'
-import { primaryKey } from './helpers/voyager'
+import { pressPageShortcut, primaryKey, primaryModifier } from './helpers/voyager'
 
 test('bookmark bar toggles from the keyboard', async ({ voyager }) => {
   await expect
@@ -133,6 +133,59 @@ test('stars and unstars the active page with Cmd/Ctrl+D', async ({ voyager, serv
         (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).items.length
     )
     .toBe(0)
+})
+
+test('Cmd/Ctrl+D removes a bookmark stored in a folder', async ({ voyager, server }) => {
+  const url = server.url('/home')
+  await voyager.navigate(url)
+  await expect.poll(async () => (await voyager.activeTab()).url).toBe(url)
+
+  const bookmarkInFolder = async (): Promise<void> => {
+    await voyager.chrome.evaluate(
+      async (input: { url: string }) => {
+        let state = await window.voyager.bookmarks.getState()
+        let folder = state.folders.find((candidate) => candidate.title === 'Research')
+        if (!folder) {
+          state = await window.voyager.bookmarks.addFolder({ title: 'Research' })
+          folder = state.folders.find((candidate) => candidate.title === 'Research')
+        }
+        if (!folder) throw new Error('Folder not created')
+        await window.voyager.bookmarks.add({
+          title: 'Voyager Test Home',
+          url: input.url,
+          folderId: folder.id
+        })
+      },
+      { url }
+    )
+  }
+
+  await bookmarkInFolder()
+  await expect(voyager.chrome.getByRole('button', { name: 'Remove bookmark' })).toBeVisible()
+
+  // The chrome-focused shortcut uses the renderer store.
+  await voyager.chrome.locator('body').press(`${primaryKey()}+d`)
+  await expect
+    .poll(
+      async () =>
+        (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).items.length
+    )
+    .toBe(0)
+  await expect(voyager.chrome.getByRole('button', { name: 'Bookmark this page' })).toBeVisible()
+
+  // The page-focused shortcut is handled in the main process and must agree.
+  await bookmarkInFolder()
+  await expect(voyager.chrome.getByRole('button', { name: 'Remove bookmark' })).toBeVisible()
+  await pressPageShortcut(voyager, 'd', [primaryModifier()])
+  await expect
+    .poll(
+      async () =>
+        (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).items.length
+    )
+    .toBe(0)
+
+  // Only the bookmark was removed; the holding folder is untouched.
+  expect((await bookmarkItems(voyager)).folders.map((folder) => folder.title)).toEqual(['Research'])
 })
 
 test('bookmarks manager adds folders and bookmarks and allows duplicates per folder', async ({
