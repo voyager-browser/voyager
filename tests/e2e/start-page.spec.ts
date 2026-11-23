@@ -1,5 +1,25 @@
+import { isNewTab } from '../../src/shared/url'
 import { expect, test } from './fixtures'
 import { interceptSearch, searchRequests } from './helpers/voyager'
+
+test('new-tab detection covers internal URLs without matching external pages', () => {
+  // Production (and local production builds) use the custom protocol.
+  expect(isNewTab('voyager://start')).toBe(true)
+  expect(isNewTab('voyager://start?engine=duckduckgo')).toBe(true)
+  expect(isNewTab('voyager://start#section')).toBe(true)
+  expect(isNewTab('voyager://start/')).toBe(true)
+
+  // Development uses the electron-vite loopback dev server.
+  expect(isNewTab('http://localhost:5173/start.html?engine=duckduckgo')).toBe(true)
+  expect(isNewTab('http://127.0.0.1:5173/start.html')).toBe(true)
+  expect(isNewTab('http://[::1]:5173/start.html')).toBe(true)
+
+  // External sites and files must never be treated as the internal start page.
+  expect(isNewTab('https://example.com/start.html')).toBe(false)
+  expect(isNewTab('http://localhost.evil.example/start.html')).toBe(false)
+  expect(isNewTab('file:///start.html')).toBe(false)
+  expect(isNewTab('http://localhost:5173/other.html')).toBe(false)
+})
 
 test('start page searches with the configured engine', async ({ voyager, server }) => {
   await interceptSearch(voyager, server)

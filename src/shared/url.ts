@@ -100,8 +100,9 @@ export function isNewTab(url: string): boolean {
   ) {
     return true
   }
-  // electron-vite dev serves renderer entries from a local dev server
-  // (ELECTRON_RENDERER_URL), so only those origins may use /start.html.
+  // Production uses voyager://start (handled above). In dev, electron-vite
+  // serves renderer entries from a loopback HTTP origin, so only those hosts
+  // may use /start.html.
   const parsed = safeParseUrl(url)
   if (parsed?.pathname !== '/start.html') return false
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
