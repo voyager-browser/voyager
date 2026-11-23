@@ -165,6 +165,28 @@ test('opens a Voyager tab when an extension calls chrome.tabs.create', async ({
     .toBe(true)
 })
 
+test('prompts before granting a new extension permission', async ({ launchVoyager }) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+  await voyager.chrome.evaluate((extensionId) => {
+    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  }, id)
+
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+  await popup!.getByRole('button', { name: 'Request privacy access' }).click()
+
+  const prompt = voyager.chrome.getByRole('dialog')
+  await expect(prompt).toContainText('Change your privacy-related settings')
+  await prompt.getByRole('button', { name: 'Allow' }).click()
+  await expect(popup!.locator('#permission-result')).toHaveText('permission granted')
+})
+
 test('opens a Chrome-style HTML extension menu with grouped actions', async ({ launchVoyager }) => {
   const voyager = await launchVoyager({
     seed: { settings: { installedExtensions: [EXTENSION_PATH] } }

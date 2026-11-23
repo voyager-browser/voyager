@@ -10,7 +10,11 @@ import {
 } from 'electron'
 import { resolve } from 'node:path'
 import { IpcChannels } from '../../shared/ipc-channels'
-import { isPermissionKind, isPermissionRequestChoice } from '../../shared/permissions'
+import {
+  isExtensionPermissionChoice,
+  isPermissionKind,
+  isPermissionRequestChoice
+} from '../../shared/permissions'
 import {
   DEFAULT_PROFILE_ID,
   type CreateProfileInput,
@@ -150,6 +154,14 @@ import {
   setExtensionSiteAccess,
   uninstallExtension
 } from '../extensions/extensions'
+import {
+  extensionOriginKey,
+  extensionPermissionGrants,
+  hasAllExtensionPermissions,
+  removeExtensionPermissions,
+  requestExtensionPermissions,
+  respondToExtensionPermission
+} from '../extensions/extensionPermissions'
 
 import { isDefaultBrowser, setDefaultBrowser } from '../defaultBrowser'
 import {
@@ -1342,6 +1354,95 @@ export function registerIpcHandlers(context: IpcContext): void {
       )
     }
   )
+
+  ipcMain.handle(
+    IpcChannels.ExtensionPermissionRequest,
+    (
+      event,
+      payload:
+        | {
+            permissions?: unknown
+            origins?: unknown
+            mode?: unknown
+            checkOnly?: unknown
+          }
+        | undefined
+    ): Promise<boolean | { permissions: string[]; origins: string[] }> => {
+      const profileId = profileFor(event as any)
+      let extensionId: string | null = null
+      try {
+        const senderUrl = new URL(event.sender.getURL())
+        if (senderUrl.protocol === 'chrome-extension:') extensionId = senderUrl.host
+      } catch {
+        // Non-extension senders cannot request extension permissions.
+      }
+      const extension = extensionId
+        ? sessionForProfile(profileId)
+            .extensions.getAllExtensions()
+            .find((candidate) => candidate.id === extensionId)
+        : null
+      if (!extension || !extensionId) return Promise.resolve(false)
+
+      const manifest = (extension.manifest ?? {}) as Record<string, unknown>
+      const declared = new Set<string>()
+      for (const key of ['permissions', 'optional_permissions']) {
+        const value = manifest[key]
+        if (!Array.isArray(value)) continue
+        for (const item of value) if (typeof item === 'string') declared.add(item)
+      }
+      const stringArray = (value: unknown): string[] =>
+        Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+      const requested = [
+        ...new Set([
+          ...stringArray(payload?.permissions),
+          ...stringArray(payload?.origins).map(extensionOriginKey)
+        ])
+      ].filter((item) => declared.has(item.startsWith('origin:') ? item.slice(7) : item))
+      if (payload?.mode === 'getAll') {
+        return Promise.resolve(extensionPermissionGrants(profileId, extensionId))
+      }
+      if (payload?.mode === 'remove') {
+        removeExtensionPermissions(profileId, extensionId, requested)
+        return Promise.resolve(true)
+      }
+      if (payload?.mode === 'contains' || payload?.checkOnly === true) {
+        return Promise.resolve(hasAllExtensionPermissions(profileId, extensionId, requested))
+      }
+      if (requested.length === 0) return Promise.resolve(true)
+
+      const routeWindow =
+        windowForAnyWebContents(event.sender) ??
+        allWindows().find((candidate) => candidate.profile === profileId) ??
+        activeWindow()
+      if (!routeWindow) return Promise.resolve(false)
+
+      return requestExtensionPermissions({
+        profileId,
+        extensionId,
+        extensionName: extension.name,
+        keys: requested,
+        sender: event.sender,
+        sendPrompt: (request) =>
+          routeWindow.sendToChrome(IpcChannels.ExtensionPermissionRequest, request),
+        onCancelled: (id) =>
+          routeWindow.sendToChrome(IpcChannels.ExtensionPermissionRequestCancelled, { id })
+      })
+    }
+  )
+
+  ipcMain.handle(IpcChannels.ExtensionPermissionRespond, (_event, id: unknown, choice: unknown) => {
+    if (typeof id !== 'string' || !isExtensionPermissionChoice(choice)) {
+      throw new Error('Invalid extension permission response')
+    }
+    const result = respondToExtensionPermission(id, choice)
+    if (result.profileId) {
+      publishExtensions(
+        result.profileId,
+        currentExtensionsState(sessionForProfile(result.profileId), result.profileId)
+      )
+    }
+    return result.handled
+  })
 
   /** Three-dots menu for a single extension, using native menu items. */
   ipcMain.handle(

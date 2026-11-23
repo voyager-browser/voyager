@@ -144,6 +144,9 @@ export const IpcChannels = {
   ExtensionsStateChanged: 'extensions:state-changed',
   ExtensionWebNavigationEvent: 'extension:web-navigation-event',
   ExtensionTabsCreate: 'extension:tabs-create',
+  ExtensionPermissionRequest: 'extension:permission-request',
+  ExtensionPermissionRespond: 'extension:permission-respond',
+  ExtensionPermissionRequestCancelled: 'extension:permission-request-cancelled',
 
   WindowsOpen: 'windows:open',
   WindowsOpenIncognito: 'windows:open-incognito',
