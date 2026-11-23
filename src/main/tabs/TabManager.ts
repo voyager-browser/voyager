@@ -413,8 +413,8 @@ export class TabManager {
   }
 
   reopenLastClosed(): void {
-    const entry = this.closedTabs.pop()
-    if (entry) this.create({ url: entry.url, active: true })
+    // Delegate so the Recently Closed menu is rebuilt with fresh indices after the pop.
+    this.reopenClosedTab()
   }
 
   reopenClosedTab(index?: number): void {
