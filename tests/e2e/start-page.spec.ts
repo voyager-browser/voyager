@@ -51,6 +51,33 @@ test('start page follows the persisted search engine', async ({ launchVoyager })
   }
 })
 
+test('a malformed persisted search engine falls back without crashing the omnibox', async ({
+  launchVoyager,
+  server
+}) => {
+  const voyager = await launchVoyager({ seed: { settings: { searchEngine: 'toString' } } })
+  try {
+    await interceptSearch(voyager, server)
+    await expect(voyager.tab.locator('#start-search')).toHaveAttribute(
+      'placeholder',
+      'Search with DuckDuckGo'
+    )
+
+    const input = voyager.chrome.locator('#omnibox-input')
+    await input.fill('voyager browser')
+    await input.press('Enter')
+
+    await voyager.waitForTab(
+      (tab) => tab.url === server.url('/search?q=voyager%20browser') && !tab.loading
+    )
+    expect(await searchRequests(voyager.app)).toContain(
+      'https://duckduckgo.com/?q=voyager%20browser'
+    )
+  } finally {
+    await voyager.close()
+  }
+})
+
 test('start page marks incognito windows', async ({ launchVoyager }) => {
   const voyager = await launchVoyager({ seed: { settings: { incognito: true } } })
   try {
