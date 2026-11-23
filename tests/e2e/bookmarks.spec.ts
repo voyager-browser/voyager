@@ -382,3 +382,72 @@ test('moves a bookmark into another position', async ({ voyager, server }) => {
     )
     .toBe(true)
 })
+
+test('copying a folder into itself or its descendants cannot recurse', async ({
+  voyager,
+  server
+}) => {
+  const { folder, child } = await voyager.chrome.evaluate(async (url: string) => {
+    const parentState = await window.voyager.bookmarks.addFolder({ title: 'Parent' })
+    const parent = parentState.folders.find((candidate) => candidate.title === 'Parent')
+    if (!parent) throw new Error('Parent folder not created')
+    const childState = await window.voyager.bookmarks.addFolder({
+      title: 'Child',
+      parentId: parent.id
+    })
+    const child = childState.folders.find((candidate) => candidate.title === 'Child')
+    if (!child) throw new Error('Child folder not created')
+    await window.voyager.bookmarks.add({ title: 'Parent page', url, folderId: parent.id })
+    await window.voyager.bookmarks.add({ title: 'Child page', url, folderId: child.id })
+    return { folder: parent, child }
+  }, server.url('/home'))
+
+  const snapshot = async () => {
+    const state = await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())
+    return {
+      folders: state.folders.map(({ id, title, parentId }) => ({ id, title, parentId })),
+      items: state.items.map(({ id, title, folderId }) => ({ id, title, folderId }))
+    }
+  }
+
+  const original = await snapshot()
+  expect(original.folders).toHaveLength(2)
+  expect(original.items).toHaveLength(2)
+
+  // Pasting F into F itself must be a no-op, not unbounded cloning.
+  await voyager.chrome.evaluate(async (id: string) => {
+    await window.voyager.bookmarks.copy('folder', id)
+    await window.voyager.bookmarks.paste(id)
+  }, folder.id)
+  expect(await snapshot()).toEqual(original)
+
+  // The destination must not be inside the copied subtree either.
+  const rejected = await voyager.chrome.evaluate(
+    async (input: { source: string; destination: string }) => {
+      await window.voyager.bookmarks.copy('folder', input.source)
+      try {
+        await window.voyager.bookmarks.paste(input.destination)
+        return false
+      } catch {
+        return true
+      }
+    },
+    { source: folder.id, destination: child.id }
+  )
+  expect(rejected).toBe(true)
+  expect(await snapshot()).toEqual(original)
+
+  // A valid destination still clones the original subtree exactly once.
+  await voyager.chrome.evaluate(async (source: string) => {
+    await window.voyager.bookmarks.copy('folder', source)
+    await window.voyager.bookmarks.paste(null)
+  }, folder.id)
+  const copied = await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())
+  const parents = copied.folders.filter((candidate) => candidate.title === 'Parent')
+  const children = copied.folders.filter((candidate) => candidate.title === 'Child')
+  expect(parents).toHaveLength(2)
+  expect(children).toHaveLength(2)
+  expect(children.filter((candidate) => candidate.parentId === parents[0]?.id)).toHaveLength(1)
+  expect(children.filter((candidate) => candidate.parentId === parents[1]?.id)).toHaveLength(1)
+  expect(copied.items).toHaveLength(4)
+})

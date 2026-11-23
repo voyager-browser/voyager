@@ -318,6 +318,12 @@ export function cutBookmarkNode(
 
 function cloneFolder(profileId: string, folder: BookmarkFolder, parentId: string | null): string {
   const store = storesFor(profileId).bookmarks
+  // Snapshot the original subtree before writing anything. Reading the live
+  // store afterwards would pick up clones placed inside `folder` as children.
+  const children = storedFolders(profileId).filter((candidate) => candidate.parentId === folder.id)
+  const containedItems = storedItems(profileId).filter(
+    (item) => (item.folderId ?? null) === folder.id
+  )
   const newId = randomUUID()
   const clone: BookmarkFolder = {
     ...folder,
@@ -326,18 +332,15 @@ function cloneFolder(profileId: string, folder: BookmarkFolder, parentId: string
     createdAt: Date.now()
   }
   store.update('folders', (folders) => [...(folders ?? []), clone])
-  const children = storedFolders(profileId).filter((candidate) => candidate.parentId === folder.id)
   for (const child of children) cloneFolder(profileId, child, newId)
   store.update('items', (items) => [
     ...items,
-    ...storedItems(profileId)
-      .filter((item) => (item.folderId ?? null) === folder.id)
-      .map((item) => ({
-        ...item,
-        id: randomUUID(),
-        folderId: newId,
-        createdAt: Date.now()
-      }))
+    ...containedItems.map((item) => ({
+      ...item,
+      id: randomUUID(),
+      folderId: newId,
+      createdAt: Date.now()
+    }))
   ])
   return newId
 }
@@ -383,7 +386,13 @@ export function pasteBookmarkNode(
       setClipboard(profileId, null)
       return publish(profileId, broadcast)
     }
-    cloneFolder(profileId, folder, parentId)
+    if (parentId !== null && folderSubtree(profileId, id).has(parentId)) {
+      // Self-paste is a no-op; a descendant destination is invalid, mirroring
+      // moveBookmarkNode. Either way cloneFolder must not run here.
+      if (parentId !== id) throw new Error('Cannot paste a folder into itself')
+    } else {
+      cloneFolder(profileId, folder, parentId)
+    }
   }
 
   setClipboard(profileId, null)
