@@ -99,7 +99,7 @@ test('opens an extension action popup inside the browser window', async ({ launc
       "document.querySelector('#voyager-extension-popup')?.textContent ?? ''"
     )
   })
-  await expect(popupText).resolves.toBe('password-filler-popup')
+  expect(popupText).toBe('password-filler-popup')
 
   // The chrome view must stay at its normal size: expanding it over the whole
   // window is what previously blanked the tab strip and blocked dragging.
@@ -119,7 +119,7 @@ test('opens a Chrome-style HTML extension menu with grouped actions', async ({ l
     const rect = button?.getBoundingClientRect()
     return window.voyager.extensions.showActionMenu(rect?.right ?? 0, rect?.bottom ?? 0)
   })
-  await expect(opened).resolves.toBe(true)
+  expect(opened).toBe(true)
 
   await expect
     .poll(() =>
