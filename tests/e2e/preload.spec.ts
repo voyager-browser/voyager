@@ -84,7 +84,9 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
     'onStateChanged',
     'onPermissionRequest',
     'onPermissionRequestCancelled',
-    'respondPermission'
+    'respondPermission',
+    'getNativeHosts',
+    'setNativeHosts'
   ])
   expect(api.tabs).toEqual(
     expect.arrayContaining(['getState', 'create', 'close', 'activate', 'reorder', 'pinToggle'])

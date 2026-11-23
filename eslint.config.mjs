@@ -65,7 +65,8 @@ const buildConfig = async () => {
         languageOptions: {
           globals: {
             ...globals.browser,
-            ...globals.webextensions
+            ...globals.webextensions,
+            ...globals.node
           }
         }
       },

@@ -171,6 +171,14 @@ import {
   requestExtensionPermissions,
   respondToExtensionPermission
 } from '../extensions/extensionPermissions'
+import {
+  connectNative,
+  disconnectNative,
+  getNativeHosts,
+  postToNative,
+  sendNativeMessage,
+  setNativeHosts
+} from '../extensions/nativeMessaging'
 
 import { isDefaultBrowser, setDefaultBrowser } from '../defaultBrowser'
 import {
@@ -283,7 +291,16 @@ export function registerIpcHandlers(context: IpcContext): void {
     activeWindow()?.profile ??
     DEFAULT_PROFILE_ID
 
-  const profileForSender = (sender: Electron.WebContents): string =>
+  const extensionIdForSender = (sender: WebContents): string | null => {
+    try {
+      const url = new URL(sender.getURL())
+      return url.protocol === 'chrome-extension:' ? url.host : null
+    } catch {
+      return null
+    }
+  }
+
+  const profileForSender = (sender: WebContents): string =>
     windowForWebContents(sender)?.profile ??
     settingsProfileFor(sender) ??
     activeWindow()?.profile ??
@@ -1511,6 +1528,89 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
     return result.handled
   })
+
+  ipcMain.handle(IpcChannels.NativeMessagingHostsGet, (event) =>
+    getNativeHosts(profileFor(event as any))
+  )
+
+  ipcMain.handle(IpcChannels.NativeMessagingHostsSet, (event, hosts: unknown) =>
+    setNativeHosts(profileFor(event as any), hosts)
+  )
+
+  ipcMain.handle(
+    IpcChannels.ExtensionNativeConnect,
+    (event, hostName: unknown, requestedPortId: unknown): string | null => {
+      if (typeof hostName !== 'string') return null
+      const portId =
+        typeof requestedPortId === 'string' && /^[a-zA-Z0-9-]{1,64}$/.test(requestedPortId)
+          ? requestedPortId
+          : undefined
+      const extensionId = extensionIdForSender(event.sender)
+      if (!extensionId) return null
+      const profileId = profileFor(event as any)
+      const owner =
+        windowForAnyWebContents(event.sender) ??
+        allWindows().find((candidate) => candidate.profile === profileId) ??
+        activeWindow()
+      if (!owner) return null
+      try {
+        return connectNative(
+          {
+            profileId,
+            hostName,
+            extensionId,
+            sender: event.sender,
+            onMessage: (message, id) =>
+              owner.sendToChrome(IpcChannels.ExtensionNativeMessageEvent, {
+                portId: id,
+                message
+              }),
+            onDisconnect: (id) =>
+              owner.sendToChrome(IpcChannels.ExtensionNativeDisconnectEvent, { portId: id })
+          },
+          portId
+        )
+      } catch (error) {
+        console.warn('[nativeMessaging] Could not start host:', error)
+        return null
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IpcChannels.ExtensionNativePostMessage,
+    (event, portId: unknown, message: unknown): boolean =>
+      typeof portId === 'string' ? postToNative(portId, event.sender, message) : false
+  )
+
+  ipcMain.handle(IpcChannels.ExtensionNativeDisconnect, (event, portId: unknown): boolean =>
+    typeof portId === 'string' ? disconnectNative(portId, event.sender) : false
+  )
+
+  ipcMain.handle(
+    IpcChannels.ExtensionNativeSendMessage,
+    async (event, hostName: unknown, message: unknown): Promise<unknown> => {
+      if (typeof hostName !== 'string') return null
+      const extensionId = extensionIdForSender(event.sender)
+      if (!extensionId) return null
+      try {
+        return await sendNativeMessage(
+          {
+            profileId: profileFor(event as any),
+            hostName,
+            extensionId,
+            sender: event.sender,
+            onMessage: () => {},
+            onDisconnect: () => {}
+          },
+          message
+        )
+      } catch (error) {
+        console.warn('[nativeMessaging] Message failed:', error)
+        return null
+      }
+    }
+  )
 
   /** Three-dots menu for a single extension, using native menu items. */
   ipcMain.handle(

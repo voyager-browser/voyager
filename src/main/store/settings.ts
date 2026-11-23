@@ -1,4 +1,5 @@
 /** Persisted user preferences; new settings extend this shape over time. */
+import type { NativeMessagingHost } from '../../shared/types'
 import type { SearchEngineId } from '../../shared/search'
 
 export interface SettingsShape {
@@ -40,4 +41,5 @@ export interface SettingsShape {
   saveFormHistory?: boolean
   installedExtensions?: string[]
   extensionPermissionDecisions?: Record<string, Record<string, 'allow' | 'block'>>
+  nativeMessagingHosts?: NativeMessagingHost[]
 }

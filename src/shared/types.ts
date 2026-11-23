@@ -163,6 +163,25 @@ export interface ExtensionPermissionRequest {
   origins: string[]
 }
 
+/** A native application that an extension is allowed to exchange messages with. */
+export interface NativeMessagingHost {
+  name: string
+  /** Absolute path to an executable that speaks the native messaging protocol. */
+  path: string
+  /** Chrome-style extension origins, e.g. `chrome-extension://abcdef/`. */
+  allowedOrigins: string[]
+  description?: string
+}
+
+export interface ExtensionNativeMessage {
+  portId: string
+  message: unknown
+}
+
+export interface ExtensionNativeDisconnect {
+  portId: string
+}
+
 /** A synchronous `window.prompt()` waiting for a value in the chrome UI. */
 export interface PromptRequest {
   id: string

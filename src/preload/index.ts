@@ -22,6 +22,7 @@ import type {
   ExtensionPermissionChoice,
   ExtensionPermissionRequest,
   HistoryState,
+  NativeMessagingHost,
   NewBookmarkFolderInput,
   NewBookmarkInput,
   NewTabRequest,
@@ -141,7 +142,11 @@ const api = {
     onPermissionRequestCancelled: (listener: (payload: { id: string }) => void): Unsubscribe =>
       subscribe<{ id: string }>(IpcChannels.ExtensionPermissionRequestCancelled, listener),
     respondPermission: (id: string, choice: ExtensionPermissionChoice): Promise<boolean> =>
-      ipcRenderer.invoke(IpcChannels.ExtensionPermissionRespond, id, choice)
+      ipcRenderer.invoke(IpcChannels.ExtensionPermissionRespond, id, choice),
+    getNativeHosts: (): Promise<NativeMessagingHost[]> =>
+      ipcRenderer.invoke(IpcChannels.NativeMessagingHostsGet),
+    setNativeHosts: (hosts: NativeMessagingHost[]): Promise<NativeMessagingHost[]> =>
+      ipcRenderer.invoke(IpcChannels.NativeMessagingHostsSet, hosts)
   },
 
   browsingData: {

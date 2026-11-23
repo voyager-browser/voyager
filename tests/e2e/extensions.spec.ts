@@ -5,6 +5,7 @@ import { openSettings, windowCount, type VoyagerApp } from './helpers/voyager'
 const EXTENSIONS_DIR = join(process.cwd(), 'tests', 'e2e', 'fixtures', 'extensions')
 const EXTENSION_PATH = join(EXTENSIONS_DIR, 'password-filler')
 const CRX_PATH = join(EXTENSIONS_DIR, 'password-filler.crx')
+const NATIVE_HOST_PATH = join(EXTENSION_PATH, 'nativeHost.js')
 
 /** Bottom-right corner of a toolbar button, in window coordinates. */
 async function buttonAnchor(voyager: VoyagerApp, label: string): Promise<{ x: number; y: number }> {
@@ -185,6 +186,43 @@ test('prompts before granting a new extension permission', async ({ launchVoyage
   await expect(prompt).toContainText('Change your privacy-related settings')
   await prompt.getByRole('button', { name: 'Allow' }).click()
   await expect(popup!.locator('#permission-result')).toHaveText('permission granted')
+})
+
+test('exchanges native messages between an extension and a native host', async ({
+  launchVoyager
+}) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+  expect(id).toBeTruthy()
+
+  await voyager.chrome.evaluate(
+    ({ extensionId, hostPath }) =>
+      window.voyager.extensions.setNativeHosts([
+        {
+          name: 'com.voyager.e2e',
+          path: hostPath,
+          allowedOrigins: [`chrome-extension://${extensionId}/`]
+        }
+      ]),
+    { extensionId: id, hostPath: NATIVE_HOST_PATH }
+  )
+
+  await voyager.chrome.evaluate((extensionId) => {
+    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  }, id)
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+
+  await popup!.getByRole('button', { name: 'Send native message' }).click()
+  await expect(popup!.locator('#native-result')).toHaveText('one-shot')
+
+  await popup!.getByRole('button', { name: 'Connect native port' }).click()
+  await expect(popup!.locator('#native-port-result')).toHaveText('port')
 })
 
 test('opens a Chrome-style HTML extension menu with grouped actions', async ({ launchVoyager }) => {
