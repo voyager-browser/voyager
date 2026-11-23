@@ -80,6 +80,11 @@ test('opens an extension action popup from the toolbar', async ({ launchVoyager 
   const popup = await popupPromise
   await expect(popup.locator('#voyager-extension-popup')).toHaveText('password-filler-popup')
 
+  // The native popup must not leave the owner's chrome view expanded: that
+  // would cover the tab strip with a transparent overlay and block dragging.
+  await expect(voyager.chrome.getByRole('menu', { name: 'Extensions' })).toHaveCount(0)
+  await expect(voyager.chrome.getByRole('tab')).toBeVisible()
+
   // Electron omits chrome.webNavigation; extensions that register navigation
   // listeners at startup crash without this compatibility layer.
   const navigation = await popup.evaluate(() => {
