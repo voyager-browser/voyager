@@ -1170,6 +1170,11 @@ export function registerIpcHandlers(context: IpcContext): void {
       // comes from a chrome WebContentsView.
       const owner = windowForAnyWebContents(event.sender)
       const ownerWindow = owner && !owner.window.isDestroyed() ? owner.window : null
+      // The menu that launched this popup expanded the owner's chrome view over
+      // the whole window. Collapse it before the native popup takes focus; a
+      // focus race can otherwise skip the renderer's overlay-release cleanup
+      // and leave the tab strip hidden with the window undraggable.
+      owner?.setOverlayOpen(false)
       const bounds = ownerWindow?.getContentBounds() ?? { x: 0, y: 0 }
       const x = (typeof payload.x === 'number' ? payload.x : 0) + bounds.x
       const y = (typeof payload.y === 'number' ? payload.y : 0) + bounds.y

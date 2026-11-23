@@ -39,6 +39,11 @@ export function ExtensionMenu({ extensions }: ExtensionMenuProps): React.JSX.Ele
   const openPopup = (extension: ExtensionInfo, element: HTMLElement): void => {
     const rect = element.getBoundingClientRect()
     setAnchor(null)
+    // Closing the menu releases the overlay through useOverlaySignal's cleanup,
+    // but the native popup can steal focus before that cleanup runs and leave
+    // the chrome view expanded over the whole window. Force the chrome back to
+    // its normal bounds immediately so the tab bar and drag region stay usable.
+    void window.voyager.ui.setOverlayOpen(false)
     void window.voyager.extensions
       .openPopup(extension.id as string, extension.action?.popup as string, rect.right, rect.bottom)
       .catch(() => undefined)
