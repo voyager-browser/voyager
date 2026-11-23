@@ -1223,7 +1223,8 @@ export function registerIpcHandlers(context: IpcContext): void {
     resource,
     x,
     y,
-    owner
+    owner,
+    toggle = true
   }: {
     extension: Extension
     session: Electron.Session
@@ -1232,10 +1233,11 @@ export function registerIpcHandlers(context: IpcContext): void {
     x: number
     y: number
     owner: WindowController | null
+    toggle?: boolean
   }): boolean => {
     if (!owner || owner.window.isDestroyed()) return false
     const current = openExtensionPanels.get(owner)
-    if (current?.kind === 'popup' && current.id === extension.id) {
+    if (toggle && current?.kind === 'popup' && current.id === extension.id) {
       closePanelForOwner(owner)
       return true
     }
@@ -1304,6 +1306,60 @@ export function registerIpcHandlers(context: IpcContext): void {
    * Show the Chrome-style HTML action menu in an in-window panel. The chrome
    * view is never resized, so the tab strip and window dragging stay intact.
    */
+  /** Called by `chrome.action.openPopup()` from an extension page or worker. */
+  ipcMain.handle(IpcChannels.ExtensionActionOpenPopup, async (event): Promise<boolean> => {
+    const extensionId = extensionIdForSender(event.sender)
+    if (!extensionId) return false
+    const profileId = profileForSender(event.sender)
+    const ses = sessionForProfile(profileId)
+    const extension = ses.extensions
+      .getAllExtensions()
+      .find((candidate) => candidate.id === extensionId)
+    if (!extension) return false
+    const resource = currentExtensionsState(ses, profileId).find(
+      (candidate) => candidate.id === extensionId
+    )?.action?.popup
+    if (!resource) return false
+
+    const owner =
+      windowForAnyWebContents(event.sender) ??
+      allWindows().find((candidate) => candidate.profile === profileId) ??
+      activeWindow()
+    if (!owner || owner.window.isDestroyed()) return false
+
+    let anchor = { x: 0, y: 0 }
+    try {
+      const script = `(() => {
+        const label = ${JSON.stringify(`Open ${extension.name}`)};
+        const buttons = [...document.querySelectorAll('button')];
+        const action = buttons.find((button) => button.getAttribute('aria-label') === label);
+        const target = action ?? buttons.find((button) => button.getAttribute('aria-label') === 'Extensions');
+        const rect = target?.getBoundingClientRect();
+        return rect ? { x: rect.right, y: rect.bottom } : { x: 0, y: 0 };
+      })()`
+      const measured = (await owner.chrome.webContents.executeJavaScript(script)) as {
+        x?: unknown
+        y?: unknown
+      } | null
+      if (typeof measured?.x === 'number' && typeof measured?.y === 'number') {
+        anchor = { x: measured.x, y: measured.y }
+      }
+    } catch {
+      // The toolbar may still be loading; the popup can still open unanchored.
+    }
+
+    return openExtensionPopup({
+      extension,
+      session: ses,
+      profileId,
+      resource,
+      x: anchor.x,
+      y: anchor.y,
+      owner,
+      toggle: false
+    })
+  })
+
   ipcMain.handle(
     IpcChannels.ExtensionsShowActionMenu,
     (event, payload: { x?: unknown; y?: unknown }) => {
