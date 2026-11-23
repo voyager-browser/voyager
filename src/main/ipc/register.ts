@@ -1160,8 +1160,12 @@ export function registerIpcHandlers(context: IpcContext): void {
 
       const width = 420
       const height = 600
-      const owner = context.getWindow(event as any)
-      const bounds = owner?.window.getContentBounds() ?? { x: 0, y: 0 }
+      // Resolve the owner from the sender: context.getWindow() falls back to
+      // the active window, which may be a different window when the click
+      // comes from a chrome WebContentsView.
+      const owner = windowForAnyWebContents(event.sender)
+      const ownerWindow = owner && !owner.window.isDestroyed() ? owner.window : null
+      const bounds = ownerWindow?.getContentBounds() ?? { x: 0, y: 0 }
       const x = (typeof payload.x === 'number' ? payload.x : 0) + bounds.x
       const y = (typeof payload.y === 'number' ? payload.y : 0) + bounds.y
       const area = screen.getDisplayMatching({ x, y, width: 1, height: 1 }).workArea
@@ -1201,16 +1205,47 @@ export function registerIpcHandlers(context: IpcContext): void {
         return { action: 'deny' }
       })
       popup.webContents.on('before-input-event', (_inputEvent, input) => {
-        if (input.type === 'keyDown' && input.key === 'Escape') popup.close()
+        if (input.type === 'keyDown' && input.key === 'Escape' && !popup.isDestroyed()) {
+          popup.close()
+        }
       })
-      popup.on('blur', () => popup.close())
-      const closeWithOwner = (): void => popup.close()
-      owner?.window.once('closed', closeWithOwner)
+
+      // A new, still-hidden window can emit `blur` while the toolbar menu
+      // hands focus back to chrome (notably under Xvfb). Closing on that early
+      // blur made the popup disappear before it was first painted. Arm blur
+      // dismissal only after a real focus and a short grace period for the
+      // focus churn caused by the click that opened it.
+      let blurArmTimer: NodeJS.Timeout | null = null
+      let blurDismissalArmed = false
+      const armBlurDismissal = (): void => {
+        if (blurDismissalArmed || blurArmTimer) return
+        blurArmTimer = setTimeout(() => {
+          blurArmTimer = null
+          blurDismissalArmed = true
+        }, 300)
+        blurArmTimer.unref()
+      }
+      popup.on('focus', armBlurDismissal)
+      popup.on('blur', () => {
+        if (blurDismissalArmed && !popup.isDestroyed()) popup.close()
+      })
+
+      const closeWithOwner = (): void => {
+        if (!popup.isDestroyed()) popup.close()
+      }
+      ownerWindow?.once('closed', closeWithOwner)
       popup.once('closed', () => {
-        owner?.window.off('closed', closeWithOwner)
+        if (blurArmTimer) clearTimeout(blurArmTimer)
+        if (ownerWindow && !ownerWindow.isDestroyed()) ownerWindow.off('closed', closeWithOwner)
         if (extensionPopups.get(extension.id) === popup) extensionPopups.delete(extension.id)
       })
-      popup.once('ready-to-show', () => popup.show())
+      popup.once('ready-to-show', () => {
+        if (popup.isDestroyed()) return
+        popup.show()
+        popup.focus()
+        // Some window managers never emit `focus` for a frameless popup.
+        armBlurDismissal()
+      })
       void popup.loadURL(extensionResourceUrl(extension, payload.resource)).catch((error) => {
         console.warn('[extensions] Could not open extension popup:', error)
         popup.close()
