@@ -555,28 +555,17 @@ export class TabManager {
       if (entry.discarding || entry.discarded) return
       const newTitle = wc.getTitle()
       entry.title = newTitle
-      let changed = false
       const profileId = this.window.profile
       if (entry.url.startsWith('http') && !isNewTab(entry.url) && !this.window.isIncognito) {
-        if (updateHistoryTitle(profileId, entry.url, newTitle)) changed = true
-        try {
-          if (!changed) {
-            // If navigation recording happened before the title existed, record it now.
-            const state = currentHistoryState(profileId)
-            if (!state.entries.some((item) => item.url === entry.url)) {
-              recordVisit(profileId, { url: entry.url, title: newTitle || entry.url })
-              changed = true
-            }
+        // A title change is not a visit. Only rename an entry that is already in history;
+        // recording here would resurrect URLs the user deleted or cleared while the tab
+        // stayed open. Real navigations are recorded by did-navigate / did-navigate-in-page.
+        if (updateHistoryTitle(profileId, entry.url, newTitle)) {
+          try {
+            this.window.sendToChrome(IpcChannels.HistoryStateChanged, currentHistoryState(profileId))
+          } catch {
+            // Ignore.
           }
-        } catch {
-          // Ignore.
-        }
-      }
-      if (changed) {
-        try {
-          this.window.sendToChrome(IpcChannels.HistoryStateChanged, currentHistoryState(profileId))
-        } catch {
-          // Ignore.
         }
       }
       this.broadcast()

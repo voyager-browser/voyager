@@ -107,6 +107,63 @@ test('history clear empties the list via the panel', async ({ voyager, server })
     .toBe(0)
 })
 
+test('a title update does not resurrect a deleted history entry', async ({ voyager, server }) => {
+  await voyager.navigate(server.url('/home'))
+  await expect
+    .poll(
+      async () =>
+        (await voyager.chrome.evaluate(() => window.voyager.history.getState())).entries.length
+    )
+    .toBe(1)
+
+  const entries = (await voyager.chrome.evaluate(() => window.voyager.history.getState())).entries
+  await voyager.chrome.evaluate((id) => window.voyager.history.remove(id), entries[0].id)
+  await expect
+    .poll(
+      async () =>
+        (await voyager.chrome.evaluate(() => window.voyager.history.getState())).entries.length
+    )
+    .toBe(0)
+
+  // The tab is still open. Changing its title must not re-add the deleted URL.
+  await voyager.tab.evaluate(() => {
+    document.title = 'Renamed after removal'
+  })
+  await expect.poll(async () => (await voyager.activeTab()).title).toBe('Renamed after removal')
+  expect((await voyager.chrome.evaluate(() => window.voyager.history.getState())).entries).toEqual(
+    []
+  )
+})
+
+test('a title update does not resurrect entries after history is cleared', async ({
+  voyager,
+  server
+}) => {
+  await voyager.navigate(server.url('/home'))
+  await expect
+    .poll(
+      async () =>
+        (await voyager.chrome.evaluate(() => window.voyager.history.getState())).entries.length
+    )
+    .toBe(1)
+
+  await voyager.chrome.evaluate(() => window.voyager.history.clear())
+  await expect
+    .poll(
+      async () =>
+        (await voyager.chrome.evaluate(() => window.voyager.history.getState())).entries.length
+    )
+    .toBe(0)
+
+  await voyager.tab.evaluate(() => {
+    document.title = 'Renamed after clear'
+  })
+  await expect.poll(async () => (await voyager.activeTab()).title).toBe('Renamed after clear')
+  expect((await voyager.chrome.evaluate(() => window.voyager.history.getState())).entries).toEqual(
+    []
+  )
+})
+
 test('clicking a history entry navigates the active tab', async ({ voyager, server }) => {
   await voyager.navigate(server.url('/first'.replace('/first', '/home')))
   await voyager.navigate(server.url('/first'.replace('/first', '/second')))
