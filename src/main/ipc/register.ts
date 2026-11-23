@@ -1405,10 +1405,6 @@ export function registerIpcHandlers(context: IpcContext): void {
         },
         { type: 'separator' },
         {
-          label: 'Manage Extension',
-          click: () => closeAnd(() => openSettingsWindow(undefined, profileId))
-        },
-        {
           label: 'View Web Permissions',
           click: () =>
             closeAnd(() =>
