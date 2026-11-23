@@ -116,6 +116,8 @@ const api = {
       ipcRenderer.invoke(IpcChannels.ExtensionsUninstall, path),
     openPopup: (id: string, resource: string, x: number, y: number): Promise<boolean> =>
       ipcRenderer.invoke(IpcChannels.ExtensionsOpenPopup, { id, resource, x, y }),
+    showActionMenu: (x: number, y: number): Promise<boolean> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsShowActionMenu, { x, y }),
     onStateChanged: (listener: (extensions: ExtensionInfo[]) => void): Unsubscribe =>
       subscribe<ExtensionInfo[]>(IpcChannels.ExtensionsStateChanged, listener)
   },

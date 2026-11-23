@@ -4,8 +4,10 @@ import {
   clipboard,
   dialog,
   ipcMain,
+  Menu,
   nativeTheme,
   screen,
+  type Extension,
   type WebContents
 } from 'electron'
 import { resolve } from 'node:path'
@@ -1199,6 +1201,128 @@ export function registerIpcHandlers(context: IpcContext): void {
     return publishExtensions(profileId, state)
   })
 
+  /**
+   * Open an extension action popup as its own window. Shared by the explicit
+   * open-popup IPC and the native action menu so both paths behave identically.
+   */
+  const openExtensionPopup = ({
+    extension,
+    session,
+    profileId,
+    resource,
+    x,
+    y,
+    owner
+  }: {
+    extension: Extension
+    session: Electron.Session
+    profileId: string
+    resource: string
+    x: number
+    y: number
+    owner: WindowController | null
+  }): boolean => {
+    const existing = extensionPopups.get(extension.id)
+    if (existing && !existing.isDestroyed()) {
+      existing.focus()
+      return true
+    }
+
+    const width = 420
+    const height = 600
+    const manifest = extension.manifest as Record<string, unknown> | undefined
+    const action = manifest?.action as Record<string, unknown> | undefined
+    const title =
+      (typeof action?.default_title === 'string' ? action.default_title : extension.name) ||
+      extension.name
+    const ownerWindow = owner && !owner.window.isDestroyed() ? owner.window : null
+    const bounds = ownerWindow?.getContentBounds() ?? { x: 0, y: 0 }
+    const screenX = x + bounds.x
+    const screenY = y + bounds.y
+    const area = screen.getDisplayMatching({ x: screenX, y: screenY, width: 1, height: 1 }).workArea
+    const popup = new BrowserWindow({
+      width,
+      height,
+      title: `${title} — Voyager`,
+      autoHideMenuBar: true,
+      resizable: false,
+      show: false,
+      skipTaskbar: true,
+      webPreferences: {
+        session,
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true
+      }
+    })
+    popup.setMenu(null)
+    popup.setPosition(
+      Math.max(area.x, Math.min(Math.round(screenX), area.x + area.width - width)),
+      Math.max(area.y, Math.min(Math.round(screenY), area.y + area.height - height))
+    )
+    extensionPopups.set(extension.id, popup)
+
+    const base = extension.url.endsWith('/') ? extension.url : `${extension.url}/`
+    const openExternal = (url: string): void => {
+      if (/^https?:\/\//i.test(url)) context.openWindow?.(url, profileId)
+    }
+    popup.webContents.on('will-navigate', (navigationEvent, url) => {
+      if (url.startsWith(base)) return
+      navigationEvent.preventDefault()
+      openExternal(url)
+    })
+    popup.webContents.setWindowOpenHandler(({ url }) => {
+      if (url.startsWith(base)) return { action: 'allow' }
+      openExternal(url)
+      return { action: 'deny' }
+    })
+    popup.webContents.on('before-input-event', (_inputEvent, input) => {
+      if (input.type === 'keyDown' && input.key === 'Escape' && !popup.isDestroyed()) {
+        popup.close()
+      }
+    })
+
+    // A new, still-hidden window can emit `blur` while focus settles on the
+    // native menu or chrome. Closing on that early blur made the popup
+    // disappear before it was first painted, so arm dismissal after a real
+    // focus and a short grace period for the focus churn of the click.
+    let blurArmTimer: NodeJS.Timeout | null = null
+    let blurDismissalArmed = false
+    const armBlurDismissal = (): void => {
+      if (blurDismissalArmed || blurArmTimer) return
+      blurArmTimer = setTimeout(() => {
+        blurArmTimer = null
+        blurDismissalArmed = true
+      }, 300)
+      blurArmTimer.unref()
+    }
+    popup.on('focus', armBlurDismissal)
+    popup.on('blur', () => {
+      if (blurDismissalArmed && !popup.isDestroyed()) popup.close()
+    })
+
+    const closeWithOwner = (): void => {
+      if (!popup.isDestroyed()) popup.close()
+    }
+    ownerWindow?.once('closed', closeWithOwner)
+    popup.once('closed', () => {
+      if (blurArmTimer) clearTimeout(blurArmTimer)
+      if (ownerWindow && !ownerWindow.isDestroyed()) ownerWindow.off('closed', closeWithOwner)
+      if (extensionPopups.get(extension.id) === popup) extensionPopups.delete(extension.id)
+    })
+    popup.once('ready-to-show', () => {
+      if (popup.isDestroyed()) return
+      popup.show()
+      popup.focus()
+      armBlurDismissal()
+    })
+    void popup.loadURL(extensionResourceUrl(extension, resource)).catch((error) => {
+      console.warn('[extensions] Could not open extension popup:', error)
+      popup.close()
+    })
+    return true
+  }
+
   ipcMain.handle(
     IpcChannels.ExtensionsOpenPopup,
     (
@@ -1220,115 +1344,59 @@ export function registerIpcHandlers(context: IpcContext): void {
         .find((candidate) => candidate.id === payload.id)
       if (!extension) throw new Error('That extension is no longer loaded.')
 
-      const existing = extensionPopups.get(extension.id)
-      if (existing && !existing.isDestroyed()) {
-        existing.focus()
-        return true
-      }
+      return openExtensionPopup({
+        extension,
+        session: ses,
+        profileId,
+        resource: payload.resource,
+        x: typeof payload.x === 'number' ? payload.x : 0,
+        y: typeof payload.y === 'number' ? payload.y : 0,
+        owner: windowForAnyWebContents(event.sender)
+      })
+    }
+  )
 
-      const width = 420
-      const height = 600
-      const manifest = extension.manifest as Record<string, unknown> | undefined
-      const action = manifest?.action as Record<string, unknown> | undefined
-      const title =
-        (typeof action?.default_title === 'string' ? action.default_title : extension.name) ||
-        extension.name
-      // Resolve the owner from the sender: context.getWindow() falls back to
-      // the active window, which may be a different window when the click
-      // comes from a chrome WebContentsView.
+  /**
+   * Show extension actions in a native menu. A DOM overlay would have to
+   * expand the transparent chrome view to the full window, which can leave the
+   * tab strip blank and the window undraggable when a popup steals focus.
+   */
+  ipcMain.handle(
+    IpcChannels.ExtensionsShowActionMenu,
+    (event, payload: { x?: unknown; y?: unknown }) => {
+      const profileId = profileFor(event as any)
+      const ses = sessionForProfile(profileId)
+      const actions = currentExtensionsState(ses, profileId).filter(
+        (item) => item.loaded && item.id && item.action?.popup
+      )
+      if (actions.length === 0) return false
+
       const owner = windowForAnyWebContents(event.sender)
       const ownerWindow = owner && !owner.window.isDestroyed() ? owner.window : null
-      // The menu that launched this popup expanded the owner's chrome view over
-      // the whole window. Collapse it before the native popup takes focus; a
-      // focus race can otherwise skip the renderer's overlay-release cleanup
-      // and leave the tab strip hidden with the window undraggable.
-      owner?.setOverlayOpen(false)
-      const bounds = ownerWindow?.getContentBounds() ?? { x: 0, y: 0 }
-      const x = (typeof payload.x === 'number' ? payload.x : 0) + bounds.x
-      const y = (typeof payload.y === 'number' ? payload.y : 0) + bounds.y
-      const area = screen.getDisplayMatching({ x, y, width: 1, height: 1 }).workArea
-      const popup = new BrowserWindow({
-        width,
-        height,
-        title: `${title} — Voyager`,
-        autoHideMenuBar: true,
-        resizable: false,
-        show: false,
-        skipTaskbar: true,
-        webPreferences: {
-          session: ses,
-          nodeIntegration: false,
-          contextIsolation: true,
-          sandbox: true
-        }
-      })
-      popup.setMenu(null)
-      popup.setPosition(
-        Math.max(area.x, Math.min(Math.round(x), area.x + area.width - width)),
-        Math.max(area.y, Math.min(Math.round(y), area.y + area.height - height))
+      const x = typeof payload?.x === 'number' ? payload.x : 0
+      const y = typeof payload?.y === 'number' ? payload.y : 0
+      const menu = Menu.buildFromTemplate(
+        actions.map((item) => ({
+          label: item.action?.title || item.name,
+          click: () => {
+            const extension = ses.extensions
+              .getAllExtensions()
+              .find((candidate) => candidate.id === item.id)
+            if (!extension || !item.action?.popup) return
+            openExtensionPopup({
+              extension,
+              session: ses,
+              profileId,
+              resource: item.action.popup,
+              x,
+              y,
+              owner
+            })
+          }
+        }))
       )
-      extensionPopups.set(extension.id, popup)
-
-      const base = extension.url.endsWith('/') ? extension.url : `${extension.url}/`
-      const openExternal = (url: string): void => {
-        if (/^https?:\/\//i.test(url)) context.openWindow?.(url, profileId)
-      }
-      popup.webContents.on('will-navigate', (navigationEvent, url) => {
-        if (url.startsWith(base)) return
-        navigationEvent.preventDefault()
-        openExternal(url)
-      })
-      popup.webContents.setWindowOpenHandler(({ url }) => {
-        if (url.startsWith(base)) return { action: 'allow' }
-        openExternal(url)
-        return { action: 'deny' }
-      })
-      popup.webContents.on('before-input-event', (_inputEvent, input) => {
-        if (input.type === 'keyDown' && input.key === 'Escape' && !popup.isDestroyed()) {
-          popup.close()
-        }
-      })
-
-      // A new, still-hidden window can emit `blur` while the toolbar menu
-      // hands focus back to chrome (notably under Xvfb). Closing on that early
-      // blur made the popup disappear before it was first painted. Arm blur
-      // dismissal only after a real focus and a short grace period for the
-      // focus churn caused by the click that opened it.
-      let blurArmTimer: NodeJS.Timeout | null = null
-      let blurDismissalArmed = false
-      const armBlurDismissal = (): void => {
-        if (blurDismissalArmed || blurArmTimer) return
-        blurArmTimer = setTimeout(() => {
-          blurArmTimer = null
-          blurDismissalArmed = true
-        }, 300)
-        blurArmTimer.unref()
-      }
-      popup.on('focus', armBlurDismissal)
-      popup.on('blur', () => {
-        if (blurDismissalArmed && !popup.isDestroyed()) popup.close()
-      })
-
-      const closeWithOwner = (): void => {
-        if (!popup.isDestroyed()) popup.close()
-      }
-      ownerWindow?.once('closed', closeWithOwner)
-      popup.once('closed', () => {
-        if (blurArmTimer) clearTimeout(blurArmTimer)
-        if (ownerWindow && !ownerWindow.isDestroyed()) ownerWindow.off('closed', closeWithOwner)
-        if (extensionPopups.get(extension.id) === popup) extensionPopups.delete(extension.id)
-      })
-      popup.once('ready-to-show', () => {
-        if (popup.isDestroyed()) return
-        popup.show()
-        popup.focus()
-        // Some window managers never emit `focus` for a frameless popup.
-        armBlurDismissal()
-      })
-      void popup.loadURL(extensionResourceUrl(extension, payload.resource)).catch((error) => {
-        console.warn('[extensions] Could not open extension popup:', error)
-        popup.close()
-      })
+      if (ownerWindow) menu.popup({ window: ownerWindow, x, y })
+      else menu.popup()
       return true
     }
   )

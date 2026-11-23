@@ -75,15 +75,20 @@ test('opens an extension action popup from the toolbar', async ({ launchVoyager 
     timeout: 15_000
   })
 
-  await voyager.chrome.getByRole('button', { name: 'Extensions' }).click()
-  await voyager.chrome.getByRole('menuitem', { name: 'Voyager E2E Password Filler' }).click()
+  // The toolbar button opens a native menu that Playwright cannot drive. Use
+  // the same main-process popup path the menu item invokes.
+  await expect(voyager.chrome.getByRole('button', { name: 'Extensions' })).toBeVisible()
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  await voyager.chrome.evaluate((id) => {
+    void window.voyager.extensions.openPopup(id as string, 'popup.html', 100, 100)
+  }, extensions[0]?.id as string)
   const popup = await popupPromise
   await expect(popup.locator('#voyager-extension-popup')).toHaveText('password-filler-popup')
 
-  // The native popup must not leave the owner's chrome view expanded: that
-  // would cover the tab strip with a transparent overlay and block dragging.
-  await expect(voyager.chrome.getByRole('menu', { name: 'Extensions' })).toHaveCount(0)
+  // The button and popup must not expand the transparent chrome view over the
+  // whole window: that blanks the tab strip and makes the window undraggable.
   await expect(voyager.chrome.getByRole('tab')).toBeVisible()
+  await expect(voyager.chrome.getByRole('button', { name: 'Extensions' })).toBeVisible()
 
   // Electron omits chrome.webNavigation; extensions that register navigation
   // listeners at startup crash without this compatibility layer.

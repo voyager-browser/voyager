@@ -75,6 +75,7 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
     'installFromStore',
     'uninstall',
     'openPopup',
+    'showActionMenu',
     'onStateChanged'
   ])
   expect(api.tabs).toEqual(
