@@ -74,16 +74,16 @@ function ExtensionRow({
       .querySelector(`[data-extension-row="${extension.id}"]`)
       ?.getBoundingClientRect()
     // openPopup expects window coordinates; the menu's rect is panel-relative.
+    // The main process closes this menu panel before showing the popup, so do
+    // not call closePanel() here — it would destroy this renderer first.
     const x = (rect?.right ?? 0) + origin.x
     const y = (rect?.bottom ?? 0) + origin.y
-    void window.voyager.extensions.closePanel().then(() => {
-      void window.voyager.extensions.openPopup(
-        extension.id as string,
-        extension.action?.popup as string,
-        x,
-        y
-      )
-    })
+    void window.voyager.extensions.openPopup(
+      extension.id as string,
+      extension.action?.popup as string,
+      x,
+      y
+    )
   }
   return (
     <div
