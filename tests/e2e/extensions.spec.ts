@@ -79,6 +79,18 @@ test('opens an extension action popup from the toolbar', async ({ launchVoyager 
   await voyager.chrome.getByRole('menuitem', { name: 'Voyager E2E Password Filler' }).click()
   const popup = await popupPromise
   await expect(popup.locator('#voyager-extension-popup')).toHaveText('password-filler-popup')
+
+  // Electron omits chrome.webNavigation; extensions that register navigation
+  // listeners at startup crash without this compatibility layer.
+  const navigation = await popup.evaluate(() => {
+    const api = (globalThis as any).chrome?.webNavigation
+    const listener = (): void => undefined
+    api?.onCommitted?.addListener(listener)
+    const hasListener = api?.onCommitted?.hasListener(listener) ?? false
+    api?.onCommitted?.removeListener(listener)
+    return { present: Boolean(api), hasListener }
+  })
+  expect(navigation).toEqual({ present: true, hasListener: true })
 })
 
 test('rejects Web Store URLs outside the Chrome Web Store', async ({ voyager }) => {

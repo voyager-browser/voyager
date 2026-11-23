@@ -136,6 +136,7 @@ export const IpcChannels = {
   ExtensionsUninstall: 'extensions:uninstall',
   ExtensionsOpenPopup: 'extensions:open-popup',
   ExtensionsStateChanged: 'extensions:state-changed',
+  ExtensionWebNavigationEvent: 'extension:web-navigation-event',
 
   WindowsOpen: 'windows:open',
   WindowsOpenIncognito: 'windows:open-incognito',
