@@ -34,6 +34,35 @@ export async function attachWindowScreenshots(
   }
 }
 
+const capturedApps = new WeakSet<VoyagerApp>()
+
+/**
+ * Electron windows are not part of Playwright's automatic screenshot recorder,
+ * so attach their screenshots explicitly for UI mode and HTML reports.
+ */
+export async function attachWindowScreenshots(
+  voyager: VoyagerApp,
+  testInfo: TestInfo
+): Promise<void> {
+  if (capturedApps.has(voyager)) return
+  capturedApps.add(voyager)
+
+  const pages = voyager
+    .pages()
+    .filter((page) => !page.isClosed() && !page.url().startsWith('devtools://'))
+  for (const [index, page] of pages.entries()) {
+    try {
+      const body = await page.screenshot({ timeout: 5_000 })
+      await testInfo.attach(index === 0 ? 'screenshot' : `screenshot-${index + 1}`, {
+        body,
+        contentType: 'image/png'
+      })
+    } catch {
+      // A window can close mid-capture; keep screenshots of the other windows.
+    }
+  }
+}
+
 interface LaunchOverrides {
   userDataDir?: string
   seed?: Record<string, unknown>
