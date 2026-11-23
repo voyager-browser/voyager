@@ -496,9 +496,13 @@ export class WindowController {
     if (chromeOnTop) {
       this.window.contentView.addChildView(this.chrome)
     } else if (this.activeTabView) {
-      // Raise the page above the transparent full-window chrome so clicks and
-      // scrolling reach the page rather than the chrome renderer.
+      // Raise the page(s) above the transparent full-window chrome so clicks
+      // and scrolling reach them rather than the chrome renderer. Both split
+      // panes need raising: setting bounds alone does not reroute input.
       this.window.contentView.addChildView(this.activeTabView)
+      if (this.splitSecondaryView) {
+        this.window.contentView.addChildView(this.splitSecondaryView)
+      }
     }
 
     this.activeTabView?.setBounds({
