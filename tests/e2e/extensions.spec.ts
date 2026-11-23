@@ -157,8 +157,9 @@ test('opens a Voyager tab when an extension calls chrome.tabs.create', async ({
     .toBe(true)
   const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
   await popup!.getByRole('button', { name: 'Open tab' }).click()
-  await expect(popup!.locator('#tabs-result')).toHaveText('tab opened')
 
+  // Activating the new tab dismisses the action popup, just as Chrome does, so
+  // assert the resulting Voyager tab rather than the popup's own DOM.
   await expect
     .poll(async () =>
       (await voyager.state()).tabs.some((tab) => tab.url.startsWith('https://example.test/'))
@@ -184,7 +185,7 @@ test('prompts before granting a new extension permission', async ({ launchVoyage
 
   const prompt = voyager.chrome.getByRole('dialog')
   await expect(prompt).toContainText('Change your privacy-related settings')
-  await prompt.getByRole('button', { name: 'Allow' }).click()
+  await prompt.getByRole('button', { name: 'Allow', exact: true }).click()
   await expect(popup!.locator('#permission-result')).toHaveText('permission granted')
 })
 
