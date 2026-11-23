@@ -86,6 +86,14 @@ export function securityLevelFor(url: string): SecurityLevel {
   return 'neutral'
 }
 
+/**
+ * Whether a URL has a TLS certificate to inspect. Localhost HTTP and file URLs
+ * count as secure for the omnibox badge, but have no certificate to view.
+ */
+export function hasTlsCertificate(url: string): boolean {
+  return safeParseUrl(url)?.protocol === 'https:'
+}
+
 /** Whether a URL represents the start page or an otherwise empty tab. */
 export function isNewTab(url: string): boolean {
   if (url === '' || url === 'about:blank') return true
