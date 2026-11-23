@@ -5,6 +5,7 @@ name: PR Title
 # than `pull_request_target`) so the check also runs on the PR that introduces
 # it; switch to `pull_request_target` if fork-based contributions are enabled.
 on:
+  merge_group:
   pull_request:
     types: [opened, edited, reopened, synchronize]
     branches: [master, main]
