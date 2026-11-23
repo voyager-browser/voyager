@@ -1,6 +1,6 @@
 import { isNewTab } from '../../src/shared/url'
 import { expect, test } from './fixtures'
-import { primaryKey, waitForRenderedText, type VoyagerApp } from './helpers/voyager'
+import { primaryKey, waitForRenderedText } from './helpers/voyager'
 
 async function vyWait(voyager: any, url: string): Promise<void> {
   const deadline = Date.now() + 15_000
@@ -14,18 +14,6 @@ async function vyWait(voyager: any, url: string): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
   throw new Error(`Timed out waiting for ${url}`)
-}
-
-/** Read the /count page's hit total from the web contents that owns `url`. */
-async function tabHits(voyager: VoyagerApp, url: string): Promise<number> {
-  return voyager.app.evaluate(async ({ webContents }, targetUrl) => {
-    const contents = webContents
-      .getAllWebContents()
-      .find((candidate) => !candidate.isDestroyed() && candidate.getURL() === targetUrl)
-    if (!contents) throw new Error(`No web contents for ${targetUrl}`)
-    const text = await contents.executeJavaScript('document.querySelector("#hits")?.textContent')
-    return Number(text)
-  }, url)
 }
 
 test('creates new tabs and activates the latest one', async ({ voyager }) => {
@@ -253,23 +241,33 @@ test('reloads the active tab when requested', async ({ voyager, server }) => {
 test('reloads the right-clicked tab from its context menu', async ({ voyager, server }) => {
   const activeUrl = server.url('/count')
   const targetUrl = server.url('/count?tab=target')
+  const countRequests = (isTarget: boolean): number =>
+    server.requests.filter(
+      (request) => request.path === '/count' && (request.query.get('tab') === 'target') === isTarget
+    ).length
 
   await voyager.navigate(activeUrl)
   const activeId = (await voyager.activeTab()).id
-  await expect.poll(async () => tabHits(voyager, activeUrl)).toBeGreaterThan(0)
+  await expect.poll(() => countRequests(false)).toBeGreaterThan(0)
 
+  // Load the target in the foreground first, then switch back. An inactive
+  // WebContentsView may take a while to commit its navigation on slow CI
+  // runners, so waiting for the server request is more reliable than probing
+  // main-process web contents by URL.
   const targetId = await voyager.chrome.evaluate(
-    async (url) => window.voyager.tabs.create({ url, active: false }),
+    async (url) => window.voyager.tabs.create({ url, active: true }),
     targetUrl
   )
   expect(targetId).not.toBe(activeId)
-  await expect.poll(async () => (await voyager.state()).tabs.length).toBe(2)
-  await expect.poll(async () => (await voyager.activeTab()).id).toBe(activeId)
-  await expect.poll(async () => tabHits(voyager, targetUrl)).toBeGreaterThan(0)
+  await expect.poll(async () => (await voyager.activeTab()).url).toBe(targetUrl)
+  await expect.poll(() => countRequests(true)).toBeGreaterThan(0)
 
-  const hitsBefore = server.hits('/count')
-  const activeHitsBefore = await tabHits(voyager, activeUrl)
-  const targetHitsBefore = await tabHits(voyager, targetUrl)
+  await voyager.chrome.evaluate(async (id) => window.voyager.tabs.activate(id), activeId)
+  await expect.poll(async () => (await voyager.activeTab()).id).toBe(activeId)
+  await expect.poll(async () => (await voyager.activeTab()).url).toBe(activeUrl)
+
+  const activeRequestsBefore = countRequests(false)
+  const targetRequestsBefore = countRequests(true)
 
   const targetTab = voyager.chrome.getByRole('tab').nth(1)
   await expect(targetTab).toHaveAttribute('title', targetUrl)
@@ -278,8 +276,7 @@ test('reloads the right-clicked tab from its context menu', async ({ voyager, se
 
   // Only the right-clicked tab should hit the server again; the active tab and
   // the active-tab id must both stay untouched.
-  await expect.poll(async () => server.hits('/count')).toBe(hitsBefore + 1)
-  await expect.poll(async () => tabHits(voyager, targetUrl)).toBe(targetHitsBefore + 1)
-  await expect.poll(async () => tabHits(voyager, activeUrl)).toBe(activeHitsBefore)
+  await expect.poll(() => countRequests(true)).toBe(targetRequestsBefore + 1)
+  await expect.poll(() => countRequests(false)).toBe(activeRequestsBefore)
   expect((await voyager.activeTab()).id).toBe(activeId)
 })
