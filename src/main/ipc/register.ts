@@ -901,19 +901,9 @@ export function registerIpcHandlers(context: IpcContext): void {
   })
 
   ipcMain.on(IpcChannels.TabGetUserAgent, (event) => {
-    const ses = event.sender.session
-    let profileId = DEFAULT_PROFILE_ID
-    for (const profile of listProfiles()) {
-      try {
-        if (sessionForProfile(profile.id) === ses) {
-          profileId = profile.id
-          break
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-    event.returnValue = userAgentForProfile(profileId)
+    // Incognito tabs live in an in-memory partition that never matches a
+    // profile session, so resolve the owner by webContents instead.
+    event.returnValue = userAgentForProfile(profileForSender(event.sender))
   })
 
   // Tabs block inside sendSync until the chrome UI answers the prompt.
