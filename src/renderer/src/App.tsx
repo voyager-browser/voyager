@@ -79,6 +79,16 @@ export default function App(): React.JSX.Element {
   // Chrome-focused keyboard shortcuts.
   useEffect(() => installChromeShortcuts(), [])
 
+  // Extension menus and popups live in their own in-window views. Clicking
+  // anywhere in the chrome dismisses them, just like Chrome's toolbar UI.
+  useEffect(() => {
+    const dismiss = (): void => {
+      void window.voyager.extensions.closePanel()
+    }
+    document.addEventListener('mousedown', dismiss)
+    return () => document.removeEventListener('mousedown', dismiss)
+  }, [])
+
   // Keep the chrome in sync with persisted preferences and per-window state.
   useEffect(() => {
     void window.voyager.windows.getState().then((state) => {

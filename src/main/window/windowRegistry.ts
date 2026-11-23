@@ -75,12 +75,7 @@ export function windowForAnyWebContents(
 ): WindowController | null {
   if (!webContents) return null
   for (const controller of controllers) {
-    if (
-      controller.chrome.webContents === webContents ||
-      controller.tabs.tabIdForWebContents(webContents)
-    ) {
-      return controller
-    }
+    if (controller.ownsWebContents(webContents)) return controller
   }
   return null
 }

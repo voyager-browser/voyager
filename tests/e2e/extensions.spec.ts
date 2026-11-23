@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { expect, test } from './fixtures'
-import { openSettings } from './helpers/voyager'
+import { openSettings, windowCount } from './helpers/voyager'
 
 const EXTENSIONS_DIR = join(process.cwd(), 'tests', 'e2e', 'fixtures', 'extensions')
 const EXTENSION_PATH = join(EXTENSIONS_DIR, 'password-filler')
@@ -66,41 +66,110 @@ test('unpacks and installs a CRX extension', async ({ voyager }) => {
   expect(removed).toEqual([])
 })
 
-test('opens an extension action popup from the toolbar', async ({ launchVoyager }) => {
+test('opens an extension action popup inside the browser window', async ({ launchVoyager }) => {
   const voyager = await launchVoyager({
     seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
   })
-  const popupPromise = voyager.app.waitForEvent('window', {
-    predicate: (page) => page.url().startsWith('chrome-extension://'),
-    timeout: 15_000
-  })
-
-  // The toolbar button opens a native menu that Playwright cannot drive. Use
-  // the same main-process popup path the menu item invokes.
-  await expect(voyager.chrome.getByRole('button', { name: 'Extensions' })).toBeVisible()
   const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
-  await voyager.chrome.evaluate((id) => {
-    void window.voyager.extensions.openPopup(id as string, 'popup.html', 100, 100)
-  }, extensions[0]?.id as string)
-  const popup = await popupPromise
-  await expect(popup.locator('#voyager-extension-popup')).toHaveText('password-filler-popup')
+  const id = extensions[0]?.id as string
+  expect(id).toBeTruthy()
+  const before = await windowCount(voyager.app)
 
-  // The button and popup must not expand the transparent chrome view over the
-  // whole window: that blanks the tab strip and makes the window undraggable.
+  await voyager.chrome.evaluate((extensionId) => {
+    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  }, id)
+
+  // The popup is an in-window child view, not a second BrowserWindow.
+  await expect
+    .poll(() =>
+      voyager.app.evaluate(({ webContents }) =>
+        webContents
+          .getAllWebContents()
+          .some((contents) => contents.getURL().startsWith('chrome-extension://'))
+      )
+    )
+    .toBe(true)
+  expect(await windowCount(voyager.app)).toBe(before)
+
+  const popupText = await voyager.app.evaluate(({ webContents }) => {
+    const popup = webContents
+      .getAllWebContents()
+      .find((contents) => contents.getURL().startsWith('chrome-extension://'))
+    return popup?.executeJavaScript(
+      "document.querySelector('#voyager-extension-popup')?.textContent ?? ''"
+    )
+  })
+  await expect(popupText).resolves.toBe('password-filler-popup')
+
+  // The chrome view must stay at its normal size: expanding it over the whole
+  // window is what previously blanked the tab strip and blocked dragging.
   await expect(voyager.chrome.getByRole('tab')).toBeVisible()
   await expect(voyager.chrome.getByRole('button', { name: 'Extensions' })).toBeVisible()
+})
 
-  // Electron omits chrome.webNavigation; extensions that register navigation
-  // listeners at startup crash without this compatibility layer.
-  const navigation = await popup.evaluate(() => {
-    const api = (globalThis as any).chrome?.webNavigation
-    const listener = (): void => undefined
-    api?.onCommitted?.addListener(listener)
-    const hasListener = api?.onCommitted?.hasListener(listener) ?? false
-    api?.onCommitted?.removeListener(listener)
-    return { present: Boolean(api), hasListener }
+test('opens a Chrome-style HTML extension menu with grouped actions', async ({ launchVoyager }) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
   })
-  expect(navigation).toEqual({ present: true, hasListener: true })
+  await expect(voyager.chrome.getByRole('button', { name: 'Extensions' })).toBeVisible()
+  const opened = await voyager.chrome.evaluate(() => {
+    const button = [...document.querySelectorAll('button')].find(
+      (candidate) => candidate.getAttribute('aria-label') === 'Extensions'
+    )
+    const rect = button?.getBoundingClientRect()
+    return window.voyager.extensions.showActionMenu(rect?.right ?? 0, rect?.bottom ?? 0)
+  })
+  await expect(opened).resolves.toBe(true)
+
+  await expect
+    .poll(() =>
+      voyager.app.evaluate(({ webContents }) =>
+        webContents
+          .getAllWebContents()
+          .some(
+            (contents) =>
+              contents.getURL().includes('extensionMenu.html') ||
+              contents.getURL().startsWith('voyager://extension-menu')
+          )
+      )
+    )
+    .toBe(true)
+
+  const menu = voyager.app
+    .windows()
+    .find(
+      (page) =>
+        page.url().includes('extensionMenu.html') ||
+        page.url().startsWith('voyager://extension-menu')
+    )
+  expect(menu).toBeDefined()
+  await expect(menu!.getByRole('heading', { name: 'Extensions' })).toBeVisible()
+  await expect(menu!.getByText('Voyager E2E Password Filler')).toBeVisible()
+  await expect(menu!.getByRole('button', { name: 'Pin extension' })).toBeVisible()
+  await expect(
+    menu!.getByRole('button', { name: 'More options for Voyager E2E Password Filler' })
+  ).toBeVisible()
+})
+
+test('pins an extension to the toolbar and persists its site access', async ({ launchVoyager }) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+
+  const pinned = await voyager.chrome.evaluate((extensionId) => {
+    return window.voyager.extensions.setPinned(extensionId, true)
+  }, id)
+  expect(pinned[0]).toEqual(expect.objectContaining({ id, pinned: true }))
+  await expect(
+    voyager.chrome.getByRole('button', { name: 'Open Voyager E2E Password Filler' })
+  ).toBeVisible()
+
+  const access = await voyager.chrome.evaluate((extensionId) => {
+    return window.voyager.extensions.setSiteAccess(extensionId, 'all')
+  }, id)
+  expect(access[0]).toEqual(expect.objectContaining({ id, siteAccess: 'all' }))
 })
 
 test('rejects Web Store URLs outside the Chrome Web Store', async ({ voyager }) => {

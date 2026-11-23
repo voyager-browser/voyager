@@ -118,6 +118,25 @@ const api = {
       ipcRenderer.invoke(IpcChannels.ExtensionsOpenPopup, { id, resource, x, y }),
     showActionMenu: (x: number, y: number): Promise<boolean> =>
       ipcRenderer.invoke(IpcChannels.ExtensionsShowActionMenu, { x, y }),
+    showContextMenu: (id: string, x: number, y: number): Promise<boolean> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsShowContextMenu, { id, x, y }),
+    closePanel: (): Promise<void> => ipcRenderer.invoke(IpcChannels.ExtensionsClosePanel),
+    setPinned: (id: string, pinned: boolean): Promise<ExtensionInfo[]> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsSetPinned, { id, pinned }),
+    setSiteAccess: (id: string, access: 'click' | 'site' | 'all'): Promise<ExtensionInfo[]> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsSetSiteAccess, { id, access }),
+    onMenuOpen: (
+      listener: (payload: {
+        site: string | null
+        profileId: string
+        origin: { x: number; y: number }
+      }) => void
+    ): Unsubscribe =>
+      subscribe<{
+        site: string | null
+        profileId: string
+        origin: { x: number; y: number }
+      }>(IpcChannels.ExtensionsMenuOpen, listener),
     onStateChanged: (listener: (extensions: ExtensionInfo[]) => void): Unsubscribe =>
       subscribe<ExtensionInfo[]>(IpcChannels.ExtensionsStateChanged, listener)
   },

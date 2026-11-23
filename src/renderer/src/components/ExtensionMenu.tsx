@@ -8,25 +8,51 @@ interface ExtensionMenuProps {
 }
 
 /**
- * Toolbar entry point for extension actions. The actions are shown in a native
- * Electron menu: a DOM overlay would require expanding the transparent chrome
- * view to the full window, which can blank the tab strip and block window
- * dragging when an extension popup takes focus.
+ * Toolbar entry point for extension actions. Pinned actions open their popup
+ * directly from their own icon; the puzzle button opens the Chrome-style HTML
+ * menu in an in-window panel so the chrome view is never resized.
  */
 export function ExtensionMenu({ extensions }: ExtensionMenuProps): React.JSX.Element | null {
-  const hasActions = extensions.some(
+  const actions = extensions.filter(
     (extension) => extension.loaded && extension.id && extension.action?.popup
   )
-  if (!hasActions) return null
+  const pinned = actions.filter((extension) => extension.pinned)
+  if (actions.length === 0) return null
+
+  const openPinned = (extension: ExtensionInfo, event: MouseEvent<HTMLButtonElement>): void => {
+    if (!extension.id || !extension.action?.popup) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    void window.voyager.extensions.openPopup(
+      extension.id,
+      extension.action.popup,
+      rect.right,
+      rect.bottom
+    )
+  }
 
   const showMenu = (event: MouseEvent<HTMLButtonElement>): void => {
     const rect = event.currentTarget.getBoundingClientRect()
-    void window.voyager.extensions.showActionMenu(rect.right, rect.bottom).catch(() => undefined)
+    void window.voyager.extensions.showActionMenu(rect.right, rect.bottom)
   }
 
   return (
-    <IconButton label="Extensions" onClick={showMenu}>
-      <Puzzle className="h-4 w-4" />
-    </IconButton>
+    <>
+      {pinned.map((extension) => (
+        <IconButton
+          key={extension.path}
+          label={`Open ${extension.name}`}
+          onClick={(event) => openPinned(extension, event)}
+        >
+          {extension.action?.iconUrl ? (
+            <img src={extension.action.iconUrl} alt="" className="h-4 w-4 object-contain" />
+          ) : (
+            <Puzzle className="h-4 w-4" />
+          )}
+        </IconButton>
+      ))}
+      <IconButton label="Extensions" onClick={showMenu}>
+        <Puzzle className="h-4 w-4" />
+      </IconButton>
+    </>
   )
 }

@@ -1,12 +1,10 @@
 import {
   app,
-  BrowserWindow,
   clipboard,
   dialog,
   ipcMain,
   Menu,
   nativeTheme,
-  screen,
   type Extension,
   type WebContents
 } from 'electron'
@@ -154,8 +152,11 @@ import {
 import {
   currentExtensionsState,
   extensionResourceUrl,
+  hostAccessForManifest,
   installExtension,
   installExtensionFromStore,
+  setExtensionPinned,
+  setExtensionSiteAccess,
   uninstallExtension
 } from '../extensions/extensions'
 
@@ -1143,7 +1144,14 @@ export function registerIpcHandlers(context: IpcContext): void {
     return state
   }
 
-  const extensionPopups = new Map<string, BrowserWindow>()
+  /** Panel currently open in each window, so a second click acts as a toggle. */
+  const openExtensionPanels = new WeakMap<WindowController, { id: string; kind: string }>()
+
+  const closePanelForOwner = (owner: WindowController): void => {
+    if (!openExtensionPanels.has(owner)) return
+    owner.closeExtensionPanel()
+    openExtensionPanels.delete(owner)
+  }
 
   ipcMain.handle(IpcChannels.ExtensionsGetState, (event) => {
     const profileId = profileFor(event as any)
@@ -1196,15 +1204,16 @@ export function registerIpcHandlers(context: IpcContext): void {
     const extension = ses.extensions
       .getAllExtensions()
       .find((candidate) => resolve(candidate.path) === resolve(path))
-    if (extension) extensionPopups.get(extension.id)?.close()
+    if (extension) {
+      for (const window of allWindows()) {
+        if (openExtensionPanels.get(window)?.id === extension.id) closePanelForOwner(window)
+      }
+    }
     const state = uninstallExtension(ses, profileId, path)
     return publishExtensions(profileId, state)
   })
 
-  /**
-   * Open an extension action popup as its own window. Shared by the explicit
-   * open-popup IPC and the native action menu so both paths behave identically.
-   */
+  /** Open an extension action popup inside the browser window, like Chrome. */
   const openExtensionPopup = ({
     extension,
     session,
@@ -1222,104 +1231,34 @@ export function registerIpcHandlers(context: IpcContext): void {
     y: number
     owner: WindowController | null
   }): boolean => {
-    const existing = extensionPopups.get(extension.id)
-    if (existing && !existing.isDestroyed()) {
-      existing.focus()
+    if (!owner || owner.window.isDestroyed()) return false
+    const current = openExtensionPanels.get(owner)
+    if (current?.kind === 'popup' && current.id === extension.id) {
+      closePanelForOwner(owner)
       return true
     }
+    closePanelForOwner(owner)
 
-    const width = 420
-    const height = 600
-    const manifest = extension.manifest as Record<string, unknown> | undefined
-    const action = manifest?.action as Record<string, unknown> | undefined
-    const title =
-      (typeof action?.default_title === 'string' ? action.default_title : extension.name) ||
-      extension.name
-    const ownerWindow = owner && !owner.window.isDestroyed() ? owner.window : null
-    const bounds = ownerWindow?.getContentBounds() ?? { x: 0, y: 0 }
-    const screenX = x + bounds.x
-    const screenY = y + bounds.y
-    const area = screen.getDisplayMatching({ x: screenX, y: screenY, width: 1, height: 1 }).workArea
-    const popup = new BrowserWindow({
-      width,
-      height,
-      title: `${title} — Voyager`,
-      autoHideMenuBar: true,
-      resizable: false,
-      show: false,
-      skipTaskbar: true,
-      webPreferences: {
-        session,
-        nodeIntegration: false,
-        contextIsolation: true,
-        sandbox: true
-      }
-    })
-    popup.setMenu(null)
-    popup.setPosition(
-      Math.max(area.x, Math.min(Math.round(screenX), area.x + area.width - width)),
-      Math.max(area.y, Math.min(Math.round(screenY), area.y + area.height - height))
-    )
-    extensionPopups.set(extension.id, popup)
-
-    const base = extension.url.endsWith('/') ? extension.url : `${extension.url}/`
-    const openExternal = (url: string): void => {
-      if (/^https?:\/\//i.test(url)) context.openWindow?.(url, profileId)
+    let url: string
+    try {
+      url = extensionResourceUrl(extension, resource)
+    } catch {
+      return false
     }
-    popup.webContents.on('will-navigate', (navigationEvent, url) => {
-      if (url.startsWith(base)) return
-      navigationEvent.preventDefault()
-      openExternal(url)
-    })
-    popup.webContents.setWindowOpenHandler(({ url }) => {
-      if (url.startsWith(base)) return { action: 'allow' }
-      openExternal(url)
-      return { action: 'deny' }
-    })
-    popup.webContents.on('before-input-event', (_inputEvent, input) => {
-      if (input.type === 'keyDown' && input.key === 'Escape' && !popup.isDestroyed()) {
-        popup.close()
-      }
-    })
-
-    // A new, still-hidden window can emit `blur` while focus settles on the
-    // native menu or chrome. Closing on that early blur made the popup
-    // disappear before it was first painted, so arm dismissal after a real
-    // focus and a short grace period for the focus churn of the click.
-    let blurArmTimer: NodeJS.Timeout | null = null
-    let blurDismissalArmed = false
-    const armBlurDismissal = (): void => {
-      if (blurDismissalArmed || blurArmTimer) return
-      blurArmTimer = setTimeout(() => {
-        blurArmTimer = null
-        blurDismissalArmed = true
-      }, 300)
-      blurArmTimer.unref()
+    const openExternal = (target: string): void => {
+      if (/^https?:\/\//i.test(target)) context.openWindow?.(target, profileId)
     }
-    popup.on('focus', armBlurDismissal)
-    popup.on('blur', () => {
-      if (blurDismissalArmed && !popup.isDestroyed()) popup.close()
+    owner.showExtensionPanel({
+      url,
+      session,
+      x: Math.round(x),
+      y: Math.round(y),
+      width: 420,
+      height: 600,
+      allowedOrigin: extension.url,
+      onNavigateAway: openExternal
     })
-
-    const closeWithOwner = (): void => {
-      if (!popup.isDestroyed()) popup.close()
-    }
-    ownerWindow?.once('closed', closeWithOwner)
-    popup.once('closed', () => {
-      if (blurArmTimer) clearTimeout(blurArmTimer)
-      if (ownerWindow && !ownerWindow.isDestroyed()) ownerWindow.off('closed', closeWithOwner)
-      if (extensionPopups.get(extension.id) === popup) extensionPopups.delete(extension.id)
-    })
-    popup.once('ready-to-show', () => {
-      if (popup.isDestroyed()) return
-      popup.show()
-      popup.focus()
-      armBlurDismissal()
-    })
-    void popup.loadURL(extensionResourceUrl(extension, resource)).catch((error) => {
-      console.warn('[extensions] Could not open extension popup:', error)
-      popup.close()
-    })
+    openExtensionPanels.set(owner, { id: extension.id, kind: 'popup' })
     return true
   }
 
@@ -1357,47 +1296,196 @@ export function registerIpcHandlers(context: IpcContext): void {
   )
 
   /**
-   * Show extension actions in a native menu. A DOM overlay would have to
-   * expand the transparent chrome view to the full window, which can leave the
-   * tab strip blank and the window undraggable when a popup steals focus.
+   * Show the Chrome-style HTML action menu in an in-window panel. The chrome
+   * view is never resized, so the tab strip and window dragging stay intact.
    */
   ipcMain.handle(
     IpcChannels.ExtensionsShowActionMenu,
     (event, payload: { x?: unknown; y?: unknown }) => {
-      const profileId = profileFor(event as any)
-      const ses = sessionForProfile(profileId)
-      const actions = currentExtensionsState(ses, profileId).filter(
-        (item) => item.loaded && item.id && item.action?.popup
-      )
-      if (actions.length === 0) return false
-
       const owner = windowForAnyWebContents(event.sender)
-      const ownerWindow = owner && !owner.window.isDestroyed() ? owner.window : null
-      // Electron requires integer coordinates relative to the owner window;
-      // DOM getBoundingClientRect() values are often fractional.
+      if (!owner || owner.window.isDestroyed()) return false
+      const profileId = owner.profile
+      const extensions = currentExtensionsState(sessionForProfile(profileId), profileId)
+      if (extensions.length === 0) return false
+
+      const state = owner.tabs.snapshot()
+      const active = state.tabs.find((tab) => tab.id === state.activeTabId)
       const x = Math.round(typeof payload?.x === 'number' ? payload.x : 0)
       const y = Math.round(typeof payload?.y === 'number' ? payload.y : 0)
-      const menu = Menu.buildFromTemplate(
-        actions.map((item) => ({
-          label: item.action?.title || item.name,
-          click: () => {
-            const extension = ses.extensions
-              .getAllExtensions()
-              .find((candidate) => candidate.id === item.id)
-            if (!extension || !item.action?.popup) return
-            openExtensionPopup({
-              extension,
-              session: ses,
-              profileId,
-              resource: item.action.popup,
-              x,
-              y,
-              owner
-            })
-          }
-        }))
+      const devServerUrl = process.env['ELECTRON_RENDERER_URL']
+      const menuUrl = devServerUrl
+        ? `${devServerUrl.replace(/\/$/, '')}/extensionMenu.html`
+        : 'voyager://extension-menu'
+      closePanelForOwner(owner)
+      owner.showExtensionPanel({
+        url: menuUrl,
+        x,
+        y,
+        width: 372,
+        height: 520,
+        menuPayload: { site: active?.url ?? null, profileId, origin: { x, y } }
+      })
+      openExtensionPanels.set(owner, { id: '', kind: 'menu' })
+      return true
+    }
+  )
+
+  ipcMain.handle(IpcChannels.ExtensionsClosePanel, (event) => {
+    const owner = windowForAnyWebContents(event.sender)
+    if (owner) closePanelForOwner(owner)
+  })
+
+  ipcMain.handle(
+    IpcChannels.ExtensionsSetPinned,
+    (event, payload: { id?: unknown; pinned?: unknown }) => {
+      if (typeof payload?.id !== 'string' || typeof payload.pinned !== 'boolean') {
+        throw new Error('The extension pin change is invalid.')
+      }
+      const profileId = profileFor(event as any)
+      setExtensionPinned(profileId, payload.id, payload.pinned)
+      return publishExtensions(
+        profileId,
+        currentExtensionsState(sessionForProfile(profileId), profileId)
       )
-      if (ownerWindow) menu.popup({ window: ownerWindow, x, y })
+    }
+  )
+
+  ipcMain.handle(
+    IpcChannels.ExtensionsSetSiteAccess,
+    (event, payload: { id?: unknown; access?: unknown }) => {
+      if (
+        typeof payload?.id !== 'string' ||
+        (payload.access !== 'click' && payload.access !== 'site' && payload.access !== 'all')
+      ) {
+        throw new Error('The site access choice is invalid.')
+      }
+      const profileId = profileFor(event as any)
+      setExtensionSiteAccess(profileId, payload.id, payload.access)
+      return publishExtensions(
+        profileId,
+        currentExtensionsState(sessionForProfile(profileId), profileId)
+      )
+    }
+  )
+
+  /** Three-dots menu for a single extension, using native menu items. */
+  ipcMain.handle(
+    IpcChannels.ExtensionsShowContextMenu,
+    (event, payload: { id?: unknown; x?: unknown; y?: unknown }) => {
+      if (typeof payload?.id !== 'string') throw new Error('The extension is invalid.')
+      const profileId = profileFor(event as any)
+      const ses = sessionForProfile(profileId)
+      const extension = ses.extensions
+        .getAllExtensions()
+        .find((candidate) => candidate.id === payload.id)
+      if (!extension) return false
+      const owner = windowForAnyWebContents(event.sender)
+      const manifest = (extension.manifest ?? {}) as Record<string, unknown>
+      const optionsUi = manifest.options_ui as Record<string, unknown> | undefined
+      const optionsPage =
+        (typeof optionsUi?.page === 'string' ? optionsUi.page : null) ??
+        (typeof manifest.options_page === 'string' ? manifest.options_page : null)
+      const current = currentExtensionsState(ses, profileId).find(
+        (item) => item.id === extension.id
+      )
+      const siteAccess = current?.siteAccess ?? 'click'
+      const hostAccess = hostAccessForManifest(manifest)
+      // The three-dots button lives in the panel view, so its coordinates are
+      // panel-relative; native menus need window-relative coordinates.
+      const panelOrigin = owner?.extensionPanelOrigin()
+      const x = Math.round((typeof payload.x === 'number' ? payload.x : 0) + (panelOrigin?.x ?? 0))
+      const y = Math.round((typeof payload.y === 'number' ? payload.y : 0) + (panelOrigin?.y ?? 0))
+      const closeAnd = (action: () => void): void => {
+        if (owner) closePanelForOwner(owner)
+        action()
+      }
+      const activeUrl = (() => {
+        if (!owner) return 'about:blank'
+        const snapshot = owner.tabs.snapshot()
+        const tab = snapshot.tabs.find((item) => item.id === snapshot.activeTabId)
+        return tab?.url ?? 'about:blank'
+      })()
+      const domain = (() => {
+        try {
+          return new URL(activeUrl).hostname || 'this site'
+        } catch {
+          return 'this site'
+        }
+      })()
+
+      const template: Electron.MenuItemConstructorOptions[] = [
+        { label: extension.name, enabled: false },
+        { type: 'separator' }
+      ]
+      if (optionsPage) {
+        template.push({
+          label: 'Options',
+          click: () =>
+            closeAnd(() => {
+              owner?.tabs.create({
+                url: extensionResourceUrl(extension, optionsPage),
+                active: true
+              })
+            })
+        })
+      }
+      if (hostAccess !== 'none') {
+        template.push({
+          label: 'This extension can read and change site data',
+          submenu: (
+            [
+              ['When you click the extension', 'click'],
+              [`On ${domain}`, 'site'],
+              ['On all sites', 'all']
+            ] as Array<[string, 'click' | 'site' | 'all']>
+          ).map(([label, value]) => ({
+            label,
+            type: 'radio' as const,
+            checked: siteAccess === value,
+            click: () => {
+              setExtensionSiteAccess(profileId, extension.id, value)
+              publishExtensions(profileId, currentExtensionsState(ses, profileId))
+            }
+          }))
+        })
+      }
+      template.push(
+        { type: 'separator' },
+        {
+          label: 'Remove from Voyager',
+          click: () => {
+            void dialog
+              .showMessageBox({
+                type: 'warning',
+                buttons: ['Cancel', 'Remove'],
+                defaultId: 0,
+                cancelId: 0,
+                message: `Remove ${extension.name} from Voyager?`,
+                detail: 'The extension will be uninstalled for this profile.'
+              })
+              .then(({ response }) => {
+                if (response !== 1) return
+                if (owner) closePanelForOwner(owner)
+                uninstallExtension(ses, profileId, extension.path)
+                publishExtensions(profileId, currentExtensionsState(ses, profileId))
+              })
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Manage Extension',
+          click: () => closeAnd(() => openSettingsWindow(undefined, profileId))
+        },
+        {
+          label: 'View Web Permissions',
+          click: () =>
+            closeAnd(() =>
+              openSettingsWindow({ page: 'site-permissions', origin: extension.url }, profileId)
+            )
+        }
+      )
+      const menu = Menu.buildFromTemplate(template)
+      if (owner && !owner.window.isDestroyed()) menu.popup({ window: owner.window, x, y })
       else menu.popup()
       return true
     }

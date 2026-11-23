@@ -293,6 +293,12 @@ export interface ContentBlockingStats {
   exceptions: string[]
 }
 
+/** How an extension can currently interact with the active site. */
+export type ExtensionHostAccess = 'full' | 'request' | 'none'
+
+/** User's per-extension site-access choice, mirroring Chrome's menu. */
+export type ExtensionSiteAccess = 'click' | 'site' | 'all'
+
 /** Toolbar action declared by an extension manifest. */
 export interface ExtensionActionInfo {
   /** Manifest-relative popup document, when the action has one. */
@@ -300,6 +306,8 @@ export interface ExtensionActionInfo {
   title: string
   /** Manifest-relative icon path, when one is declared. */
   icon: string | null
+  /** Absolute chrome-extension URL for the icon, ready for an <img>. */
+  iconUrl: string | null
 }
 
 /** An unpacked extension loaded for a profile. */
@@ -311,6 +319,12 @@ export interface ExtensionInfo {
   path: string
   loaded: boolean
   action: ExtensionActionInfo | null
+  /** Category used to group this extension in the action menu. */
+  hostAccess: ExtensionHostAccess
+  /** Whether the extension's action is pinned to the toolbar. */
+  pinned: boolean
+  /** Current site-access choice for this extension. */
+  siteAccess: ExtensionSiteAccess
 }
 
 export interface UserPreferences {
