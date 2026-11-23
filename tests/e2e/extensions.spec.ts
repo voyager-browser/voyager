@@ -139,6 +139,32 @@ test('opens an extension action popup inside the browser window', async ({ launc
   await expect(voyager.chrome.getByRole('button', { name: 'Extensions' })).toBeVisible()
 })
 
+test('opens a Voyager tab when an extension calls chrome.tabs.create', async ({
+  launchVoyager
+}) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+  await voyager.chrome.evaluate((extensionId) => {
+    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  }, id)
+
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+  await popup!.getByRole('button', { name: 'Open tab' }).click()
+  await expect(popup!.locator('#tabs-result')).toHaveText('tab opened')
+
+  await expect
+    .poll(async () =>
+      (await voyager.state()).tabs.some((tab) => tab.url.startsWith('https://example.test/'))
+    )
+    .toBe(true)
+})
+
 test('opens a Chrome-style HTML extension menu with grouped actions', async ({ launchVoyager }) => {
   const voyager = await launchVoyager({
     seed: { settings: { installedExtensions: [EXTENSION_PATH] } }

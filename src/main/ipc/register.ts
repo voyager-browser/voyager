@@ -594,6 +594,43 @@ export function registerIpcHandlers(context: IpcContext): void {
     context.getWindow(event as any)?.tabs.create(request)
   )
 
+  ipcMain.handle(
+    IpcChannels.ExtensionTabsCreate,
+    (
+      event,
+      details: { url?: unknown; active?: unknown; index?: unknown } | undefined
+    ): number | null => {
+      const rawUrl = typeof details?.url === 'string' ? details.url : ''
+      let url: string
+      try {
+        const resolved = new URL(rawUrl, event.sender.getURL())
+        if (
+          resolved.protocol !== 'http:' &&
+          resolved.protocol !== 'https:' &&
+          resolved.protocol !== 'chrome-extension:'
+        ) {
+          return null
+        }
+        url = resolved.toString()
+      } catch {
+        return null
+      }
+      // Extension service workers are not attached to a browser window, so use
+      // a window from the same profile when the sender cannot resolve one.
+      const owner =
+        windowForAnyWebContents(event.sender) ??
+        allWindows().find((window) => window.profile === profileForSender(event.sender)) ??
+        activeWindow()
+      if (!owner) return null
+      const tabId = owner.tabs.create({
+        url,
+        active: details?.active !== false,
+        index: typeof details?.index === 'number' ? details.index : undefined
+      })
+      return owner.tabs.webContentsIdForTab(tabId)
+    }
+  )
+
   ipcMain.handle(IpcChannels.TabsClose, (event, id: string) =>
     context.getWindow(event as any)?.tabs.close(id)
   )

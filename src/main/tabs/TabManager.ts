@@ -71,6 +71,11 @@ export class TabManager {
   }
 
   /** Numeric WebContents id for the active tab, when there is one. */
+  /** Numeric WebContents id used by Chrome's extension tab API. */
+  webContentsIdForTab(id: string): number | null {
+    return this.entries.get(id)?.view.webContents.id ?? null
+  }
+
   activeWebContentsId(): number | null {
     return this.activeWebContents()?.id ?? null
   }
