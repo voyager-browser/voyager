@@ -10,17 +10,15 @@ import { openSettingsWindow } from '../window/settingsWindow'
 import { createWindow, createIncognitoWindow } from '../window/createWindow'
 import { activeWindow } from '../window/windowRegistry'
 
-let menuController: (() => WindowController | null) | undefined
-
 export function refreshAppMenu(): void {
-  createAppMenu(menuController)
+  createAppMenu()
 }
 
-export function createAppMenu(getController?: () => WindowController | null): void {
-  menuController = getController
+export function createAppMenu(): void {
   const isMac = process.platform === 'darwin'
-  const controller = (): WindowController | null =>
-    (getController ? getController() : null) ?? activeWindow()
+  // Always resolve commands against the focused window: a single refresh must
+  // never pin the shared application menu to the window that triggered it.
+  const controller = (): WindowController | null => activeWindow()
 
   const recentClosed: MenuItemConstructorOptions[] =
     controller()
