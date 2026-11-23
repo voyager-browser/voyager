@@ -38,7 +38,10 @@ import type {
   PermissionRequestChoice,
   SettingsTarget,
   SitePermissionsState,
+  ThemeColorPatch,
+  ThemeFileInput,
   ThemeMode,
+  ThemeStartPageInput,
   ThemeState,
   UserPreferences,
   WindowState
@@ -110,7 +113,6 @@ import {
 } from '../profiles/profiles'
 import {
   broadcastProfiles,
-  broadcastToAll,
   broadcastToProfile,
   ensureProfileSession,
   sessionForProfile
@@ -186,6 +188,14 @@ import {
   resumeDownload
 } from '../downloads/downloads'
 import { requestPrompt, respondToPrompt } from '../prompt/prompt'
+import {
+  broadcastThemeState,
+  importChromeTheme,
+  resetTheme,
+  setChromeColors,
+  setStartPage,
+  themeStateFor
+} from '../theme/theme'
 
 type SenderEvent =
   { sender?: Electron.WebContents } | Electron.IpcMainInvokeEvent | Electron.IpcMainEvent
@@ -198,13 +208,16 @@ export interface IpcContext {
   openIncognitoWindow?(url?: string, profileId?: string): void
 }
 
-function currentThemeState(): ThemeState {
+function currentThemeState(profileId = DEFAULT_PROFILE_ID, incognito = false): ThemeState {
   const mode = getThemeMode()
   nativeTheme.themeSource = mode
-  return { mode, dark: nativeTheme.shouldUseDarkColors }
+  return themeStateFor(profileId, nativeTheme.shouldUseDarkColors, incognito)
 }
 
-function applyThemeMode(mode: ThemeMode): ThemeState {
+function applyThemeMode(mode: ThemeMode): void {
+  if (mode !== 'system' && mode !== 'light' && mode !== 'dark') {
+    throw new Error(`Unsupported theme mode: ${String(mode)}`)
+  }
   setThemeMode(mode)
   if (nativeTheme.themeSource !== mode) {
     nativeTheme.themeSource = mode
@@ -212,7 +225,6 @@ function applyThemeMode(mode: ThemeMode): ThemeState {
     // queries, so an explicit mode change refreshes every open page.
     for (const window of allWindows()) window.tabs.reloadAll()
   }
-  return { mode, dark: nativeTheme.shouldUseDarkColors }
 }
 
 function userPreferences(profileId: string): UserPreferences {
@@ -600,18 +612,43 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   /* ---- theme ----------------------------------------------------------- */
 
-  ipcMain.handle(IpcChannels.ThemeGet, (): ThemeState => currentThemeState())
+  ipcMain.handle(IpcChannels.ThemeGet, (event): ThemeState => {
+    const window = windowForAnyWebContents(event.sender)
+    return currentThemeState(
+      window?.profile ?? profileFor(event as any),
+      window?.isIncognito ?? false
+    )
+  })
 
   ipcMain.handle(IpcChannels.ThemeSet, (event, mode: ThemeMode): ThemeState => {
-    void event
-    const state = applyThemeMode(mode)
-    broadcastToAll(IpcChannels.ThemeChanged, state)
-    return state
+    applyThemeMode(mode)
+    broadcastThemeState()
+    const window = windowForAnyWebContents(event.sender)
+    return currentThemeState(
+      window?.profile ?? profileFor(event as any),
+      window?.isIncognito ?? false
+    )
   })
+
+  ipcMain.handle(IpcChannels.ThemeSetColors, (event, patch: ThemeColorPatch): ThemeState =>
+    setChromeColors(profileFor(event as any), patch, nativeTheme.shouldUseDarkColors)
+  )
+
+  ipcMain.handle(IpcChannels.ThemeSetStartPage, (event, input: ThemeStartPageInput): ThemeState =>
+    setStartPage(profileFor(event as any), input, nativeTheme.shouldUseDarkColors)
+  )
+
+  ipcMain.handle(IpcChannels.ThemeImport, (event, files: ThemeFileInput[]): ThemeState =>
+    importChromeTheme(profileFor(event as any), files, nativeTheme.shouldUseDarkColors)
+  )
+
+  ipcMain.handle(IpcChannels.ThemeReset, (event): ThemeState =>
+    resetTheme(profileFor(event as any), nativeTheme.shouldUseDarkColors)
+  )
 
   // Push live updates when 'system' changes as the OS theme flips.
   nativeTheme.on('updated', () => {
-    broadcastToAll(IpcChannels.ThemeChanged, currentThemeState())
+    broadcastThemeState()
   })
 
   /* ---- tabs ------------------------------------------------------------ */

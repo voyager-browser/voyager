@@ -32,7 +32,10 @@ import type {
   PromptRequest,
   SettingsTarget,
   SitePermissionsState,
+  ThemeColorPatch,
+  ThemeFileInput,
   ThemeMode,
+  ThemeStartPageInput,
   ThemeState,
   Unsubscribe,
   UserPreferences,
@@ -156,6 +159,13 @@ const api = {
   theme: {
     get: (): Promise<ThemeState> => ipcRenderer.invoke(IpcChannels.ThemeGet),
     set: (mode: ThemeMode): Promise<ThemeState> => ipcRenderer.invoke(IpcChannels.ThemeSet, mode),
+    setColors: (patch: ThemeColorPatch): Promise<ThemeState> =>
+      ipcRenderer.invoke(IpcChannels.ThemeSetColors, patch),
+    setStartPage: (input: ThemeStartPageInput): Promise<ThemeState> =>
+      ipcRenderer.invoke(IpcChannels.ThemeSetStartPage, input),
+    importFiles: (files: ThemeFileInput[]): Promise<ThemeState> =>
+      ipcRenderer.invoke(IpcChannels.ThemeImport, files),
+    reset: (): Promise<ThemeState> => ipcRenderer.invoke(IpcChannels.ThemeReset),
     onChanged: (listener: (state: ThemeState) => void): Unsubscribe =>
       subscribe<ThemeState>(IpcChannels.ThemeChanged, listener)
   },

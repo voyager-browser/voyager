@@ -48,6 +48,7 @@ import type {
 import { BUILTIN_BLOCKED_DOMAINS } from '../../../shared/content-blocking'
 import { DEFAULT_PROFILE_ID, type ProfileInfo, type ProfilesState } from '../../../shared/profiles'
 import { SitePermissionsSettings } from './SitePermissionsSettings'
+import { ThemeSettings } from './ThemeSettings'
 
 function sitePermissionsRoute(): { open: boolean; origin?: string } {
   const hash = window.location.hash.replace(/^#/, '')
@@ -909,6 +910,7 @@ export function SettingsPage(): React.JSX.Element {
                   </label>
                 ))}
               </div>
+              <ThemeSettings />
               <div className="mt-4 border-t border-border pt-4">
                 <label className="flex items-center gap-2 text-[13px] text-fg">
                   <input

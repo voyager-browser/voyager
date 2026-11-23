@@ -1,6 +1,10 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, type Protocol, type Session } from 'electron'
+import { profileDataDir } from '../store'
+
+const SAFE_PROFILE = /^[A-Za-z0-9_-]+$/
+const SAFE_ASSET = /^[A-Za-z0-9._-]+$/
 
 function resolveRendererPath(relativePath: string): string {
   const candidates = [
@@ -21,6 +25,32 @@ function handleVoyagerRequest(
   // Start/settings pages carry query strings or hashes that must not become
   // part of the file path.
   const url = request.url.replace('voyager://', '').split(/[?#]/, 1)[0]
+  if (url.startsWith('theme/')) {
+    const [rawProfile = '', rawFile = ''] = url.slice('theme/'.length).split('/')
+    let profile: string
+    let file: string
+    try {
+      profile = decodeURIComponent(rawProfile)
+      file = decodeURIComponent(rawFile)
+    } catch {
+      callback({ statusCode: 400 })
+      return
+    }
+    if (
+      !SAFE_PROFILE.test(profile) ||
+      !SAFE_ASSET.test(file) ||
+      file.includes('..') ||
+      !existsSync(join(profileDataDir(profile), 'theme', file))
+    ) {
+      callback({ statusCode: 404 })
+      return
+    }
+    callback({
+      path: join(profileDataDir(profile), 'theme', file),
+      headers: { 'Access-Control-Allow-Origin': '*' }
+    })
+    return
+  }
   if (url === 'start' || url === 'start/') {
     callback({ path: resolveRendererPath('start.html') })
     return

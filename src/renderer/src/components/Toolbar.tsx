@@ -144,6 +144,7 @@ export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element
 
   return (
     <div
+      data-chrome-surface
       className={cn(
         'relative flex h-[44px] shrink-0 items-center gap-1 border-b border-border bg-bg',
         dragHandle && 'drag'
