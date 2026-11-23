@@ -90,6 +90,9 @@ export function installChromeShortcuts(): () => void {
   const platform = window.voyager.platform
 
   const onKeyDown = (event: KeyboardEvent): void => {
+    // Chrome UI (permission prompts, find bar, menus) marks Escape as handled.
+    if (event.defaultPrevented) return
+
     const target = event.target as HTMLElement | null
     const editable =
       target !== null &&
