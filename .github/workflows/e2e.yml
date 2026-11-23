@@ -1,6 +1,7 @@
 name: E2E
 
 on:
+  merge_group:
   pull_request:
     branches: [master, main]
   push:
