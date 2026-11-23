@@ -4,6 +4,7 @@ import type { ProfilesState } from '../../shared/profiles'
 import type { DownloadsState } from '../../shared/types'
 import { attachContentBlocking, primeContentBlocking } from '../contentBlocking/contentBlocking'
 import { attachDownloadsTracking } from '../downloads/downloads'
+import { attachExtensionCompatibility } from '../extensions/compatibility'
 import { attachExtensions } from '../extensions/extensions'
 import {
   attachPermissionHandlers,
@@ -108,6 +109,7 @@ function attachSessionPolicies(
     { persist }
   )
   void runTopSitesPreload(ses, profileId)
+  attachExtensionCompatibility(ses, profileId)
   void attachExtensions(ses, profileId)
   return ses
 }

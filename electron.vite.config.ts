@@ -26,7 +26,8 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/preload/index.ts'),
-          tab: resolve(__dirname, 'src/preload/tab.ts')
+          tab: resolve(__dirname, 'src/preload/tab.ts'),
+          extensionCompat: resolve(__dirname, 'src/preload/extensionCompat.ts')
         }
       }
     }

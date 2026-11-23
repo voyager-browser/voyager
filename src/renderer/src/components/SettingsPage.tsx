@@ -2042,8 +2042,9 @@ export function SettingsPage(): React.JSX.Element {
                   Extensions run in this profile only and are loaded again on startup. CRX packages
                   are unpacked into Voyager's profile storage. Web Store downloads depend on Google
                   continuing to serve the extension package. Electron does not implement every
-                  Chrome extension API, so some extensions may log permission warnings or fail in
-                  background scripts that use unsupported APIs such as `webNavigation`.
+                  Chrome extension API. Voyager supplies `chrome.webNavigation`, but extensions may
+                  still log unknown-permission warnings or fail in background scripts that use other
+                  unsupported APIs.
                 </p>
               </section>
             )}
