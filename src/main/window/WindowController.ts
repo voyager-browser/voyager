@@ -12,7 +12,7 @@ import { applyUserAgentForProfile } from '../userAgent/userAgent'
 import { attachDownloadsTracking } from '../downloads/downloads'
 import { attachPermissionHandlers } from '../permissions/permissions'
 import { registerVoyagerProtocol } from '../protocol/voyagerProtocol'
-import { ensureProfileSession } from '../profiles/session'
+import { broadcastToProfile, ensureProfileSession } from '../profiles/session'
 import { profileById, profilePartition } from '../profiles/profiles'
 
 import {
@@ -21,7 +21,7 @@ import {
   removeBookmark,
   toggleBookmarksBar
 } from '../bookmarks/bookmarks'
-import { allWindows } from './windowRegistry'
+import { setBookmarksBarVisibleForProfile } from './windowRegistry'
 
 import { TabManager } from '../tabs/TabManager'
 import { refreshAppMenu } from '../menu/menu'
@@ -243,12 +243,12 @@ export class WindowController {
     this.chromeHeight = base + bookmarksBarExtent(this.bookmarksVisible)
   }
 
-  /** Flip the bookmarks bar and tell the chrome renderer about the new state. */
+  /** Flip the bookmarks bar and update every window on this profile. */
   toggleBookmarksBar(): void {
     toggleBookmarksBar(
       this.profileId,
-      (state) => this.sendToChrome(IpcChannels.BookmarksStateChanged, state),
-      (visible) => this.setBookmarksBarVisible(visible)
+      (state) => broadcastToProfile(this.profileId, IpcChannels.BookmarksStateChanged, state),
+      (visible) => setBookmarksBarVisibleForProfile(this.profileId, visible)
     )
   }
 
@@ -263,23 +263,19 @@ export class WindowController {
       (item) => item.url === tab.url
     )
     const publish = (next: ReturnType<typeof currentBookmarksState>): void => {
-      for (const window of allWindows()) {
-        if (window.profile === this.profileId) {
-          window.sendToChrome(IpcChannels.BookmarksStateChanged, next)
-        }
-      }
+      broadcastToProfile(this.profileId, IpcChannels.BookmarksStateChanged, next)
     }
+    const resize = (visible: boolean): void =>
+      setBookmarksBarVisibleForProfile(this.profileId, visible)
     if (existing) {
-      removeBookmark(this.profileId, existing.id, publish, (visible) =>
-        this.setBookmarksBarVisible(visible)
-      )
+      removeBookmark(this.profileId, existing.id, publish, resize)
       return
     }
     addBookmark(
       this.profileId,
       { title: tab.title || tab.url, url: tab.url, favicon: tab.favicon },
       publish,
-      (visible) => this.setBookmarksBarVisible(visible)
+      resize
     )
   }
 

@@ -66,6 +66,7 @@ import { openSettingsWindow, settingsProfileFor } from '../window/settingsWindow
 import {
   activeWindow,
   allWindows,
+  setBookmarksBarVisibleForProfile,
   windowForAnyWebContents,
   windowForWebContents
 } from '../window/windowRegistry'
@@ -676,14 +677,14 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IpcChannels.BookmarksAdd, (event, input: NewBookmarkInput) => {
     const profileId = profileFor(event as any)
     return addBookmark(profileId, input, broadcastBookmarks(profileId), (visible) =>
-      context.getWindow(event as any)?.setBookmarksBarVisible(visible)
+      setBookmarksBarVisibleForProfile(profileId, visible)
     )
   })
 
   ipcMain.handle(IpcChannels.BookmarksRemove, (event, id: string) => {
     const profileId = profileFor(event as any)
     return removeBookmark(profileId, id, broadcastBookmarks(profileId), (visible) =>
-      context.getWindow(event as any)?.setBookmarksBarVisible(visible)
+      setBookmarksBarVisibleForProfile(profileId, visible)
     )
   })
 
@@ -695,7 +696,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IpcChannels.BookmarksAddFolder, (event, input: NewBookmarkFolderInput) => {
     const profileId = profileFor(event as any)
     return addFolder(profileId, input, broadcastBookmarks(profileId), (visible) =>
-      context.getWindow(event as any)?.setBookmarksBarVisible(visible)
+      setBookmarksBarVisibleForProfile(profileId, visible)
     )
   })
 
@@ -802,7 +803,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IpcChannels.BookmarksRemoveFolder, (event, id: string) => {
     const profileId = profileFor(event as any)
     return removeFolder(profileId, id, broadcastBookmarks(profileId), (visible) =>
-      context.getWindow(event as any)?.setBookmarksBarVisible(visible)
+      setBookmarksBarVisibleForProfile(profileId, visible)
     )
   })
 
@@ -886,14 +887,14 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IpcChannels.BookmarksClear, (event) => {
     const profileId = profileFor(event as any)
     return clearBookmarks(profileId, broadcastBookmarks(profileId), (visible) =>
-      context.getWindow(event as any)?.setBookmarksBarVisible(visible)
+      setBookmarksBarVisibleForProfile(profileId, visible)
     )
   })
 
   ipcMain.handle(IpcChannels.BookmarksToggleBar, (event) => {
     const profileId = profileFor(event as any)
     return toggleBookmarksBar(profileId, broadcastBookmarks(profileId), (visible) =>
-      context.getWindow(event as any)?.setBookmarksBarVisible(visible)
+      setBookmarksBarVisibleForProfile(profileId, visible)
     )
   })
 
