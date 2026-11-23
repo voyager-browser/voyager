@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { app } from 'electron'
+import { app, session } from 'electron'
 import {
   DEFAULT_PROFILE_ID,
   type CreateProfileInput,
@@ -151,13 +151,25 @@ export function updateProfile(input: RenameProfileInput): ProfileInfo {
 }
 
 /**
- * Delete a profile and its data directory. The built-in profile is protected.
- * Callers are responsible for closing windows that use the profile first.
+ * Delete a profile, its Electron partition and its data directory. The built-in
+ * profile is protected. Callers are responsible for closing windows that use
+ * the profile before awaiting this function.
  */
-export function deleteProfile(id: string): void {
+export async function deleteProfile(id: string): Promise<void> {
   if (id === DEFAULT_PROFILE_ID) throw new Error('The default profile cannot be deleted')
   const index = registry().profiles.findIndex((profile) => profile.id === id)
   if (index === -1) throw new Error('Profile not found')
+
+  // Named profiles own a persistent partition. Clear its cookies, site data
+  // and HTTP cache before removing the on-disk stores. The default profile has
+  // no dedicated partition and must never be cleared here.
+  const partition = profilePartition(id)
+  if (partition) {
+    const profileSession = session.fromPartition(partition)
+    await profileSession.clearStorageData()
+    await profileSession.clearCache()
+  }
+
   registry().profiles.splice(index, 1)
   if (registry().lastProfileId === id) registry().lastProfileId = DEFAULT_PROFILE_ID
   persist()
