@@ -8,6 +8,7 @@ import { DEFAULT_NEW_TAB_URL, INCOGNITO_PARTITION_PREFIX } from '../../shared/co
 import { DEFAULT_SEARCH_ENGINE, isSearchEngineId, type SearchEngineId } from '../../shared/search'
 import { isNewTab } from '../../shared/url'
 import { getSettings, storesFor } from '../store'
+import { applyUserAgentForProfile } from '../userAgent/userAgent'
 import { attachDownloadsTracking } from '../downloads/downloads'
 import { attachPermissionHandlers } from '../permissions/permissions'
 import { registerVoyagerProtocol } from '../protocol/voyagerProtocol'
@@ -186,6 +187,9 @@ export class WindowController {
   private attachIncognitoSession(): void {
     if (!this.incognitoPartition) return
     const ses = session.fromPartition(this.incognitoPartition)
+    // Incognito uses a separate in-memory session, so it needs the owner's UA
+    // applied explicitly for network requests as well as the preload patch.
+    applyUserAgentForProfile(ses, this.profileId)
     // Internal pages (voyager://start, settings assets) must resolve in the
     // incognito session's partition as well as the default session.
     registerVoyagerProtocol(ses.protocol)
