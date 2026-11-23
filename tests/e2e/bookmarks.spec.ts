@@ -219,6 +219,45 @@ test('shows favicons for bookmarks inside a folder', async ({ voyager, server })
   await expect(item.locator('img')).toHaveAttribute('src', favicon)
 })
 
+test('modified click on a folder opens only the folder context menu', async ({
+  voyager,
+  server
+}) => {
+  await voyager.chrome.evaluate(async (url) => {
+    const state = await window.voyager.bookmarks.addFolder({ title: 'Research' })
+    const folder = state.folders.find((candidate) => candidate.title === 'Research')
+    if (!folder) throw new Error('Folder not created')
+    await window.voyager.bookmarks.add({
+      title: 'Research Site',
+      url,
+      folderId: folder.id
+    })
+  }, server.url('/home'))
+
+  const folderButton = voyager.chrome.getByRole('button', { name: 'Folder Research' })
+  await expect(folderButton).toBeVisible()
+
+  // A plain click still opens the folder's bookmark list.
+  await folderButton.click()
+  await expect(voyager.chrome.getByRole('menu')).toHaveCount(1)
+  await expect(
+    voyager.chrome.getByRole('menu').getByRole('menuitem', { name: 'Research Site' })
+  ).toBeVisible()
+  await expect(
+    voyager.chrome.getByRole('menu').getByRole('menuitem', { name: 'Edit…' })
+  ).toHaveCount(0)
+  await voyager.chrome.keyboard.press('Escape')
+  await expect(voyager.chrome.getByRole('menu')).toHaveCount(0)
+
+  // A modified click opens the context menu, not the bookmark list as well.
+  await folderButton.click({ modifiers: [primaryKey()] })
+  const menu = voyager.chrome.getByRole('menu')
+  await expect(menu).toHaveCount(1)
+  await expect(menu.getByRole('menuitem', { name: 'Open All in New Tabs' })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Edit…' })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Research Site' })).toHaveCount(0)
+})
+
 test.skip('bookmark context menu opens, edits, copies and deletes a bookmark (pending context-menu trigger fix)', async ({
   voyager,
   server
