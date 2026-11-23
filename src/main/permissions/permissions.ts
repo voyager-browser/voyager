@@ -62,6 +62,8 @@ interface PendingPermissionRequest {
   origin: string
   kind: PermissionKind
   profileId: string
+  /** When set, site-wide decisions live only for this session (incognito). */
+  ephemeralDecisions?: SitePermissionDecision[]
   onDestroyed?: () => void
 }
 
@@ -126,9 +128,10 @@ function originFromRequest(
 function decisionForOrigin(
   profileId: string,
   origin: string,
-  kind: PermissionKind
+  kind: PermissionKind,
+  ephemeralDecisions?: SitePermissionDecision[]
 ): PermissionDecision | undefined {
-  const decisions = storesFor(profileId).permissions.get('decisions')
+  const decisions = ephemeralDecisions ?? storesFor(profileId).permissions.get('decisions')
   const find = (candidate: PermissionKind): SitePermissionDecision | undefined =>
     decisions.find((decision) => decision.origin === origin && decision.kind === candidate)
 
@@ -185,16 +188,20 @@ function upsertDecision(
   profileId: string,
   origin: string,
   kind: PermissionKind,
-  decision: PermissionDecision
+  decision: PermissionDecision,
+  ephemeralDecisions?: SitePermissionDecision[]
 ): boolean {
-  const store = storesFor(profileId).permissions
-  const current = store.get('decisions')
+  const current = ephemeralDecisions ?? storesFor(profileId).permissions.get('decisions')
   const existing = current.find((item) => item.origin === origin && item.kind === kind)
   if (existing?.decision === decision) return false
 
   const next = current.filter((item) => !(item.origin === origin && item.kind === kind))
   next.push({ origin, kind, decision, updatedAt: Date.now() })
-  store.set('decisions', next)
+  if (ephemeralDecisions) {
+    ephemeralDecisions.splice(0, ephemeralDecisions.length, ...next)
+  } else {
+    storesFor(profileId).permissions.set('decisions', next)
+  }
   return true
 }
 
@@ -314,7 +321,13 @@ export function respondToPermissionRequest(
 
   switch (choice) {
     case 'allow-site':
-      changed = upsertDecision(entry.profileId, entry.origin, entry.kind, 'allow')
+      changed = upsertDecision(
+        entry.profileId,
+        entry.origin,
+        entry.kind,
+        'allow',
+        entry.ephemeralDecisions
+      )
       granted = true
       break
     case 'allow-once':
@@ -324,7 +337,13 @@ export function respondToPermissionRequest(
       granted = true
       break
     case 'block':
-      changed = upsertDecision(entry.profileId, entry.origin, entry.kind, 'block')
+      changed = upsertDecision(
+        entry.profileId,
+        entry.origin,
+        entry.kind,
+        'block',
+        entry.ephemeralDecisions
+      )
       granted = false
       break
     case 'dismiss':
@@ -333,16 +352,28 @@ export function respondToPermissionRequest(
   }
 
   entry.callback(granted)
-  return { handled: true, changed, profileId: entry.profileId }
+  return {
+    handled: true,
+    changed,
+    // Ephemeral decisions never alter the profile store, so nothing to publish.
+    profileId: entry.ephemeralDecisions ? undefined : entry.profileId
+  }
 }
 
 /**
  * Attach browser-level permission handling to a session. Persistent decisions
  * are stored by origin + category; "allow once" grants are scoped to one tab.
+ * Pass `{ persist: false }` for incognito sessions so site-wide choices live
+ * only in memory and disappear with the session.
  */
-export function attachPermissionHandlers(ses: Session, profileId: string): void {
+export function attachPermissionHandlers(
+  ses: Session,
+  profileId: string,
+  options: { persist?: boolean } = {}
+): void {
   if (attachedSessions.has(ses)) return
   attachedSessions.add(ses)
+  const ephemeralDecisions = options.persist === false ? [] : undefined
 
   ses.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
     if (AUTO_ALLOWED_PERMISSIONS.has(permission)) return true
@@ -353,7 +384,7 @@ export function attachPermissionHandlers(ses: Session, profileId: string): void 
     const origin = originFromRequest(details, webContents, requestingOrigin)
     if (!origin) return false
 
-    const decision = decisionForOrigin(profileId, origin, kind)
+    const decision = decisionForOrigin(profileId, origin, kind, ephemeralDecisions)
     if (decision) return decision === 'allow'
     return hasTabGrant(webContents, origin, kind)
   })
@@ -371,7 +402,7 @@ export function attachPermissionHandlers(ses: Session, profileId: string): void 
       return
     }
 
-    const decision = decisionForOrigin(profileId, origin, kind)
+    const decision = decisionForOrigin(profileId, origin, kind, ephemeralDecisions)
     if (decision) {
       callback(decision === 'allow')
       return
@@ -409,6 +440,7 @@ export function attachPermissionHandlers(ses: Session, profileId: string): void 
       origin,
       kind,
       profileId,
+      ephemeralDecisions,
       onDestroyed
     }
     pendingRequests.set(id, entry)

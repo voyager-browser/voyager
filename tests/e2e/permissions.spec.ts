@@ -1,5 +1,12 @@
+import type { ElectronApplication, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
 import { openSettings } from './helpers/voyager'
+
+async function chromePages(app: ElectronApplication): Promise<Page[]> {
+  return app
+    .windows()
+    .filter((page) => !page.isClosed() && /\/renderer\/index\.html(?:[?#]|$)/.test(page.url()))
+}
 
 test('shows a location prompt with the site, action and all three choices', async ({
   voyager,
@@ -95,4 +102,38 @@ test('allows a request for this tab without persisting it', async ({ voyager, se
 
   const state = await voyager.chrome.evaluate(() => window.voyager.permissions.getState())
   expect(state.decisions).toEqual([])
+})
+
+test('incognito site-wide permission choices do not leak into the normal profile', async ({
+  voyager,
+  server
+}) => {
+  await voyager.chrome.evaluate(() => window.voyager.windows.openIncognito())
+  await expect
+    .poll(async () => (await chromePages(voyager.app)).length)
+    .toBeGreaterThanOrEqual(2)
+  const incognitoChrome = (await chromePages(voyager.app)).find((page) => page !== voyager.chrome)
+  if (!incognitoChrome) throw new Error('Incognito window not found')
+
+  await incognitoChrome.evaluate(
+    (url) => window.voyager.navigation.go(url),
+    server.url('/permissions')
+  )
+  const incognitoTab = await voyager.tabPage('/permissions')
+  await incognitoTab.getByRole('button', { name: 'Ask for notifications' }).click()
+
+  const prompt = incognitoChrome.getByRole('dialog')
+  await expect(prompt).toBeVisible()
+  await prompt.getByRole('button', { name: 'Allow while visiting the site' }).click()
+  await expect(prompt).not.toBeVisible()
+
+  // The normal profile must not gain the incognito decision.
+  const normalState = await voyager.chrome.evaluate(() => window.voyager.permissions.getState())
+  expect(normalState.decisions).toEqual([])
+
+  // The choice still applies inside the incognito session without a new prompt.
+  await incognitoTab.reload()
+  await incognitoTab.getByRole('button', { name: 'Ask for notifications' }).click()
+  await expect(incognitoTab.locator('#permission-result')).toHaveText('Notifications:granted')
+  await expect(incognitoChrome.getByRole('dialog')).toHaveCount(0)
 })
