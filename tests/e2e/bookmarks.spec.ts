@@ -504,3 +504,44 @@ test('copying a folder into itself or its descendants cannot recurse', async ({
   expect(children.filter((candidate) => candidate.parentId === parents[1]?.id)).toHaveLength(1)
   expect(copied.items).toHaveLength(4)
 })
+
+test('dropping a bookmark or folder onto itself leaves its position unchanged', async ({
+  voyager,
+  server
+}) => {
+  await voyager.chrome.evaluate(
+    async (urls: string[]) => {
+      for (const url of urls) await window.voyager.bookmarks.add({ title: url, url })
+      await window.voyager.bookmarks.addFolder({ title: 'Research' })
+      await window.voyager.bookmarks.addFolder({ title: 'News' })
+    },
+    [server.url('/home'), server.url('/second'), server.url('/third')]
+  )
+  await expect.poll(async () => (await bookmarkItems(voyager)).items.length).toBe(3)
+  await expect.poll(async () => (await bookmarkItems(voyager)).folders.length).toBe(2)
+
+  const before = await bookmarkItems(voyager)
+  const moves: BookmarkMoveInput[] = [
+    {
+      kind: 'bookmark',
+      id: before.items[1].id,
+      parentId: before.items[1].folderId,
+      beforeId: before.items[1].id
+    },
+    {
+      kind: 'folder',
+      id: before.folders[0].id,
+      parentId: before.folders[0].parentId,
+      beforeId: before.folders[0].id
+    }
+  ]
+  await voyager.chrome.evaluate(async (inputs: BookmarkMoveInput[]) => {
+    for (const input of inputs) await window.voyager.bookmarks.move(input)
+  }, moves)
+
+  const after = await bookmarkItems(voyager)
+  expect(after.items.map((item) => item.id)).toEqual(before.items.map((item) => item.id))
+  expect(after.folders.map((folder) => folder.id)).toEqual(
+    before.folders.map((folder) => folder.id)
+  )
+})
