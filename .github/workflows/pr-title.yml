@@ -36,5 +36,4 @@ jobs:
             revert
             style
             test
-            ops
           requireScope: false
