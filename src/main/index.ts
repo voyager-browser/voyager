@@ -12,6 +12,7 @@ import {
 } from './window/windowRegistry'
 import { createWindow, createIncognitoWindow } from './window/createWindow'
 import { findLaunchUrl } from './launch/urlArgument'
+import { queuePendingUrls, takePendingUrls } from './launch/pendingUrls'
 import { DEFAULT_PROFILE_ID } from '../shared/profiles'
 import { lastProfileId } from './profiles/profiles'
 import { ensureProfileSession } from './profiles/session'
@@ -35,32 +36,47 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 let controller: WindowController | null = null
-let pendingUrl: string | null = findLaunchUrl(process.argv)
+// No window exists yet at launch, so its URL joins any links delivered before
+// the app is ready. Set until show() finishes so early events are also queued.
+let starting = true
+queuePendingUrls(webLinks(process.argv))
+
+/** Keep only the web URLs a browser window knows how to open. */
+function webLinks(values: readonly string[]): string[] {
+  return values
+    .map((value) => findLaunchUrl([value]))
+    .filter((url): url is string => url !== null)
+}
+
+/** Open links in the current window, or hold them until a window appears. */
+function handleExternalUrls(urls: readonly string[]): void {
+  const window = starting ? null : activeWindow()
+  if (urls.length === 0) {
+    window?.window.focus()
+    return
+  }
+  if (window) {
+    for (const url of urls) window.openUrl(url)
+  } else {
+    queuePendingUrls(urls)
+  }
+}
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
 if (!hasSingleInstanceLock) {
   app.quit()
 } else {
-  // Windows and Linux hand links to the already running process as a new
-  // command-line argument; focus the window and open the link as a new tab.
+  // Windows and Linux hand links to the already running process as new
+  // command-line arguments; focus the window and open the links as new tabs.
   app.on('second-instance', (_event, argv) => {
-    const url = findLaunchUrl(argv)
-    const window = activeWindow()
-    if (url) {
-      if (window) window.openUrl(url)
-      else pendingUrl = url
-    } else {
-      window?.window.focus()
-    }
+    handleExternalUrls(webLinks(argv))
   })
 }
 
 // macOS delivers links (including default-browser clicks) through open-url.
 app.on('open-url', (event, url) => {
   event.preventDefault()
-  const window = activeWindow()
-  if (window) window.openUrl(url)
-  else pendingUrl = url
+  handleExternalUrls(webLinks([url]))
 })
 
 registerIpcHandlers({
@@ -102,17 +118,18 @@ app.whenReady().then(async (): Promise<void> => {
   controller.onDestroyed(() => {
     if (controller?.window.isDestroyed()) controller = null
   })
-  const initialUrl = pendingUrl
-  pendingUrl = null
-  await controller.show(initialUrl ?? undefined)
-  if (pendingUrl) {
-    activeWindow()?.openUrl(pendingUrl)
-    pendingUrl = null
-  }
+  const startupUrls = takePendingUrls()
+  await controller.show(startupUrls[0])
+  for (const url of startupUrls.slice(1)) controller.openUrl(url)
+  starting = false
+  // Links delivered during startup were queued rather than opened against a
+  // half-initialized window; open them now, in arrival order.
+  for (const url of takePendingUrls()) controller.openUrl(url)
 })
 
 app.on('activate', () => {
   if (allWindows().length === 0) {
+    // createWindow drains any links queued while no window was open.
     createWindow()
   }
 })
