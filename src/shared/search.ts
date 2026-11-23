@@ -41,7 +41,7 @@ export const DEFAULT_SEARCH_ENGINE: SearchEngineId = 'duckduckgo'
 
 /** Type guard for values arriving over IPC. */
 export function isSearchEngineId(value: unknown): value is SearchEngineId {
-  return typeof value === 'string' && value in SEARCH_ENGINES
+  return typeof value === 'string' && Object.hasOwn(SEARCH_ENGINES, value)
 }
 
 export function buildSearchUrl(engine: SearchEngineId, query: string): string {

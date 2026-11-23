@@ -81,6 +81,17 @@ test('default browser status requires both http and https', async ({ voyager }) 
   expect(await isDefault(false, false)).toBe(false)
 })
 
+test('settings rejects Object.prototype keys as search engine ids', async ({ voyager }) => {
+  for (const engine of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+    await expect(
+      voyager.chrome.evaluate((value) => window.voyager.settings.set('searchEngine', value), engine)
+    ).rejects.toThrow(`Unknown search engine: ${engine}`)
+  }
+
+  const prefs = await voyager.chrome.evaluate(() => window.voyager.settings.get())
+  expect(prefs.searchEngine).toBe('duckduckgo')
+})
+
 test('settings page shows stats and lets theme change apply to itself', async ({
   voyager,
   server
