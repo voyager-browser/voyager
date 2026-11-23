@@ -39,7 +39,7 @@ You should pick which part of Voyager you want to contribute to.
 In our GitHub Actions CI tests, your commit must:
 
 - Not have a vulnerable package. _(This is provided by Socket Security, and is not open-source.)_
-- Pass the E2E Playwright tests that you have added to your code, and past tests. _(which is required)_
+- Pass the E2E Playwright tests that you have added to your code, and pass all tests. _(which is required)_
 - The PR title and all commits in that PR must follow [Conventional Commits](https://conventionalcommits.org) format.
 - Your TypeScript code must compile correctly using the `tsc` command.
 - Your code, as a whole, must pass `eslint`'s standards. If you have an error here, don't worry! Check the [fixing errors section](#fixing-errors).
