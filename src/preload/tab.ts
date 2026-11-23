@@ -131,13 +131,40 @@ function shouldSaveHistory(el: TextControl): boolean {
   return true
 }
 
-const ADDRESS_TOKENS = new Set(['name','given-name','family-name','honorific-prefix','email','tel','organization','street-address','address-line1','address-line2','address-level2','address-level1','postal-code','country','country-name'])
-const PAYMENT_TOKENS = new Set(['cc-name','cc-number','cc-exp','cc-exp-month','cc-exp-year','cc-type'])
+const ADDRESS_TOKENS = new Set([
+  'name',
+  'given-name',
+  'family-name',
+  'honorific-prefix',
+  'email',
+  'tel',
+  'organization',
+  'street-address',
+  'address-line1',
+  'address-line2',
+  'address-level2',
+  'address-level1',
+  'postal-code',
+  'country',
+  'country-name'
+])
+const PAYMENT_TOKENS = new Set([
+  'cc-name',
+  'cc-number',
+  'cc-exp',
+  'cc-exp-month',
+  'cc-exp-year',
+  'cc-type'
+])
 
 function fillKind(el: TextControl): 'address' | 'contact' | 'payment' | null {
   const t = acToken(el)
   if (PAYMENT_TOKENS.has(t)) return 'payment'
-  if (ADDRESS_TOKENS.has(t)) return (t === 'email' || t === 'tel' || t === 'organization') && !/(address|postal|country|street|level)/.test(t) ? 'contact' : 'address'
+  if (ADDRESS_TOKENS.has(t))
+    return (t === 'email' || t === 'tel' || t === 'organization') &&
+      !/(address|postal|country|street|level)/.test(t)
+      ? 'contact'
+      : 'address'
   const key = fieldKey(el).toLowerCase()
   if (/card.?number|cc.?num/.test(key)) return 'payment'
   if (/expir|cc.?exp/.test(key)) return 'payment'
@@ -196,17 +223,29 @@ function setValue(control: TextControl, value: string): void {
 
 function controlsInScope(control: TextControl): TextControl[] {
   const root = control.form ?? document
-  return Array.from(root.querySelectorAll('input,textarea')).filter((el): el is TextControl => isTextControl(el))
+  return Array.from(root.querySelectorAll('input,textarea')).filter((el): el is TextControl =>
+    isTextControl(el)
+  )
 }
 
 function fillAddressForm(control: TextControl, a: Record<string, any>): void {
   for (const el of controlsInScope(control)) {
     const t = acToken(el)
     const map: Record<string, string> = {
-      name: a.name, 'given-name': (a.name || '').split(/\s+/)[0] || '', 'family-name': (a.name || '').split(/\s+/).slice(1).join(' ') || '',
-      email: a.email, tel: a.phone, organization: a.organization,
-      'street-address': [a.streetAddress, a.streetAddress2].filter(Boolean).join(', '), 'address-line1': a.streetAddress, 'address-line2': a.streetAddress2,
-      'address-level2': a.city, 'address-level1': a.region, 'postal-code': a.postalCode, country: a.country, 'country-name': a.country
+      name: a.name,
+      'given-name': (a.name || '').split(/\s+/)[0] || '',
+      'family-name': (a.name || '').split(/\s+/).slice(1).join(' ') || '',
+      email: a.email,
+      tel: a.phone,
+      organization: a.organization,
+      'street-address': [a.streetAddress, a.streetAddress2].filter(Boolean).join(', '),
+      'address-line1': a.streetAddress,
+      'address-line2': a.streetAddress2,
+      'address-level2': a.city,
+      'address-level1': a.region,
+      'postal-code': a.postalCode,
+      country: a.country,
+      'country-name': a.country
     }
     if (t && map[t] !== undefined && map[t] !== '') setValue(el, String(map[t]))
   }
@@ -215,7 +254,12 @@ function fillAddressForm(control: TextControl, a: Record<string, any>): void {
 function fillContactForm(control: TextControl, c: Record<string, any>): void {
   for (const el of controlsInScope(control)) {
     const t = acToken(el)
-    const map: Record<string, string> = { name: c.name, email: c.email, tel: c.phone, organization: c.organization }
+    const map: Record<string, string> = {
+      name: c.name,
+      email: c.email,
+      tel: c.phone,
+      organization: c.organization
+    }
     if (t && map[t] !== undefined && map[t] !== '') setValue(el, String(map[t]))
   }
 }
@@ -224,10 +268,14 @@ function fillPaymentForm(control: TextControl, p: Record<string, any>): void {
   for (const el of controlsInScope(control)) {
     const t = acToken(el)
     const key = fieldKey(el).toLowerCase()
-    if (t === 'cc-name' || /card.?name|name.?card/.test(key)) setValue(el, String(p.nameOnCard || ''))
-    else if (t === 'cc-number' || /card.?number|cc.?num/.test(key)) setValue(el, String(p.cardNumber || ''))
-    else if (t === 'cc-exp-month' || /exp.*month|month.*exp/.test(key)) setValue(el, String(p.expiryMonth || ''))
-    else if (t === 'cc-exp-year' || /exp.*year|year.*exp/.test(key)) setValue(el, String(p.expiryYear || ''))
+    if (t === 'cc-name' || /card.?name|name.?card/.test(key))
+      setValue(el, String(p.nameOnCard || ''))
+    else if (t === 'cc-number' || /card.?number|cc.?num/.test(key))
+      setValue(el, String(p.cardNumber || ''))
+    else if (t === 'cc-exp-month' || /exp.*month|month.*exp/.test(key))
+      setValue(el, String(p.expiryMonth || ''))
+    else if (t === 'cc-exp-year' || /exp.*year|year.*exp/.test(key))
+      setValue(el, String(p.expiryYear || ''))
     else if (t === 'cc-exp' || /^exp/.test(key)) {
       const mm = String(p.expiryMonth || '').padStart(2, '0')
       const yy = String(p.expiryYear || '').slice(-2)
@@ -247,12 +295,19 @@ function addItem(list: HTMLDivElement, label: string, onPick: () => void): void 
   const item = document.createElement('div')
   item.className = 'item'
   item.textContent = label
-  item.addEventListener('mousedown', (e) => { e.preventDefault(); onPick(); hideSuggestions() })
+  item.addEventListener('mousedown', (e) => {
+    e.preventDefault()
+    onPick()
+    hideSuggestions()
+  })
   list.appendChild(item)
 }
 
 async function refreshSuggestions(control: TextControl): Promise<void> {
-  if (!isTextControl(control)) { hideSuggestions(); return }
+  if (!isTextControl(control)) {
+    hideSuggestions()
+    return
+  }
   const { list } = ensureHost()
   activeControl = control
   list.replaceChildren()
@@ -260,15 +315,27 @@ async function refreshSuggestions(control: TextControl): Promise<void> {
   try {
     const kind = fillKind(control)
     if (kind) {
-      const profiles = (await ipcRenderer.invoke(IpcChannels.AutofillGetFillData, { kind })) as Array<Record<string, any>>
-      if (Array.isArray(profiles) && profiles.length > 0 && (activeControl === control || document.activeElement === control)) {
-        addHeader(list, kind === 'payment' ? 'Payment methods' : kind === 'contact' ? 'Contacts' : 'Addresses')
+      const profiles = (await ipcRenderer.invoke(IpcChannels.AutofillGetFillData, {
+        kind
+      })) as Array<Record<string, any>>
+      if (
+        Array.isArray(profiles) &&
+        profiles.length > 0 &&
+        (activeControl === control || document.activeElement === control)
+      ) {
+        addHeader(
+          list,
+          kind === 'payment' ? 'Payment methods' : kind === 'contact' ? 'Contacts' : 'Addresses'
+        )
         for (const p of profiles.slice(0, 6)) {
-          const label = kind === 'payment'
-            ? `${p.nameOnCard || 'Card'} •••• ${String(p.cardNumber || '').replace(/\s+/g, '').slice(-4)}`
-            : kind === 'contact'
-              ? `${p.name || 'Contact'}${p.email ? ` — ${p.email}` : ''}`
-              : `${p.name || 'Address'} — ${[p.streetAddress, p.city].filter(Boolean).join(', ')}`
+          const label =
+            kind === 'payment'
+              ? `${p.nameOnCard || 'Card'} •••• ${String(p.cardNumber || '')
+                  .replace(/\s+/g, '')
+                  .slice(-4)}`
+              : kind === 'contact'
+                ? `${p.name || 'Contact'}${p.email ? ` — ${p.email}` : ''}`
+                : `${p.name || 'Address'} — ${[p.streetAddress, p.city].filter(Boolean).join(', ')}`
           addItem(list, label, () => {
             if (kind === 'payment') fillPaymentForm(control, p)
             else if (kind === 'contact') fillContactForm(control, p)
@@ -278,9 +345,13 @@ async function refreshSuggestions(control: TextControl): Promise<void> {
         has = true
       }
     }
-    if (shouldSaveHistory(control) && (activeControl === control || document.activeElement === control)) {
+    if (
+      shouldSaveHistory(control) &&
+      (activeControl === control || document.activeElement === control)
+    ) {
       const values = (await ipcRenderer.invoke(IpcChannels.AutofillGetFormSuggestions, {
-        field: fieldKey(control), prefix: control.value ?? ''
+        field: fieldKey(control),
+        prefix: control.value ?? ''
       })) as string[]
       if (Array.isArray(values) && values.length > 0) {
         if (has) addHeader(list, 'Form history')
@@ -288,8 +359,13 @@ async function refreshSuggestions(control: TextControl): Promise<void> {
         has = true
       }
     }
-  } catch { /* ignore */ }
-  if (!has || (activeControl !== control && document.activeElement !== control)) { hideSuggestions(); return }
+  } catch {
+    /* ignore */
+  }
+  if (!has || (activeControl !== control && document.activeElement !== control)) {
+    hideSuggestions()
+    return
+  }
   placeBox(control)
   list.style.display = 'block'
 }
@@ -306,20 +382,50 @@ function recordControl(control: TextControl): void {
   void ipcRenderer.invoke(IpcChannels.AutofillRecordFormField, { field: fieldKey(control), value })
 }
 
-document.addEventListener('focusin', (e) => { const t = e.target; if (t instanceof Element && isTextControl(t)) scheduleSuggestions(t) }, true)
-document.addEventListener('input', (e) => { const t = e.target; if (t instanceof Element && isTextControl(t)) scheduleSuggestions(t) }, true)
-document.addEventListener('focusout', (e) => {
-  const t = e.target
-  if (t instanceof Element && isTextControl(t)) {
-    recordControl(t)
-    window.setTimeout(() => { if (activeControl === t) hideSuggestions() }, 150)
-  }
-}, true)
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideSuggestions() }, true)
-document.addEventListener('submit', (e) => {
-  const form = e.target
-  if (!(form instanceof HTMLFormElement)) return
-  for (const el of Array.from(form.elements)) {
-    if (el instanceof Element && isTextControl(el)) recordControl(el)
-  }
-}, true)
+document.addEventListener(
+  'focusin',
+  (e) => {
+    const t = e.target
+    if (t instanceof Element && isTextControl(t)) scheduleSuggestions(t)
+  },
+  true
+)
+document.addEventListener(
+  'input',
+  (e) => {
+    const t = e.target
+    if (t instanceof Element && isTextControl(t)) scheduleSuggestions(t)
+  },
+  true
+)
+document.addEventListener(
+  'focusout',
+  (e) => {
+    const t = e.target
+    if (t instanceof Element && isTextControl(t)) {
+      recordControl(t)
+      window.setTimeout(() => {
+        if (activeControl === t) hideSuggestions()
+      }, 150)
+    }
+  },
+  true
+)
+document.addEventListener(
+  'keydown',
+  (e) => {
+    if (e.key === 'Escape') hideSuggestions()
+  },
+  true
+)
+document.addEventListener(
+  'submit',
+  (e) => {
+    const form = e.target
+    if (!(form instanceof HTMLFormElement)) return
+    for (const el of Array.from(form.elements)) {
+      if (el instanceof Element && isTextControl(el)) recordControl(el)
+    }
+  },
+  true
+)

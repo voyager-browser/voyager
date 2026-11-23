@@ -16,7 +16,10 @@ export function currentAutofillState(profileId: string): AutofillState {
   return toAutofillState(storesFor(profileId).autofill.snapshot)
 }
 
-export function saveAddress(profileId: string, input: Omit<AutofillAddress, 'id' | 'updatedAt'> & { id?: string }): AutofillState {
+export function saveAddress(
+  profileId: string,
+  input: Omit<AutofillAddress, 'id' | 'updatedAt'> & { id?: string }
+): AutofillState {
   const store = storesFor(profileId).autofill
   const items = [...(store.get('addresses') ?? [])]
   const now = Date.now()
@@ -31,11 +34,17 @@ export function saveAddress(profileId: string, input: Omit<AutofillAddress, 'id'
 
 export function deleteAddress(profileId: string, id: string): AutofillState {
   const store = storesFor(profileId).autofill
-  store.set('addresses', (store.get('addresses') ?? []).filter((a) => a.id !== id))
+  store.set(
+    'addresses',
+    (store.get('addresses') ?? []).filter((a) => a.id !== id)
+  )
   return currentAutofillState(profileId)
 }
 
-export function saveContact(profileId: string, input: Omit<AutofillContact, 'id' | 'updatedAt'> & { id?: string }): AutofillState {
+export function saveContact(
+  profileId: string,
+  input: Omit<AutofillContact, 'id' | 'updatedAt'> & { id?: string }
+): AutofillState {
   const store = storesFor(profileId).autofill
   const items = [...(store.get('contacts') ?? [])]
   const now = Date.now()
@@ -50,7 +59,10 @@ export function saveContact(profileId: string, input: Omit<AutofillContact, 'id'
 
 export function deleteContact(profileId: string, id: string): AutofillState {
   const store = storesFor(profileId).autofill
-  store.set('contacts', (store.get('contacts') ?? []).filter((a) => a.id !== id))
+  store.set(
+    'contacts',
+    (store.get('contacts') ?? []).filter((a) => a.id !== id)
+  )
   return currentAutofillState(profileId)
 }
 
@@ -72,12 +84,20 @@ export function savePaymentMethod(
 
 export function deletePaymentMethod(profileId: string, id: string): AutofillState {
   const store = storesFor(profileId).autofill
-  store.set('paymentMethods', (store.get('paymentMethods') ?? []).filter((a) => a.id !== id))
+  store.set(
+    'paymentMethods',
+    (store.get('paymentMethods') ?? []).filter((a) => a.id !== id)
+  )
   return currentAutofillState(profileId)
 }
 
 function normField(field: string): string {
-  return field.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80)
+  return field
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 80)
 }
 
 export function recordFormHistory(profileId: string, field: string, value: string): void {
@@ -104,11 +124,18 @@ export function recordFormHistory(profileId: string, field: string, value: strin
       byField.set(e.field, list)
     }
   }
-  const bounded = [...byField.values()].flat().sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_FORM_HISTORY)
+  const bounded = [...byField.values()]
+    .flat()
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, MAX_FORM_HISTORY)
   store.set('formHistory', bounded)
 }
 
-export function getFormHistorySuggestions(profileId: string, field: string, prefix: string): string[] {
+export function getFormHistorySuggestions(
+  profileId: string,
+  field: string,
+  prefix: string
+): string[] {
   if (getSettings(profileId, 'saveFormHistory', true) === false) return []
   const f = normField(field)
   if (!f) return []
@@ -128,7 +155,10 @@ export function clearFormHistory(profileId: string): AutofillState {
 
 export function removeFormHistoryEntry(profileId: string, id: string): AutofillState {
   const store = storesFor(profileId).autofill
-  store.set('formHistory', (store.get('formHistory') ?? []).filter((e) => e.id !== id))
+  store.set(
+    'formHistory',
+    (store.get('formHistory') ?? []).filter((e) => e.id !== id)
+  )
   return currentAutofillState(profileId)
 }
 

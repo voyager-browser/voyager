@@ -43,11 +43,7 @@ import type {
   UserPreferences
 } from '../../../shared/types'
 import { BUILTIN_BLOCKED_DOMAINS } from '../../../shared/content-blocking'
-import {
-  DEFAULT_PROFILE_ID,
-  type ProfileInfo,
-  type ProfilesState
-} from '../../../shared/profiles'
+import { DEFAULT_PROFILE_ID, type ProfileInfo, type ProfilesState } from '../../../shared/profiles'
 import { SitePermissionsSettings } from './SitePermissionsSettings'
 
 function sitePermissionsRoute(): { open: boolean; origin?: string } {
@@ -297,7 +293,14 @@ export function SettingsPage(): React.JSX.Element {
   }
 
   const saveNewAddress = async (): Promise<void> => {
-    if (!addressDraft.name || !addressDraft.streetAddress || !addressDraft.city || !addressDraft.postalCode || !addressDraft.country) return
+    if (
+      !addressDraft.name ||
+      !addressDraft.streetAddress ||
+      !addressDraft.city ||
+      !addressDraft.postalCode ||
+      !addressDraft.country
+    )
+      return
     setAutofill(
       await window.voyager.autofill.saveAddress({
         label: addressDraft.label || '',
@@ -332,7 +335,13 @@ export function SettingsPage(): React.JSX.Element {
   }
 
   const saveNewPayment = async (): Promise<void> => {
-    if (!paymentDraft.nameOnCard || !paymentDraft.cardNumber || !paymentDraft.expiryMonth || !paymentDraft.expiryYear) return
+    if (
+      !paymentDraft.nameOnCard ||
+      !paymentDraft.cardNumber ||
+      !paymentDraft.expiryMonth ||
+      !paymentDraft.expiryYear
+    )
+      return
     setAutofill(
       await window.voyager.autofill.savePayment({
         nameOnCard: paymentDraft.nameOnCard,
@@ -1130,9 +1139,7 @@ export function SettingsPage(): React.JSX.Element {
               <div className="rounded-md border border-border bg-bg p-4">
                 <div className="mt-2 flex items-end justify-between gap-4">
                   <div>
-                    <p className="text-[13px] font-medium text-fg">
-                      Requests blocked this session
-                    </p>
+                    <p className="text-[13px] font-medium text-fg">Requests blocked this session</p>
                     <p className="mt-0.5 text-[11.5px] text-muted">
                       Voyager blocks ads and trackers for you to protect your privacy.
                     </p>
@@ -1231,7 +1238,8 @@ export function SettingsPage(): React.JSX.Element {
                 <span>
                   <span className="block">Preload top sites</span>
                   <span className="mt-0.5 block text-[11.5px] text-muted">
-                    Prefetch DNS and load frequently visited sites in the background to warm the cache (uses network).
+                    Prefetch DNS and load frequently visited sites in the background to warm the
+                    cache (uses network).
                   </span>
                 </span>
               </label>
@@ -1243,7 +1251,8 @@ export function SettingsPage(): React.JSX.Element {
             >
               <h2 className="mb-1 text-[15px] font-semibold text-fg">Autofill</h2>
               <p className="mb-4 text-[12px] text-muted">
-                Save and fill addresses, contacts, payment methods, and form history for this profile.
+                Save and fill addresses, contacts, payment methods, and form history for this
+                profile.
               </p>
 
               <label className="flex items-start gap-2 text-[13px] text-fg">
@@ -1306,21 +1315,73 @@ export function SettingsPage(): React.JSX.Element {
                 </div>
                 {showAddressForm && (
                   <div className="mb-3 grid gap-2 rounded-md border border-border p-3 text-[12px]">
-                    <input className="rounded border border-border bg-base px-2 py-1" placeholder="Name" value={addressDraft.name ?? ''} onChange={(e) => setAddressDraft((d) => ({ ...d, name: e.target.value }))} />
-                    <input className="rounded border border-border bg-base px-2 py-1" placeholder="Street address" value={addressDraft.streetAddress ?? ''} onChange={(e) => setAddressDraft((d) => ({ ...d, streetAddress: e.target.value }))} />
+                    <input
+                      className="rounded border border-border bg-base px-2 py-1"
+                      placeholder="Name"
+                      value={addressDraft.name ?? ''}
+                      onChange={(e) => setAddressDraft((d) => ({ ...d, name: e.target.value }))}
+                    />
+                    <input
+                      className="rounded border border-border bg-base px-2 py-1"
+                      placeholder="Street address"
+                      value={addressDraft.streetAddress ?? ''}
+                      onChange={(e) =>
+                        setAddressDraft((d) => ({ ...d, streetAddress: e.target.value }))
+                      }
+                    />
                     <div className="grid grid-cols-2 gap-2">
-                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="City" value={addressDraft.city ?? ''} onChange={(e) => setAddressDraft((d) => ({ ...d, city: e.target.value }))} />
-                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Region/State" value={addressDraft.region ?? ''} onChange={(e) => setAddressDraft((d) => ({ ...d, region: e.target.value }))} />
+                      <input
+                        className="rounded border border-border bg-base px-2 py-1"
+                        placeholder="City"
+                        value={addressDraft.city ?? ''}
+                        onChange={(e) => setAddressDraft((d) => ({ ...d, city: e.target.value }))}
+                      />
+                      <input
+                        className="rounded border border-border bg-base px-2 py-1"
+                        placeholder="Region/State"
+                        value={addressDraft.region ?? ''}
+                        onChange={(e) => setAddressDraft((d) => ({ ...d, region: e.target.value }))}
+                      />
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Postal code" value={addressDraft.postalCode ?? ''} onChange={(e) => setAddressDraft((d) => ({ ...d, postalCode: e.target.value }))} />
-                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Country" value={addressDraft.country ?? ''} onChange={(e) => setAddressDraft((d) => ({ ...d, country: e.target.value }))} />
+                      <input
+                        className="rounded border border-border bg-base px-2 py-1"
+                        placeholder="Postal code"
+                        value={addressDraft.postalCode ?? ''}
+                        onChange={(e) =>
+                          setAddressDraft((d) => ({ ...d, postalCode: e.target.value }))
+                        }
+                      />
+                      <input
+                        className="rounded border border-border bg-base px-2 py-1"
+                        placeholder="Country"
+                        value={addressDraft.country ?? ''}
+                        onChange={(e) =>
+                          setAddressDraft((d) => ({ ...d, country: e.target.value }))
+                        }
+                      />
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Email (optional)" value={addressDraft.email ?? ''} onChange={(e) => setAddressDraft((d) => ({ ...d, email: e.target.value }))} />
-                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Phone (optional)" value={addressDraft.phone ?? ''} onChange={(e) => setAddressDraft((d) => ({ ...d, phone: e.target.value }))} />
+                      <input
+                        className="rounded border border-border bg-base px-2 py-1"
+                        placeholder="Email (optional)"
+                        value={addressDraft.email ?? ''}
+                        onChange={(e) => setAddressDraft((d) => ({ ...d, email: e.target.value }))}
+                      />
+                      <input
+                        className="rounded border border-border bg-base px-2 py-1"
+                        placeholder="Phone (optional)"
+                        value={addressDraft.phone ?? ''}
+                        onChange={(e) => setAddressDraft((d) => ({ ...d, phone: e.target.value }))}
+                      />
                     </div>
-                    <button type="button" className="rounded-md bg-accent px-2 py-1.5 text-[12px] text-accent-foreground" onClick={() => void saveNewAddress()}>Save address</button>
+                    <button
+                      type="button"
+                      className="rounded-md bg-accent px-2 py-1.5 text-[12px] text-accent-foreground"
+                      onClick={() => void saveNewAddress()}
+                    >
+                      Save address
+                    </button>
                   </div>
                 )}
                 {autofill.addresses.length === 0 ? (
@@ -1328,9 +1389,22 @@ export function SettingsPage(): React.JSX.Element {
                 ) : (
                   <ul className="space-y-1">
                     {autofill.addresses.map((a) => (
-                      <li key={a.id} className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1 text-[12px]">
-                        <span className="truncate text-fg">{a.name} — {a.streetAddress}, {a.city}</span>
-                        <button type="button" className="shrink-0 text-muted hover:text-fg" onClick={() => void window.voyager.autofill.deleteAddress(a.id).then(setAutofill)}>Delete</button>
+                      <li
+                        key={a.id}
+                        className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1 text-[12px]"
+                      >
+                        <span className="truncate text-fg">
+                          {a.name} — {a.streetAddress}, {a.city}
+                        </span>
+                        <button
+                          type="button"
+                          className="shrink-0 text-muted hover:text-fg"
+                          onClick={() =>
+                            void window.voyager.autofill.deleteAddress(a.id).then(setAutofill)
+                          }
+                        >
+                          Delete
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -1352,13 +1426,41 @@ export function SettingsPage(): React.JSX.Element {
                 </div>
                 {showContactForm && (
                   <div className="mb-3 grid gap-2 rounded-md border border-border p-3 text-[12px]">
-                    <input className="rounded border border-border bg-base px-2 py-1" placeholder="Name" value={contactDraft.name ?? ''} onChange={(e) => setContactDraft((d) => ({ ...d, name: e.target.value }))} />
+                    <input
+                      className="rounded border border-border bg-base px-2 py-1"
+                      placeholder="Name"
+                      value={contactDraft.name ?? ''}
+                      onChange={(e) => setContactDraft((d) => ({ ...d, name: e.target.value }))}
+                    />
                     <div className="grid grid-cols-2 gap-2">
-                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Email (optional)" value={contactDraft.email ?? ''} onChange={(e) => setContactDraft((d) => ({ ...d, email: e.target.value }))} />
-                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Phone (optional)" value={contactDraft.phone ?? ''} onChange={(e) => setContactDraft((d) => ({ ...d, phone: e.target.value }))} />
+                      <input
+                        className="rounded border border-border bg-base px-2 py-1"
+                        placeholder="Email (optional)"
+                        value={contactDraft.email ?? ''}
+                        onChange={(e) => setContactDraft((d) => ({ ...d, email: e.target.value }))}
+                      />
+                      <input
+                        className="rounded border border-border bg-base px-2 py-1"
+                        placeholder="Phone (optional)"
+                        value={contactDraft.phone ?? ''}
+                        onChange={(e) => setContactDraft((d) => ({ ...d, phone: e.target.value }))}
+                      />
                     </div>
-                    <input className="rounded border border-border bg-base px-2 py-1" placeholder="Organization (optional)" value={contactDraft.organization ?? ''} onChange={(e) => setContactDraft((d) => ({ ...d, organization: e.target.value }))} />
-                    <button type="button" className="rounded-md bg-accent px-2 py-1.5 text-[12px] text-accent-foreground" onClick={() => void saveNewContact()}>Save contact</button>
+                    <input
+                      className="rounded border border-border bg-base px-2 py-1"
+                      placeholder="Organization (optional)"
+                      value={contactDraft.organization ?? ''}
+                      onChange={(e) =>
+                        setContactDraft((d) => ({ ...d, organization: e.target.value }))
+                      }
+                    />
+                    <button
+                      type="button"
+                      className="rounded-md bg-accent px-2 py-1.5 text-[12px] text-accent-foreground"
+                      onClick={() => void saveNewContact()}
+                    >
+                      Save contact
+                    </button>
                   </div>
                 )}
                 {autofill.contacts.length === 0 ? (
@@ -1366,9 +1468,23 @@ export function SettingsPage(): React.JSX.Element {
                 ) : (
                   <ul className="space-y-1">
                     {autofill.contacts.map((c) => (
-                      <li key={c.id} className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1 text-[12px]">
-                        <span className="truncate text-fg">{c.name}{c.email ? ` — ${c.email}` : ''}</span>
-                        <button type="button" className="shrink-0 text-muted hover:text-fg" onClick={() => void window.voyager.autofill.deleteContact(c.id).then(setAutofill)}>Delete</button>
+                      <li
+                        key={c.id}
+                        className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1 text-[12px]"
+                      >
+                        <span className="truncate text-fg">
+                          {c.name}
+                          {c.email ? ` — ${c.email}` : ''}
+                        </span>
+                        <button
+                          type="button"
+                          className="shrink-0 text-muted hover:text-fg"
+                          onClick={() =>
+                            void window.voyager.autofill.deleteContact(c.id).then(setAutofill)
+                          }
+                        >
+                          Delete
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -1390,13 +1506,47 @@ export function SettingsPage(): React.JSX.Element {
                 </div>
                 {showPaymentForm && (
                   <div className="mb-3 grid gap-2 rounded-md border border-border p-3 text-[12px]">
-                    <input className="rounded border border-border bg-base px-2 py-1" placeholder="Name on card" value={paymentDraft.nameOnCard ?? ''} onChange={(e) => setPaymentDraft((d) => ({ ...d, nameOnCard: e.target.value }))} />
-                    <input className="rounded border border-border bg-base px-2 py-1" placeholder="Card number" value={paymentDraft.cardNumber ?? ''} onChange={(e) => setPaymentDraft((d) => ({ ...d, cardNumber: e.target.value }))} />
+                    <input
+                      className="rounded border border-border bg-base px-2 py-1"
+                      placeholder="Name on card"
+                      value={paymentDraft.nameOnCard ?? ''}
+                      onChange={(e) =>
+                        setPaymentDraft((d) => ({ ...d, nameOnCard: e.target.value }))
+                      }
+                    />
+                    <input
+                      className="rounded border border-border bg-base px-2 py-1"
+                      placeholder="Card number"
+                      value={paymentDraft.cardNumber ?? ''}
+                      onChange={(e) =>
+                        setPaymentDraft((d) => ({ ...d, cardNumber: e.target.value }))
+                      }
+                    />
                     <div className="grid grid-cols-2 gap-2">
-                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Expiry month (MM)" value={paymentDraft.expiryMonth ?? ''} onChange={(e) => setPaymentDraft((d) => ({ ...d, expiryMonth: e.target.value }))} />
-                      <input className="rounded border border-border bg-base px-2 py-1" placeholder="Expiry year (YYYY)" value={paymentDraft.expiryYear ?? ''} onChange={(e) => setPaymentDraft((d) => ({ ...d, expiryYear: e.target.value }))} />
+                      <input
+                        className="rounded border border-border bg-base px-2 py-1"
+                        placeholder="Expiry month (MM)"
+                        value={paymentDraft.expiryMonth ?? ''}
+                        onChange={(e) =>
+                          setPaymentDraft((d) => ({ ...d, expiryMonth: e.target.value }))
+                        }
+                      />
+                      <input
+                        className="rounded border border-border bg-base px-2 py-1"
+                        placeholder="Expiry year (YYYY)"
+                        value={paymentDraft.expiryYear ?? ''}
+                        onChange={(e) =>
+                          setPaymentDraft((d) => ({ ...d, expiryYear: e.target.value }))
+                        }
+                      />
                     </div>
-                    <button type="button" className="rounded-md bg-accent px-2 py-1.5 text-[12px] text-accent-foreground" onClick={() => void saveNewPayment()}>Save payment method</button>
+                    <button
+                      type="button"
+                      className="rounded-md bg-accent px-2 py-1.5 text-[12px] text-accent-foreground"
+                      onClick={() => void saveNewPayment()}
+                    >
+                      Save payment method
+                    </button>
                   </div>
                 )}
                 {autofill.paymentMethods.length === 0 ? (
@@ -1404,11 +1554,23 @@ export function SettingsPage(): React.JSX.Element {
                 ) : (
                   <ul className="space-y-1">
                     {autofill.paymentMethods.map((p) => (
-                      <li key={p.id} className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1 text-[12px]">
+                      <li
+                        key={p.id}
+                        className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1 text-[12px]"
+                      >
                         <span className="truncate text-fg">
-                          {p.nameOnCard} — •••• {p.cardNumber.replace(/\s+/g, '').slice(-4) || '••••'}
+                          {p.nameOnCard} — ••••{' '}
+                          {p.cardNumber.replace(/\s+/g, '').slice(-4) || '••••'}
                         </span>
-                        <button type="button" className="shrink-0 text-muted hover:text-fg" onClick={() => void window.voyager.autofill.deletePayment(p.id).then(setAutofill)}>Delete</button>
+                        <button
+                          type="button"
+                          className="shrink-0 text-muted hover:text-fg"
+                          onClick={() =>
+                            void window.voyager.autofill.deletePayment(p.id).then(setAutofill)
+                          }
+                        >
+                          Delete
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -1424,7 +1586,9 @@ export function SettingsPage(): React.JSX.Element {
                     type="button"
                     className="rounded-md border border-border px-2 py-1 text-[12px] text-fg hover:bg-surface-hover disabled:opacity-50"
                     disabled={autofill.formHistory.length === 0}
-                    onClick={() => void window.voyager.autofill.clearFormHistory().then(setAutofill)}
+                    onClick={() =>
+                      void window.voyager.autofill.clearFormHistory().then(setAutofill)
+                    }
                   >
                     Clear form history
                   </button>
@@ -1434,9 +1598,24 @@ export function SettingsPage(): React.JSX.Element {
                 ) : (
                   <ul className="max-h-48 space-y-1 overflow-auto">
                     {autofill.formHistory.slice(0, 50).map((e) => (
-                      <li key={e.id} className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1 text-[12px]">
-                        <span className="truncate text-fg" title={`${e.field}: ${e.value}`}>{e.field}: {e.value}</span>
-                        <button type="button" className="shrink-0 text-muted hover:text-fg" onClick={() => void window.voyager.autofill.deleteFormHistoryEntry(e.id).then(setAutofill)}>Delete</button>
+                      <li
+                        key={e.id}
+                        className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1 text-[12px]"
+                      >
+                        <span className="truncate text-fg" title={`${e.field}: ${e.value}`}>
+                          {e.field}: {e.value}
+                        </span>
+                        <button
+                          type="button"
+                          className="shrink-0 text-muted hover:text-fg"
+                          onClick={() =>
+                            void window.voyager.autofill
+                              .deleteFormHistoryEntry(e.id)
+                              .then(setAutofill)
+                          }
+                        >
+                          Delete
+                        </button>
                       </li>
                     ))}
                   </ul>

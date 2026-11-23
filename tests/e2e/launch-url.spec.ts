@@ -38,11 +38,14 @@ test('opens URLs queued while no browser window is open', async ({ voyager, serv
 
   const first = server.url('/home')
   const second = server.url('/second')
-  await voyager.app.evaluate(({ app }, urls) => {
-    for (const url of urls) {
-      app.emit('open-url', { preventDefault() {} } as never, url)
-    }
-  }, [first, second])
+  await voyager.app.evaluate(
+    ({ app }, urls) => {
+      for (const url of urls) {
+        app.emit('open-url', { preventDefault() {} } as never, url)
+      }
+    },
+    [first, second]
+  )
 
   // Creating the next window must drain the queue instead of dropping it.
   await voyager.app.evaluate(({ app }) => app.emit('activate'))

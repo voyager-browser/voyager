@@ -168,9 +168,7 @@ export function buildTabMenuItems(tab: TabState, options: TabMenuOptions): Conte
       icon: <QrCode className="h-3.5 w-3.5" />,
       disabled: isNewTab(tab.url),
       onSelect: () =>
-        window.dispatchEvent(
-          new CustomEvent('voyager:open-qr-code', { detail: { url: tab.url } })
-        )
+        window.dispatchEvent(new CustomEvent('voyager:open-qr-code', { detail: { url: tab.url } }))
     }
   ]
 }

@@ -16,7 +16,11 @@ function topSiteUrls(profileId: string): string[] {
     const score = typeof entry.visitCount === 'number' ? entry.visitCount : 1
     const visitedAt = typeof entry.visitedAt === 'number' ? entry.visitedAt : 0
     const existing = byOrigin.get(origin)
-    if (!existing || score > existing.score || (score === existing.score && visitedAt > existing.visitedAt)) {
+    if (
+      !existing ||
+      score > existing.score ||
+      (score === existing.score && visitedAt > existing.visitedAt)
+    ) {
       byOrigin.set(origin, { url: origin + '/', score, visitedAt })
     }
   }

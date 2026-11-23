@@ -21,26 +21,46 @@ export const usePermissionsStore = create<PermissionsStore>()((set) => ({
   ready: false,
 
   applyState: (state) =>
-    set({ decisions: state.decisions, autoRemovedDecisions: state.autoRemovedDecisions ?? [], ready: true }),
+    set({
+      decisions: state.decisions,
+      autoRemovedDecisions: state.autoRemovedDecisions ?? [],
+      ready: true
+    }),
 
   refresh: async () => {
     const state = await window.voyager.permissions.getState()
-    set({ decisions: state.decisions, autoRemovedDecisions: state.autoRemovedDecisions ?? [], ready: true })
+    set({
+      decisions: state.decisions,
+      autoRemovedDecisions: state.autoRemovedDecisions ?? [],
+      ready: true
+    })
   },
 
   remove: async (origin, kind) => {
     const state = await window.voyager.permissions.remove(origin, kind)
-    set({ decisions: state.decisions, autoRemovedDecisions: state.autoRemovedDecisions ?? [], ready: true })
+    set({
+      decisions: state.decisions,
+      autoRemovedDecisions: state.autoRemovedDecisions ?? [],
+      ready: true
+    })
   },
 
   clear: async () => {
     const state = await window.voyager.permissions.clear()
-    set({ decisions: state.decisions, autoRemovedDecisions: state.autoRemovedDecisions ?? [], ready: true })
+    set({
+      decisions: state.decisions,
+      autoRemovedDecisions: state.autoRemovedDecisions ?? [],
+      ready: true
+    })
   },
 
   undoAutoRemoval: async () => {
     const state = await window.voyager.permissions.undoAutoRemoval()
-    set({ decisions: state.decisions, autoRemovedDecisions: state.autoRemovedDecisions ?? [], ready: true })
+    set({
+      decisions: state.decisions,
+      autoRemovedDecisions: state.autoRemovedDecisions ?? [],
+      ready: true
+    })
   }
 }))
 

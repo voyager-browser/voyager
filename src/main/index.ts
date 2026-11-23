@@ -43,9 +43,7 @@ queuePendingUrls(webLinks(process.argv))
 
 /** Keep only the web URLs a browser window knows how to open. */
 function webLinks(values: readonly string[]): string[] {
-  return values
-    .map((value) => findLaunchUrl([value]))
-    .filter((url): url is string => url !== null)
+  return values.map((value) => findLaunchUrl([value])).filter((url): url is string => url !== null)
 }
 
 /** Open links in the current window, or hold them until a window appears. */

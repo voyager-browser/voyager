@@ -70,10 +70,7 @@ test('selectable filter lists persist independently of the blocking toggle', asy
     .not.toContain('stevenblack')
 })
 
-test('page info reports blocked requests', async ({
-  voyager,
-  server
-}) => {
+test('page info reports blocked requests', async ({ voyager, server }) => {
   await voyager.chrome.evaluate(() => window.voyager.settings.set('contentBlocking', true))
   await voyager.navigate(server.url('/home'))
   await requestBlockedPixel(voyager, server.url('/home'))

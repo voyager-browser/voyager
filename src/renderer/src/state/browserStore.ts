@@ -109,7 +109,9 @@ export const useBrowserStore = create<BrowserStore>()((set, get) => ({
     const state = get()
     const tab = state.tabs.find((candidate) => candidate.id === id)
     if (!tab) return
-    const open = state.incognito ? window.voyager.windows.openIncognito : window.voyager.windows.open
+    const open = state.incognito
+      ? window.voyager.windows.openIncognito
+      : window.voyager.windows.open
     void open(tab.url)
     state.closeTab(id)
   },
