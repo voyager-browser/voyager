@@ -67,10 +67,15 @@ function folderSubtree(profileId: string, id: string): Set<string> {
   return ids
 }
 
+/** Both bookmarks and folders occupy the bar, so either counts as content. */
+function hasBarContent(profileId: string): boolean {
+  return storedItems(profileId).length > 0 || storedFolders(profileId).length > 0
+}
+
 function resolveBookmarksBarVisibility(profileId: string): boolean {
   const stored = getSettings(profileId, 'bookmarksBarVisible')
   if (stored === undefined) {
-    const visible = storedItems(profileId).length > 0
+    const visible = hasBarContent(profileId)
     if (visible) setSettings(profileId, 'bookmarksBarVisible', true)
     return visible
   }
@@ -110,7 +115,7 @@ function revealBarIfNeeded(
  * lingers after the user removes their bookmarks.
  */
 function hideBarIfEmpty(profileId: string, setBarExtent?: (visible: boolean) => void): void {
-  if (storedItems(profileId).length > 0 || storedFolders(profileId).length > 0) return
+  if (hasBarContent(profileId)) return
   if (getSettings(profileId, 'bookmarksBarVisible') === true) {
     setSettings(profileId, 'bookmarksBarVisible', false)
   }

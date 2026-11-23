@@ -190,6 +190,58 @@ test('adds, dedupes, navigates and removes a bookmark', async ({ voyager, server
   await expect(voyager.chrome.locator('nav')).toHaveCount(0)
 })
 
+test('reveals the bookmarks bar when the first folder is added', async ({ voyager }) => {
+  await expect
+    .poll(
+      async () =>
+        (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).barVisible
+    )
+    .toBe(false)
+
+  const state = await voyager.chrome.evaluate(() =>
+    window.voyager.bookmarks.addFolder({ title: 'Research' })
+  )
+  expect(state.folders).toHaveLength(1)
+
+  await expect
+    .poll(
+      async () =>
+        (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).barVisible
+    )
+    .toBe(true)
+  await expect(voyager.chrome.getByRole('button', { name: 'Folder Research' })).toBeVisible()
+
+  await voyager.chrome.evaluate(async (id: string) => {
+    await window.voyager.bookmarks.removeFolder(id)
+  }, state.folders[0].id)
+  await expect
+    .poll(
+      async () =>
+        (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).barVisible
+    )
+    .toBe(false)
+})
+
+test('treats a folder as bar content when visibility is not set', async ({ launchVoyager }) => {
+  const voyager = await launchVoyager({
+    seed: {
+      bookmarks: {
+        items: [],
+        folders: [{ id: 'seeded-folder', title: 'Seeded', parentId: null, createdAt: 1 }]
+      }
+    }
+  })
+
+  await expect
+    .poll(
+      async () =>
+        (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).barVisible
+    )
+    .toBe(true)
+  await expect(voyager.chrome.getByRole('button', { name: 'Folder Seeded' })).toBeVisible()
+  await voyager.close()
+})
+
 test('disables bookmark button on a blank tab', async ({ voyager }) => {
   await expect(voyager.chrome.getByRole('button', { name: 'Bookmark this page' })).toBeDisabled()
 })
