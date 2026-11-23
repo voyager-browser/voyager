@@ -49,6 +49,38 @@ test('settings exposes default browser controls', async ({ voyager }) => {
   expect(typeof current).toBe('boolean')
 })
 
+test('default browser status requires both http and https', async ({ voyager }) => {
+  await voyager.app.evaluate(({ app }) => {
+    const store = globalThis as unknown as { __voyagerSchemeOwners?: Record<string, boolean> }
+    store.__voyagerSchemeOwners = { http: false, https: false }
+
+    Object.defineProperty(app, 'isDefaultProtocolClient', {
+      configurable: true,
+      writable: true,
+      value: (scheme: string) => store.__voyagerSchemeOwners?.[scheme] === true
+    })
+
+    // Force Linux down the protocol-probe path so xdg-settings cannot short-circuit it.
+    process.env.PATH = ''
+  })
+
+  const isDefault = async (http: boolean, https: boolean): Promise<boolean> => {
+    await voyager.app.evaluate(
+      (_, owners) => {
+        const store = globalThis as unknown as { __voyagerSchemeOwners?: Record<string, boolean> }
+        store.__voyagerSchemeOwners = owners
+      },
+      { http, https }
+    )
+    return voyager.chrome.evaluate(() => window.voyager.defaultBrowser.isDefault())
+  }
+
+  expect(await isDefault(true, true)).toBe(true)
+  expect(await isDefault(true, false)).toBe(false)
+  expect(await isDefault(false, true)).toBe(false)
+  expect(await isDefault(false, false)).toBe(false)
+})
+
 test('settings page shows stats and lets theme change apply to itself', async ({
   voyager,
   server

@@ -38,14 +38,18 @@ function setLinuxDefaultBrowser(): void {
   }
 }
 
+/** Whether Voyager owns every scheme registered by {@link setDefaultBrowser}. */
+function ownsSupportedProtocols(): boolean {
+  return SUPPORTED_PROTOCOLS.every((scheme) => app.isDefaultProtocolClient(scheme))
+}
+
 /** Whether Voyager currently owns web links on this platform. */
 export function isDefaultBrowser(): boolean {
   if (process.platform === 'linux') {
     const current = linuxDefaultBrowser()
     if (current === LINUX_DESKTOP_FILE) return true
-    return app.isDefaultProtocolClient('https') || app.isDefaultProtocolClient('http')
   }
-  return app.isDefaultProtocolClient('https') || app.isDefaultProtocolClient('http')
+  return ownsSupportedProtocols()
 }
 
 /**
