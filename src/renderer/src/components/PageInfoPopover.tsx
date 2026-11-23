@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Globe, Lock, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { PERMISSION_LABELS, permissionOriginForUrl } from '../../../shared/permissions'
 import type { ContentBlockingStats } from '../../../shared/types'
@@ -20,6 +20,8 @@ export function PageInfoPopover({ url, title }: PageInfoPopoverProps): React.JSX
   const [certificateOpen, setCertificateOpen] = useState(false)
   const [stats, setStats] = useState<ContentBlockingStats | null>(null)
   const [siteBusy, setSiteBusy] = useState(false)
+  // Keep stale interval responses from reverting an optimistic toggle.
+  const siteChangePending = useRef(false)
 
   useEffect(() => {
     let active = true
@@ -27,7 +29,7 @@ export function PageInfoPopover({ url, title }: PageInfoPopoverProps): React.JSX
       void window.voyager.contentBlocking
         .getStats()
         .then((next) => {
-          if (active) setStats(next)
+          if (active && !siteChangePending.current) setStats(next)
         })
         .catch(() => undefined)
     }
@@ -41,10 +43,17 @@ export function PageInfoPopover({ url, title }: PageInfoPopoverProps): React.JSX
 
   const setSiteBlocking = async (enabled: boolean): Promise<void> => {
     if (!stats?.site) return
+    const previous = stats
+    const site = stats.site
+    siteChangePending.current = true
+    setStats({ ...previous, siteEnabled: enabled })
     setSiteBusy(true)
     try {
-      setStats(await window.voyager.contentBlocking.setSiteEnabled(stats.site, enabled))
+      setStats(await window.voyager.contentBlocking.setSiteEnabled(site, enabled))
+    } catch {
+      setStats(previous)
     } finally {
+      siteChangePending.current = false
       setSiteBusy(false)
     }
   }
