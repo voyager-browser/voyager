@@ -137,6 +137,36 @@ test('renders search suggestions and runs the highlighted one', async ({ voyager
   )
 })
 
+test('Enter on an empty omnibox does not search for a stale suggestion', async ({
+  voyager,
+  server
+}) => {
+  await interceptSearch(voyager, server)
+  const input = voyager.chrome.locator('#omnibox-input')
+
+  await input.focus()
+  await input.fill('al')
+  await expect(voyager.chrome.getByText('alpha suggestion')).toBeVisible()
+  await input.press('ArrowDown')
+  await input.press('Escape')
+
+  // Escape and refocus clear the query and suggestions. The previously
+  // highlighted row must not survive and be run with an undefined suggestion.
+  await input.focus()
+  await expect(input).toHaveValue('')
+  await expect(voyager.chrome.getByText('alpha suggestion')).toHaveCount(0)
+  await input.press('Enter')
+
+  // Give a bad navigation time to happen before asserting it did not. The
+  // request log also contains the suggestion fetch, so filter to searches.
+  await voyager.chrome.waitForTimeout(1000)
+  const requests = await searchRequests(voyager.app)
+  expect(
+    requests.filter((request) => new URL(request).searchParams.get('q') === 'undefined')
+  ).toEqual([])
+  expect(isNewTab((await voyager.activeTab()).url)).toBe(true)
+})
+
 test('submits a typed search query when no suggestion is highlighted', async ({
   voyager,
   server
