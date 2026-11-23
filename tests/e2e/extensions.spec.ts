@@ -167,6 +167,42 @@ test('opens a Voyager tab when an extension calls chrome.tabs.create', async ({
     .toBe(true)
 })
 
+test('opens its action popup when an extension calls chrome.action.openPopup', async ({
+  launchVoyager
+}) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+  await voyager.chrome.evaluate((extensionId) => {
+    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  }, id)
+
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+  const shims = await popup!.evaluate(() => ({
+    action: typeof (globalThis as any).chrome.action?.openPopup,
+    browserAction: typeof (globalThis as any).chrome.browserAction?.openPopup
+  }))
+  expect(shims.action).toBe('function')
+  expect(shims.browserAction).toBe('function')
+
+  const initialCount = Number(await popup!.locator('#popup-open-count').textContent())
+  await popup!.getByRole('button', { name: 'Request popup' }).click()
+  await expect
+    .poll(async () => {
+      const reopened = voyager.app
+        .windows()
+        .find((page) => page.url().startsWith('chrome-extension://'))
+      if (!reopened) return null
+      return Number(await reopened.locator('#popup-open-count').textContent())
+    })
+    .toBe(initialCount + 1)
+})
+
 test('prompts before granting a new extension permission', async ({ launchVoyager }) => {
   const voyager = await launchVoyager({
     seed: { settings: { installedExtensions: [EXTENSION_PATH] } }

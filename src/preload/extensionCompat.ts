@@ -16,6 +16,7 @@ interface ExtensionPermissionsDetails {
 }
 
 const TABS_CREATE_BRIDGE = '__voyagerExtensionTabsCreate'
+const ACTION_OPEN_POPUP_BRIDGE = '__voyagerExtensionOpenPopup'
 const PERMISSIONS_BRIDGE = '__voyagerExtensionPermissions'
 const NATIVE_CONNECT_BRIDGE = '__voyagerExtensionNativeConnect'
 const NATIVE_POST_BRIDGE = '__voyagerExtensionNativePost'
@@ -26,8 +27,7 @@ const PRIVACY_SET_BRIDGE = '__voyagerExtensionPrivacySet'
 
 /**
  * Install the Chrome extension APIs Electron omits: `webNavigation`,
- * `tabs.create`, `permissions`, and native messaging. This function is
- * serialized into the extension's main world, so it must be self-contained.
+ * `tabs.create`, action popups, `permissions`, and native messaging.
  *
  * This function is serialized into the main world by `executeInMainWorld`, so
  * it must not close over anything outside its own body.
@@ -148,6 +148,35 @@ const install = function install(): void {
       }
     } catch (error) {
       console.warn('[voyager] Could not install chrome.tabs.create shim:', error)
+    }
+  }
+
+  const openPopup = (globalThis as any).__voyagerExtensionOpenPopup
+  if (typeof openPopup === 'function') {
+    try {
+      const open = (
+        detailsOrCallback?: unknown,
+        maybeCallback?: (opened: boolean) => void
+      ): Promise<boolean> => {
+        const callback = (
+          typeof detailsOrCallback === 'function'
+            ? detailsOrCallback
+            : typeof maybeCallback === 'function'
+              ? maybeCallback
+              : undefined
+        ) as ((opened: boolean) => void) | undefined
+        const result = Promise.resolve(openPopup()).then((opened: unknown) => opened === true)
+        if (typeof callback === 'function') void result.then(callback)
+        return result
+      }
+      const action = chrome.action ?? {}
+      if (define(action, 'openPopup', open) && !chrome.action) define(chrome, 'action', action)
+      const browserAction = chrome.browserAction ?? {}
+      if (define(browserAction, 'openPopup', open) && !chrome.browserAction) {
+        define(chrome, 'browserAction', browserAction)
+      }
+    } catch (error) {
+      console.warn('[voyager] Could not install chrome.action.openPopup shim:', error)
     }
   }
 
@@ -443,6 +472,8 @@ if (inExtension) {
 
   const createTabBridge = (details: ExtensionTabsCreateDetails): Promise<unknown> =>
     ipcRenderer.invoke(IpcChannels.ExtensionTabsCreate, details)
+  const openPopupBridge = (): Promise<unknown> =>
+    ipcRenderer.invoke(IpcChannels.ExtensionActionOpenPopup)
   const permissionsBridge = (
     details: ExtensionPermissionsDetails & { mode?: string; checkOnly?: boolean }
   ) => ipcRenderer.invoke(IpcChannels.ExtensionPermissionRequest, details)
@@ -461,6 +492,7 @@ if (inExtension) {
 
   const bridges: Record<string, (...args: any[]) => Promise<unknown>> = {
     [TABS_CREATE_BRIDGE]: createTabBridge,
+    [ACTION_OPEN_POPUP_BRIDGE]: openPopupBridge,
     [PERMISSIONS_BRIDGE]: permissionsBridge,
     [NATIVE_CONNECT_BRIDGE]: nativeConnectBridge,
     [NATIVE_POST_BRIDGE]: nativePostBridge,

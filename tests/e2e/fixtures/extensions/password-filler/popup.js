@@ -1,8 +1,17 @@
+const openCount = Number(localStorage.getItem('popupOpenCount') ?? 0) + 1
+localStorage.setItem('popupOpenCount', String(openCount))
+const popupCount = document.getElementById('popup-open-count')
+if (popupCount) popupCount.textContent = String(openCount)
+
 const tabsResult = document.getElementById('tabs-result')
 const permissionResult = document.getElementById('permission-result')
 const privacyResult = document.getElementById('privacy-result')
 const nativeResult = document.getElementById('native-result')
 const nativePortResult = document.getElementById('native-port-result')
+
+document.getElementById('request-popup')?.addEventListener('click', () => {
+  void chrome.action.openPopup()
+})
 
 document.getElementById('open-tab')?.addEventListener('click', () => {
   chrome.tabs.create({ url: 'https://example.test/' }, (tab) => {

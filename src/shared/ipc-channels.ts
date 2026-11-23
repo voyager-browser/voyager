@@ -145,6 +145,7 @@ export const IpcChannels = {
   ExtensionsStateChanged: 'extensions:state-changed',
   ExtensionWebNavigationEvent: 'extension:web-navigation-event',
   ExtensionTabsCreate: 'extension:tabs-create',
+  ExtensionActionOpenPopup: 'extension:action-open-popup',
   ExtensionPermissionRequest: 'extension:permission-request',
   ExtensionPermissionRespond: 'extension:permission-respond',
   ExtensionPermissionRequestCancelled: 'extension:permission-request-cancelled',
