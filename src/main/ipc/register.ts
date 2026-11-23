@@ -628,7 +628,9 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IpcChannels.NavForward, (event) =>
     context.getWindow(event as any)?.tabs.goForward()
   )
-  ipcMain.handle(IpcChannels.NavReload, (event) => context.getWindow(event as any)?.tabs.reload())
+  ipcMain.handle(IpcChannels.NavReload, (event, id?: string) =>
+    context.getWindow(event as any)?.tabs.reload(id)
+  )
   ipcMain.handle(IpcChannels.NavStop, (event) => context.getWindow(event as any)?.tabs.stop())
   ipcMain.handle(IpcChannels.NavGo, (event, url: string) =>
     context.getWindow(event as any)?.tabs.navigate(url)

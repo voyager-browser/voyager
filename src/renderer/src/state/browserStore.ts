@@ -42,7 +42,7 @@ interface BrowserStore extends BrowserState {
   reopenTab: () => void
   goBack: () => void
   goForward: () => void
-  reload: () => void
+  reload: (id?: string) => void
   forceReload: () => void
   stop: () => void
   toggleDevTools: () => void
@@ -155,8 +155,8 @@ export const useBrowserStore = create<BrowserStore>()((set, get) => ({
   goForward: () => {
     void window.voyager.navigation.forward()
   },
-  reload: () => {
-    void window.voyager.navigation.reload()
+  reload: (id) => {
+    void window.voyager.navigation.reload(id)
   },
   forceReload: () => {
     void window.voyager.navigation.forceReload()

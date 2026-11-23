@@ -121,7 +121,7 @@ export function buildTabMenuItems(tab: TabState, options: TabMenuOptions): Conte
     {
       label: 'Reload',
       icon: <RotateCw className="h-3.5 w-3.5" />,
-      onSelect: () => store.reload()
+      onSelect: () => store.reload(tab.id)
     },
     {
       label: 'Duplicate',
