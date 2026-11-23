@@ -265,6 +265,10 @@ export function moveBookmarkNode(
 ): BookmarksState {
   const { kind, id, parentId, beforeId } = input
   if (!folderExists(profileId, parentId)) throw new Error('Folder not found')
+  // A drop onto the dragged row itself uses its own id as the insertion marker.
+  // Without this guard the node is removed first, the marker is no longer found,
+  // and the node is appended to the end of its folder.
+  if (beforeId === id) return publish(profileId, broadcast)
   const store = storesFor(profileId).bookmarks
 
   if (kind === 'folder') {
