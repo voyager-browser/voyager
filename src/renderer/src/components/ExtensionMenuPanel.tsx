@@ -61,28 +61,20 @@ function PinToggle({
 
 function ExtensionRow({
   extension,
-  origin,
   onChanged
 }: {
   extension: ExtensionInfo
-  origin: { x: number; y: number }
   onChanged: (state: ExtensionInfo[]) => void
 }): React.JSX.Element {
   const open = (): void => {
     if (!extension.id || !extension.action?.popup) return
-    const rect = document
-      .querySelector(`[data-extension-row="${extension.id}"]`)
-      ?.getBoundingClientRect()
-    // openPopup expects window coordinates; the menu's rect is panel-relative.
-    // The main process closes this menu panel before showing the popup, so do
-    // not call closePanel() here — it would destroy this renderer first.
-    const x = (rect?.right ?? 0) + origin.x
-    const y = (rect?.bottom ?? 0) + origin.y
+    // The main process remembers the puzzle button's anchor when it opened
+    // this menu and uses it for the popup, so no coordinates are needed here.
     void window.voyager.extensions.openPopup(
       extension.id as string,
       extension.action?.popup as string,
-      x,
-      y
+      0,
+      0
     )
   }
   return (
@@ -134,13 +126,11 @@ function ExtensionRow({
 
 export function ExtensionMenuPanel(): React.JSX.Element {
   const [extensions, setExtensions] = useState<ExtensionInfo[]>([])
-  const [origin, setOrigin] = useState({ x: 0, y: 0 })
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
     const disposers = [
-      window.voyager.extensions.onMenuOpen((payload) => {
-        setOrigin(payload.origin)
+      window.voyager.extensions.onMenuOpen(() => {
         void window.voyager.extensions
           .getState()
           .then(setExtensions)
@@ -191,12 +181,7 @@ export function ExtensionMenuPanel(): React.JSX.Element {
             </h2>
             <p className="px-2 pb-1 pt-0.5 text-xs text-muted">{section.description}</p>
             {grouped[section.access].map((extension) => (
-              <ExtensionRow
-                key={extension.path}
-                extension={extension}
-                origin={origin}
-                onChanged={setExtensions}
-              />
+              <ExtensionRow key={extension.path} extension={extension} onChanged={setExtensions} />
             ))}
           </section>
         ))}

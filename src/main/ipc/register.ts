@@ -1145,7 +1145,10 @@ export function registerIpcHandlers(context: IpcContext): void {
   }
 
   /** Panel currently open in each window, so a second click acts as a toggle. */
-  const openExtensionPanels = new WeakMap<WindowController, { id: string; kind: string }>()
+  const openExtensionPanels = new WeakMap<
+    WindowController,
+    { id: string; kind: string; anchor?: { x: number; y: number } }
+  >()
 
   const closePanelForOwner = (owner: WindowController): void => {
     if (!openExtensionPanels.has(owner)) return
@@ -1237,6 +1240,9 @@ export function registerIpcHandlers(context: IpcContext): void {
       closePanelForOwner(owner)
       return true
     }
+    // Actions opened from the HTML menu should still appear to come from the
+    // puzzle button, not from the row that was clicked inside the menu.
+    const anchor = current?.kind === 'menu' && current.anchor ? current.anchor : { x, y }
     closePanelForOwner(owner)
 
     let url: string
@@ -1251,8 +1257,8 @@ export function registerIpcHandlers(context: IpcContext): void {
     owner.showExtensionPanel({
       url,
       session,
-      x: Math.round(x),
-      y: Math.round(y),
+      x: Math.round(anchor.x),
+      y: Math.round(anchor.y),
       width: 420,
       height: 600,
       allowedOrigin: extension.url,
@@ -1323,9 +1329,9 @@ export function registerIpcHandlers(context: IpcContext): void {
         y,
         width: 372,
         height: 520,
-        menuPayload: { site: active?.url ?? null, profileId, origin: { x, y } }
+        menuPayload: { site: active?.url ?? null, profileId }
       })
-      openExtensionPanels.set(owner, { id: '', kind: 'menu' })
+      openExtensionPanels.set(owner, { id: '', kind: 'menu', anchor: { x, y } })
       return true
     }
   )

@@ -308,6 +308,10 @@ export class WindowController {
    * height — expanding it was the cause of the blank tab-strip glitch — and
    * keeps the panel visually inside the browser like Chrome's UI.
    */
+  /**
+   * `x`/`y` are the bottom-right corner of the toolbar icon that opened the
+   * panel, in window coordinates. The panel is aligned under that icon.
+   */
   showExtensionPanel(options: {
     url: string
     session?: Session
@@ -403,10 +407,13 @@ export class WindowController {
     const [windowWidth, windowHeight] = this.window.getContentSize()
     const { x, y, width, height } = this.extensionPanelBounds
     const panelWidth = Math.max(160, Math.min(width, windowWidth - 16))
-    const panelHeight = Math.max(120, Math.min(height, windowHeight - y - 8))
+    const panelHeight = Math.max(120, Math.min(height, windowHeight - 16))
+    // Match Chrome: the panel's top-right corner sits just below the button.
+    const left = x - panelWidth
+    const top = y + 8
     this.extensionPanel.setBounds({
-      x: Math.max(8, Math.min(Math.round(x), windowWidth - panelWidth - 8)),
-      y: Math.max(0, Math.min(Math.round(y), windowHeight - panelHeight - 8)),
+      x: Math.max(8, Math.min(Math.round(left), windowWidth - panelWidth - 8)),
+      y: Math.max(8, Math.min(Math.round(top), windowHeight - panelHeight - 8)),
       width: panelWidth,
       height: panelHeight
     })

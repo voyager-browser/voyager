@@ -1,10 +1,48 @@
 import { join } from 'node:path'
 import { expect, test } from './fixtures'
-import { openSettings, windowCount } from './helpers/voyager'
+import { openSettings, windowCount, type VoyagerApp } from './helpers/voyager'
 
 const EXTENSIONS_DIR = join(process.cwd(), 'tests', 'e2e', 'fixtures', 'extensions')
 const EXTENSION_PATH = join(EXTENSIONS_DIR, 'password-filler')
 const CRX_PATH = join(EXTENSIONS_DIR, 'password-filler.crx')
+
+/** Bottom-right corner of a toolbar button, in window coordinates. */
+async function buttonAnchor(voyager: VoyagerApp, label: string): Promise<{ x: number; y: number }> {
+  return voyager.chrome.evaluate((name) => {
+    const button = [...document.querySelectorAll('button')].find(
+      (candidate) => candidate.getAttribute('aria-label') === name
+    )
+    const rect = button?.getBoundingClientRect()
+    return { x: rect?.right ?? 0, y: rect?.bottom ?? 0 }
+  }, label)
+}
+
+/** Bounds of the in-window child view whose URL starts with `prefix`. */
+async function panelBounds(
+  voyager: VoyagerApp,
+  prefix: string
+): Promise<{ x: number; y: number; width: number; height: number } | null> {
+  return voyager.app.evaluate(({ webContents, BaseWindow }, urlPrefix) => {
+    const contents = webContents
+      .getAllWebContents()
+      .find((candidate) => candidate.getURL().startsWith(urlPrefix))
+    if (!contents) return null
+    for (const window of BaseWindow.getAllWindows()) {
+      const contentView = window.contentView as unknown as { getChildViews(): unknown[] }
+      const view = contentView
+        .getChildViews()
+        .find((child) => (child as { webContents?: unknown }).webContents === contents)
+      if (view) {
+        return (
+          view as unknown as {
+            getBounds(): { x: number; y: number; width: number; height: number }
+          }
+        ).getBounds()
+      }
+    }
+    return null
+  }, prefix)
+}
 
 test('runs content scripts from an unpacked extension installed at startup', async ({
   launchVoyager,
@@ -166,6 +204,7 @@ test('opens a popup when an extension row in the HTML menu is clicked', async ({
   const voyager = await launchVoyager({
     seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
   })
+  const puzzleAnchor = await buttonAnchor(voyager, 'Extensions')
   await voyager.chrome.evaluate(() => {
     const button = [...document.querySelectorAll('button')].find(
       (candidate) => candidate.getAttribute('aria-label') === 'Extensions'
@@ -200,6 +239,13 @@ test('opens a popup when an extension row in the HTML menu is clicked', async ({
     )
   })
   expect(popupText).toBe('password-filler-popup')
+
+  // The popup should still appear to come from the puzzle button, not the row
+  // that was clicked inside the HTML menu.
+  const bounds = await panelBounds(voyager, 'chrome-extension://')
+  expect(bounds).not.toBeNull()
+  expect(Math.abs(bounds!.x + bounds!.width - puzzleAnchor.x)).toBeLessThan(3)
+  expect(Math.abs(bounds!.y - (puzzleAnchor.y + 8))).toBeLessThan(3)
 })
 
 test('pins an extension to the toolbar and persists its site access', async ({ launchVoyager }) => {
@@ -216,6 +262,14 @@ test('pins an extension to the toolbar and persists its site access', async ({ l
   await expect(
     voyager.chrome.getByRole('button', { name: 'Open Voyager E2E Password Filler' })
   ).toBeVisible()
+
+  const pinAnchor = await buttonAnchor(voyager, 'Open Voyager E2E Password Filler')
+  await voyager.chrome.getByRole('button', { name: 'Open Voyager E2E Password Filler' }).click()
+  await expect.poll(() => panelBounds(voyager, 'chrome-extension://')).not.toBeNull()
+  const popupBounds = await panelBounds(voyager, 'chrome-extension://')
+  expect(popupBounds).not.toBeNull()
+  expect(Math.abs(popupBounds!.x + popupBounds!.width - pinAnchor.x)).toBeLessThan(3)
+  expect(Math.abs(popupBounds!.y - (pinAnchor.y + 8))).toBeLessThan(3)
 
   const access = await voyager.chrome.evaluate((extensionId) => {
     return window.voyager.extensions.setSiteAccess(extensionId, 'all')
