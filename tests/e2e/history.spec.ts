@@ -269,3 +269,50 @@ test('reopens a recently closed tab from the History menu', async ({ voyager, se
   expect(reopened).toContain('Voyager')
   await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/home'))
 })
+
+test('reopening the last closed tab refreshes the Recently Closed menu', async ({
+  voyager,
+  server
+}) => {
+  const recentLabels = (): Promise<string[]> =>
+    voyager.app.evaluate(({ Menu }) => {
+      const history = Menu.getApplicationMenu()?.items.find((item: any) => item.label === 'History')
+      const recentlyClosed = history?.submenu?.items.find(
+        (item: any) => item.label === 'Recently Closed'
+      )
+      return (recentlyClosed?.submenu?.items ?? []).map((item: any) => item.label as string)
+    })
+
+  // Leave the first tab open so closing the others does not close the window.
+  await voyager.navigate(server.url('/home'))
+  for (const [index, path] of ['/second', '/find', '/popup'].entries()) {
+    await voyager.chrome.locator('body').press(`${primaryKey()}+T`)
+    await expect.poll(async () => (await voyager.state()).tabs.length).toBe(index + 2)
+    await voyager.navigate(server.url(path))
+  }
+  for (const remaining of [3, 2, 1]) {
+    await voyager.chrome.locator('body').press(`${primaryKey()}+W`)
+    await expect.poll(async () => (await voyager.state()).tabs.length).toBe(remaining)
+  }
+
+  expect((await recentLabels()).sort()).toEqual(['Find Page', 'Popup Page', 'Second Page'])
+
+  await voyager.chrome.locator('body').press(`${primaryKey()}+Shift+T`)
+  await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/second'))
+
+  // The shortcut pops the newest entry; a stale menu would still list it.
+  await expect.poll(async () => (await recentLabels()).sort()).toEqual(['Find Page', 'Popup Page'])
+
+  const reopened = await voyager.app.evaluate(({ Menu }) => {
+    const history = Menu.getApplicationMenu()?.items.find((item: any) => item.label === 'History')
+    const recentlyClosed = history?.submenu?.items.find(
+      (item: any) => item.label === 'Recently Closed'
+    )
+    const item = recentlyClosed?.submenu?.items.find((item: any) => item.label === 'Find Page')
+    if (!item) return null
+    item.click()
+    return item.label
+  })
+  expect(reopened).toBe('Find Page')
+  await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/find'))
+})
