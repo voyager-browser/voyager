@@ -125,17 +125,12 @@ const api = {
     setSiteAccess: (id: string, access: 'click' | 'site' | 'all'): Promise<ExtensionInfo[]> =>
       ipcRenderer.invoke(IpcChannels.ExtensionsSetSiteAccess, { id, access }),
     onMenuOpen: (
-      listener: (payload: {
-        site: string | null
-        profileId: string
-        origin: { x: number; y: number }
-      }) => void
+      listener: (payload: { site: string | null; profileId: string }) => void
     ): Unsubscribe =>
-      subscribe<{
-        site: string | null
-        profileId: string
-        origin: { x: number; y: number }
-      }>(IpcChannels.ExtensionsMenuOpen, listener),
+      subscribe<{ site: string | null; profileId: string }>(
+        IpcChannels.ExtensionsMenuOpen,
+        listener
+      ),
     onStateChanged: (listener: (extensions: ExtensionInfo[]) => void): Unsubscribe =>
       subscribe<ExtensionInfo[]>(IpcChannels.ExtensionsStateChanged, listener)
   },
