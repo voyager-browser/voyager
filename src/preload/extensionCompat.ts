@@ -21,6 +21,8 @@ const NATIVE_CONNECT_BRIDGE = '__voyagerExtensionNativeConnect'
 const NATIVE_POST_BRIDGE = '__voyagerExtensionNativePost'
 const NATIVE_DISCONNECT_BRIDGE = '__voyagerExtensionNativeDisconnect'
 const NATIVE_SEND_BRIDGE = '__voyagerExtensionNativeSend'
+const PRIVACY_GET_BRIDGE = '__voyagerExtensionPrivacyGet'
+const PRIVACY_SET_BRIDGE = '__voyagerExtensionPrivacySet'
 
 /**
  * Install the Chrome extension APIs Electron omits: `webNavigation`,
@@ -168,6 +170,90 @@ const install = function install(): void {
       if (!chrome.permissions) define(chrome, 'permissions', permissions)
     } catch (error) {
       console.warn('[voyager] Could not install chrome.permissions shim:', error)
+    }
+  }
+
+  const privacyGet = (globalThis as any).__voyagerExtensionPrivacyGet
+  const privacySet = (globalThis as any).__voyagerExtensionPrivacySet
+  if (typeof privacyGet === 'function' && typeof privacySet === 'function') {
+    try {
+      const privacyListeners = new Set<(details: any) => void>()
+      const emitPrivacy = (details: any): void => {
+        for (const listener of [...privacyListeners]) {
+          try {
+            listener(details)
+          } catch {
+            // A broken extension listener must not break other listeners.
+          }
+        }
+      }
+      Object.defineProperty(globalThis, '__voyagerExtensionPrivacyChangeDispatch', {
+        value: (payload: { key?: string; value?: unknown } | undefined): void => {
+          if (payload?.key !== 'passwordSavingEnabled') return
+          emitPrivacy({
+            value: payload.value !== false,
+            levelOfControl:
+              payload.value === false
+                ? 'controlled_by_this_extension'
+                : 'controllable_by_this_extension'
+          })
+        },
+        configurable: true
+      })
+
+      const setting = {
+        get: (_options?: unknown, callback?: (details: any) => void): Promise<any> => {
+          const result = Promise.resolve(privacyGet('passwordSavingEnabled')).then(
+            (value: unknown) => ({
+              value: value !== false,
+              levelOfControl:
+                value === false ? 'controlled_by_this_extension' : 'controllable_by_this_extension'
+            })
+          )
+          if (typeof callback === 'function') void result.then(callback)
+          return result
+        },
+        set: (details?: { value?: unknown }, callback?: () => void): Promise<void> => {
+          const value = details?.value === true
+          const result = Promise.resolve(privacySet('passwordSavingEnabled', value)).then(
+            (granted: unknown) => {
+              const runtime = chrome.runtime ?? {}
+              if (granted === true) {
+                try {
+                  delete runtime.lastError
+                } catch {
+                  // Some bindings do not allow deleting their error field.
+                }
+              } else {
+                define(runtime, 'lastError', {
+                  message: 'Voyager did not allow this privacy setting change.'
+                })
+              }
+            }
+          )
+          if (typeof callback === 'function') void result.then(callback)
+          return result
+        },
+        onChange: {
+          addListener(listener: (details: any) => void): void {
+            privacyListeners.add(listener)
+          },
+          removeListener(listener: (details: any) => void): void {
+            privacyListeners.delete(listener)
+          },
+          hasListener(listener: (details: any) => void): boolean {
+            return privacyListeners.has(listener)
+          }
+        }
+      }
+      const privacy = chrome.privacy ?? {}
+      const services = privacy.services ?? {}
+      if (define(services, 'passwordSavingEnabled', setting) && !privacy.services) {
+        define(privacy, 'services', services)
+      }
+      if (!chrome.privacy) define(chrome, 'privacy', privacy)
+    } catch (error) {
+      console.warn('[voyager] Could not install chrome.privacy shim:', error)
     }
   }
 
@@ -334,6 +420,27 @@ if (inExtension) {
     }
   )
 
+  ipcRenderer.on(
+    IpcChannels.ExtensionPrivacyChangedEvent,
+    (_event, payload: { key: string; value: unknown }) => {
+      const dispatch = (value: typeof payload): void => {
+        const handler = (globalThis as any).__voyagerExtensionPrivacyChangeDispatch
+        if (handler) handler(value)
+      }
+      if (process.contextIsolated) {
+        void contextBridge.executeInMainWorld({
+          func: (eventPayload: { key: string; value: unknown }) => {
+            const handler = (globalThis as any).__voyagerExtensionPrivacyChangeDispatch
+            if (handler) handler(eventPayload)
+          },
+          args: [payload]
+        })
+      } else {
+        dispatch(payload)
+      }
+    }
+  )
+
   const createTabBridge = (details: ExtensionTabsCreateDetails): Promise<unknown> =>
     ipcRenderer.invoke(IpcChannels.ExtensionTabsCreate, details)
   const permissionsBridge = (
@@ -347,6 +454,10 @@ if (inExtension) {
     ipcRenderer.invoke(IpcChannels.ExtensionNativeDisconnect, portId)
   const nativeSendBridge = (hostName: string, message: unknown): Promise<unknown> =>
     ipcRenderer.invoke(IpcChannels.ExtensionNativeSendMessage, hostName, message)
+  const privacyGetBridge = (key: string): Promise<unknown> =>
+    ipcRenderer.invoke(IpcChannels.ExtensionPrivacyGet, key)
+  const privacySetBridge = (key: string, value: unknown): Promise<unknown> =>
+    ipcRenderer.invoke(IpcChannels.ExtensionPrivacySet, key, value)
 
   const bridges: Record<string, (...args: any[]) => Promise<unknown>> = {
     [TABS_CREATE_BRIDGE]: createTabBridge,
@@ -354,7 +465,9 @@ if (inExtension) {
     [NATIVE_CONNECT_BRIDGE]: nativeConnectBridge,
     [NATIVE_POST_BRIDGE]: nativePostBridge,
     [NATIVE_DISCONNECT_BRIDGE]: nativeDisconnectBridge,
-    [NATIVE_SEND_BRIDGE]: nativeSendBridge
+    [NATIVE_SEND_BRIDGE]: nativeSendBridge,
+    [PRIVACY_GET_BRIDGE]: privacyGetBridge,
+    [PRIVACY_SET_BRIDGE]: privacySetBridge
   }
   if (process.contextIsolated) {
     for (const [key, value] of Object.entries(bridges)) {

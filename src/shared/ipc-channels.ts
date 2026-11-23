@@ -153,6 +153,9 @@ export const IpcChannels = {
   ExtensionNativeSendMessage: 'extension:native-send-message',
   ExtensionNativeMessageEvent: 'extension:native-message-event',
   ExtensionNativeDisconnectEvent: 'extension:native-disconnect-event',
+  ExtensionPrivacyGet: 'extension:privacy-get',
+  ExtensionPrivacySet: 'extension:privacy-set',
+  ExtensionPrivacyChangedEvent: 'extension:privacy-changed-event',
   NativeMessagingHostsGet: 'native-messaging:hosts-get',
   NativeMessagingHostsSet: 'native-messaging:hosts-set',
 

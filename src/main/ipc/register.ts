@@ -158,6 +158,7 @@ import {
   extensionOriginKey,
   extensionPermissionGrants,
   hasAllExtensionPermissions,
+  recordExtensionPermissionDecision,
   removeExtensionPermissions,
   requestExtensionPermissions,
   respondToExtensionPermission
@@ -1536,6 +1537,63 @@ export function registerIpcHandlers(context: IpcContext): void {
         console.warn('[nativeMessaging] Message failed:', error)
         return null
       }
+    }
+  )
+
+  const PRIVACY_PASSWORD_SAVING_KEY = 'passwordSavingEnabled'
+
+  ipcMain.handle(IpcChannels.ExtensionPrivacyGet, (event, key: unknown): boolean => {
+    if (key !== PRIVACY_PASSWORD_SAVING_KEY) return true
+    return getSettings(profileFor(event as any), PRIVACY_PASSWORD_SAVING_KEY, true) !== false
+  })
+
+  ipcMain.handle(
+    IpcChannels.ExtensionPrivacySet,
+    async (event, key: unknown, value: unknown): Promise<boolean> => {
+      if (key !== PRIVACY_PASSWORD_SAVING_KEY || typeof value !== 'boolean') return false
+      const extensionId = extensionIdForSender(event.sender)
+      if (!extensionId) return false
+      const profileId = profileFor(event as any)
+      const extension = sessionForProfile(profileId)
+        .extensions.getAllExtensions()
+        .find((candidate) => candidate.id === extensionId)
+      if (!extension) return false
+
+      const manifest = (extension.manifest ?? {}) as Record<string, unknown>
+      const declared = new Set<string>()
+      for (const field of ['permissions', 'optional_permissions']) {
+        const values = manifest[field]
+        if (!Array.isArray(values)) continue
+        for (const item of values) if (typeof item === 'string') declared.add(item)
+      }
+      if (!declared.has('privacy')) return false
+
+      if (!hasAllExtensionPermissions(profileId, extensionId, ['privacy'])) {
+        const routeWindow =
+          windowForAnyWebContents(event.sender) ??
+          allWindows().find((candidate) => candidate.profile === profileId) ??
+          activeWindow()
+        if (!routeWindow) return false
+        const granted = await requestExtensionPermissions({
+          profileId,
+          extensionId,
+          extensionName: extension.name,
+          keys: ['privacy.passwordSavingEnabled'],
+          sender: event.sender,
+          sendPrompt: (request) =>
+            routeWindow.sendToChrome(IpcChannels.ExtensionPermissionRequest, request),
+          onCancelled: (id) =>
+            routeWindow.sendToChrome(IpcChannels.ExtensionPermissionRequestCancelled, { id })
+        })
+        if (!granted) return false
+        recordExtensionPermissionDecision(profileId, extensionId, ['privacy'], 'allow')
+      }
+
+      setSettings(profileId, PRIVACY_PASSWORD_SAVING_KEY, value)
+      if (!event.sender.isDestroyed()) {
+        event.sender.send(IpcChannels.ExtensionPrivacyChangedEvent, { key, value })
+      }
+      return true
     }
   )
 

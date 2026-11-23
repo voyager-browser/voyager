@@ -191,6 +191,15 @@ test('prompts before granting a new extension permission', async ({ launchVoyage
   // The extension page stays alive while the chrome prompt is answered, so the
   // permission callback can report the persisted decision.
   await expect(popup!.locator('#permission-result')).toHaveText('permission granted')
+
+  // Bitwarden-style privacy settings must be reachable after the grant and
+  // must persist without showing the same prompt again.
+  await popup!.getByRole('button', { name: 'Disable password saving' }).click()
+  await expect(popup!.locator('#privacy-result')).toHaveText('password saving off')
+  const setting = await popup!.evaluate(() =>
+    (globalThis as any).chrome.privacy.services.passwordSavingEnabled.get({})
+  )
+  expect(setting.value).toBe(false)
 })
 
 test('exchanges native messages between an extension and a native host', async ({

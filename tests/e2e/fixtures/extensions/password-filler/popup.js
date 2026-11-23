@@ -1,5 +1,6 @@
 const tabsResult = document.getElementById('tabs-result')
 const permissionResult = document.getElementById('permission-result')
+const privacyResult = document.getElementById('privacy-result')
 const nativeResult = document.getElementById('native-result')
 const nativePortResult = document.getElementById('native-port-result')
 
@@ -12,6 +13,16 @@ document.getElementById('open-tab')?.addEventListener('click', () => {
 document.getElementById('request-permission')?.addEventListener('click', () => {
   chrome.permissions.request({ permissions: ['privacy'] }, (granted) => {
     if (permissionResult) permissionResult.textContent = granted ? 'permission granted' : 'denied'
+  })
+})
+
+document.getElementById('set-privacy')?.addEventListener('click', () => {
+  chrome.privacy.services.passwordSavingEnabled.set({ value: false }, () => {
+    if (privacyResult) {
+      privacyResult.textContent = chrome.runtime.lastError
+        ? 'privacy blocked'
+        : 'password saving off'
+    }
   })
 })
 

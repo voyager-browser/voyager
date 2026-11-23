@@ -40,5 +40,6 @@ export interface SettingsShape {
   saveFormHistory?: boolean
   installedExtensions?: string[]
   extensionPermissionDecisions?: Record<string, Record<string, 'allow' | 'block'>>
+  passwordSavingEnabled?: boolean
   nativeMessagingHosts?: NativeMessagingHost[]
 }
