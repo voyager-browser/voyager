@@ -136,6 +136,11 @@ export const IpcChannels = {
   ExtensionsUninstall: 'extensions:uninstall',
   ExtensionsOpenPopup: 'extensions:open-popup',
   ExtensionsShowActionMenu: 'extensions:show-action-menu',
+  ExtensionsShowContextMenu: 'extensions:show-context-menu',
+  ExtensionsClosePanel: 'extensions:close-panel',
+  ExtensionsSetPinned: 'extensions:set-pinned',
+  ExtensionsSetSiteAccess: 'extensions:set-site-access',
+  ExtensionsMenuOpen: 'extensions:menu-open',
   ExtensionsStateChanged: 'extensions:state-changed',
   ExtensionWebNavigationEvent: 'extension:web-navigation-event',
 

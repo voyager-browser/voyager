@@ -39,6 +39,10 @@ function handleVoyagerRequest(
     callback({ path: resolveRendererPath(relative) })
     return
   }
+  if (url === 'extension-menu' || url === 'extension-menu/') {
+    callback({ path: resolveRendererPath('extensionMenu.html') })
+    return
+  }
   if (url.startsWith('assets/')) {
     callback({ path: resolveRendererPath(join('assets', url.substring('assets/'.length))) })
     return

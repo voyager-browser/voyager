@@ -45,7 +45,8 @@ export default defineConfig({
         input: {
           main: resolve(__dirname, 'src/renderer/index.html'),
           settings: resolve(__dirname, 'src/renderer/settings.html'),
-          start: resolve(__dirname, 'src/renderer/start.html')
+          start: resolve(__dirname, 'src/renderer/start.html'),
+          extensionMenu: resolve(__dirname, 'src/renderer/extensionMenu.html')
         }
       }
     }

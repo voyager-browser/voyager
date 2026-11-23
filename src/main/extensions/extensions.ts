@@ -1,11 +1,18 @@
 import { existsSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import type { Extension, Session } from 'electron'
-import type { ExtensionActionInfo, ExtensionInfo } from '../../shared/types'
+import type {
+  ExtensionActionInfo,
+  ExtensionHostAccess,
+  ExtensionInfo,
+  ExtensionSiteAccess
+} from '../../shared/types'
 import { getSettings, setSettings } from '../store'
 import { downloadWebStoreCrx, unpackCrx, unpackedExtensionsRoot, webStoreId } from './crx'
 
 const SETTINGS_KEY = 'installedExtensions'
+const PINNED_KEY = 'pinnedExtensions'
+const SITE_ACCESS_KEY = 'extensionSiteAccess'
 
 function isSamePath(first: string, second: string): boolean {
   return resolve(first) === resolve(second)
@@ -31,8 +38,60 @@ function readAction(manifest: Record<string, unknown>): ExtensionActionInfo | nu
       typeof action.default_title === 'string'
         ? action.default_title
         : String(manifest.name ?? 'Extension'),
-    icon
+    icon,
+    iconUrl: null
   }
+}
+
+/** Categorize an extension for the action menu using its manifest permissions. */
+export function hostAccessForManifest(manifest: Record<string, unknown>): ExtensionHostAccess {
+  const permissions = Array.isArray(manifest.permissions)
+    ? (manifest.permissions as unknown[]).filter((item): item is string => typeof item === 'string')
+    : []
+  const hosts = Array.isArray(manifest.host_permissions)
+    ? (manifest.host_permissions as unknown[]).filter(
+        (item): item is string => typeof item === 'string'
+      )
+    : []
+  const allUrls = hosts.some((pattern) => /^(<all_urls>|\*:\/\/\*\/?\*?|\*\/\/\*)$/.test(pattern))
+  if (allUrls || permissions.includes('<all_urls>')) return 'full'
+  const needsAccess =
+    hosts.length > 0 || permissions.includes('activeTab') || permissions.includes('tabs')
+  return needsAccess ? 'request' : 'none'
+}
+
+function pinnedIds(profileId: string): string[] {
+  const stored = getSettings<string[]>(profileId, PINNED_KEY, [])
+  if (!Array.isArray(stored)) return []
+  return stored.filter((id): id is string => typeof id === 'string')
+}
+
+/** Toggle an extension's pinned state; returns the new pinned id list. */
+export function setExtensionPinned(profileId: string, id: string, pinned: boolean): string[] {
+  const next = pinned
+    ? [...new Set([...pinnedIds(profileId), id])]
+    : pinnedIds(profileId).filter((candidate) => candidate !== id)
+  setSettings(profileId, PINNED_KEY, next)
+  return next
+}
+
+function siteAccessMap(profileId: string): Record<string, ExtensionSiteAccess> {
+  const stored = getSettings<Record<string, ExtensionSiteAccess>>(profileId, SITE_ACCESS_KEY, {})
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {}
+  const result: Record<string, ExtensionSiteAccess> = {}
+  for (const [id, value] of Object.entries(stored)) {
+    if (value === 'click' || value === 'site' || value === 'all') result[id] = value
+  }
+  return result
+}
+
+/** Persist a per-extension site-access choice. */
+export function setExtensionSiteAccess(
+  profileId: string,
+  id: string,
+  access: ExtensionSiteAccess
+): void {
+  setSettings(profileId, SITE_ACCESS_KEY, { ...siteAccessMap(profileId), [id]: access })
 }
 
 /** Read and validate the small part of a manifest needed to describe an extension. */
@@ -121,22 +180,58 @@ export function currentExtensionsState(ses: Session, profileId: string): Extensi
   for (const extension of ses.extensions.getAllExtensions()) {
     loaded.set(resolve(extension.path), extension)
   }
+  const pinned = pinnedIds(profileId)
+  const siteAccess = siteAccessMap(profileId)
   return installedExtensionPaths(profileId).map((path) => {
     const extension = loaded.get(resolve(path))
     if (extension) {
+      const manifest = (extension.manifest ?? {}) as Record<string, unknown>
+      const action = readAction(manifest)
+      const iconUrl =
+        action?.icon && extension.id
+          ? (() => {
+              try {
+                return extensionResourceUrl(extension, action.icon as string)
+              } catch {
+                return null
+              }
+            })()
+          : null
       return {
         id: extension.id,
         name: extension.name,
         version: extension.version,
         path,
         loaded: true,
-        action: readAction((extension.manifest ?? {}) as Record<string, unknown>)
+        action: action ? { ...action, iconUrl } : null,
+        hostAccess: hostAccessForManifest(manifest),
+        pinned: extension.id !== null && pinned.includes(extension.id),
+        siteAccess:
+          extension.id !== null && siteAccess[extension.id] ? siteAccess[extension.id] : 'click'
       }
     }
     try {
-      return { id: null, ...manifestSummary(path), path, loaded: false }
+      return {
+        id: null,
+        ...manifestSummary(path),
+        path,
+        loaded: false,
+        hostAccess: 'none' as ExtensionHostAccess,
+        pinned: false,
+        siteAccess: 'click' as ExtensionSiteAccess
+      }
     } catch {
-      return { id: null, name: path, version: '', path, loaded: false, action: null }
+      return {
+        id: null,
+        name: path,
+        version: '',
+        path,
+        loaded: false,
+        action: null,
+        hostAccess: 'none' as ExtensionHostAccess,
+        pinned: false,
+        siteAccess: 'click' as ExtensionSiteAccess
+      }
     }
   })
 }
