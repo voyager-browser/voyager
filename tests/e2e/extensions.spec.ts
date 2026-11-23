@@ -188,22 +188,9 @@ test('prompts before granting a new extension permission', async ({ launchVoyage
   await prompt.getByRole('button', { name: 'Allow', exact: true }).click()
   await expect(prompt).toHaveCount(0)
 
-  // Clicking the chrome prompt dismisses the action popup, as it does in
-  // Chrome. Reopen it and verify the persisted grant through the extension API.
-  await voyager.chrome.evaluate((extensionId) => {
-    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
-  }, id)
-  await expect
-    .poll(async () => {
-      const reopened = voyager.app
-        .windows()
-        .find((page) => page.url().startsWith('chrome-extension://'))
-      if (!reopened) return false
-      return reopened.evaluate(() =>
-        (globalThis as any).chrome.permissions.contains({ permissions: ['privacy'] })
-      )
-    })
-    .toBe(true)
+  // The extension page stays alive while the chrome prompt is answered, so the
+  // permission callback can report the persisted decision.
+  await expect(popup!.locator('#permission-result')).toHaveText('permission granted')
 })
 
 test('exchanges native messages between an extension and a native host', async ({
