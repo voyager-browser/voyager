@@ -1,5 +1,9 @@
 import { execFileSync } from 'node:child_process'
 
 export default function globalSetup(): void {
-  execFileSync('npm', ['run', 'build'], { stdio: 'inherit' })
+  const isWindows = process.platform === 'win32'
+  execFileSync(isWindows ? 'npm.cmd' : 'npm', ['run', 'build'], {
+    stdio: 'inherit',
+    shell: isWindows
+  })
 }
