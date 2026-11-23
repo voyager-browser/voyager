@@ -66,6 +66,7 @@ export function BookmarksBar(): React.JSX.Element | null {
   const openMenu = (event: React.MouseEvent, kind: MenuState['kind'], id?: string): void => {
     event.preventDefault()
     event.stopPropagation()
+    setFolderMenu(null)
     setMenu({ x: event.clientX, y: event.clientY, kind, id })
   }
 
@@ -265,7 +266,10 @@ export function BookmarksBar(): React.JSX.Element | null {
               title={folder.title}
               aria-label={`Folder ${folder.title}`}
               onClick={(event) => {
+                // Modified clicks are handled by the wrapper as a context menu.
+                if (event.ctrlKey || event.metaKey) return
                 const rect = event.currentTarget.getBoundingClientRect()
+                setMenu(null)
                 setFolderMenu({ x: rect.left, y: rect.bottom + 2, folderId: folder.id })
               }}
               className="flex h-[22px] max-w-full items-center gap-1.5 rounded-md px-2 text-[12px] text-fg transition-colors hover:bg-hover"
