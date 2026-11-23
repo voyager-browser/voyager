@@ -180,12 +180,20 @@ export function webStoreId(input: string): string {
 
 /** Download a CRX from Google's update service and return its temporary path. */
 export async function downloadWebStoreCrx(id: string): Promise<string> {
-  const url =
-    'https://clients2.google.com/service/update2/crx?response=redirect&' +
-    `prodversion=120.0.0.0&acceptformat=crx3&x=${encodeURIComponent(`id=${id}&uc`)}`
+  // Google's update service answers 204 No Content when the request looks too
+  // much like an old Chrome client. `installsource=ondemand` and a current
+  // Chromium version are required to get the CRX redirect for Web Store ids.
+  const params = new URLSearchParams({
+    response: 'redirect',
+    prod: 'chromecrx',
+    prodversion: process.versions.chrome || '141.0.0.0',
+    acceptformat: 'crx2,crx3',
+    x: `id=${id}&installsource=ondemand&uc`
+  })
+  const url = `https://clients2.google.com/service/update2/crx?${params.toString()}`
   let response: Response
   try {
-    response = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(30_000) })
+    response = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(60_000) })
   } catch {
     throw new Error('Could not reach the Chrome Web Store. Check your connection and try again.')
   }
@@ -193,6 +201,9 @@ export async function downloadWebStoreCrx(id: string): Promise<string> {
     throw new Error(`The Chrome Web Store returned HTTP ${response.status} for ${id}.`)
   }
   const file = Buffer.from(await response.arrayBuffer())
+  if (file.length === 0 || file.toString('ascii', 0, 4) !== 'Cr24') {
+    throw new Error('The Chrome Web Store did not return an extension package for this id.')
+  }
   crxArchive(file)
   const temporaryPath = join(tmpdir(), `voyager-extension-${randomUUID()}.crx`)
   writeFileSync(temporaryPath, file)
