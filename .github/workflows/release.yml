@@ -20,13 +20,13 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux
-            artifact: linux-appimage
+            artifact: linux-packages
           - os: macos-latest
             platform: mac
-            artifact: macos-pkg
+            artifact: macos-installers
           - os: windows-latest
             platform: win
-            artifact: windows-msi
+            artifact: windows-installers
 
     steps:
       - name: Checkout
@@ -64,12 +64,15 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.platform == 'mac' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
           APPLE_TEAM_ID: ${{ matrix.platform == 'mac' && secrets.APPLE_TEAM_ID || '' }}
 
-      - name: Upload installer and updater metadata
+      - name: Upload installers and updater metadata
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: |
             dist/*.AppImage
+            dist/*.rpm
+            dist/*.deb
+            dist/*.dmg
             dist/*.pkg
             dist/*.msi
             dist/*.yml
@@ -102,6 +105,9 @@ jobs:
           body_path: release-notes.md
           files: |
             artifacts/**/*.AppImage
+            artifacts/**/*.rpm
+            artifacts/**/*.deb
+            artifacts/**/*.dmg
             artifacts/**/*.pkg
             artifacts/**/*.msi
             artifacts/**/*.yml
