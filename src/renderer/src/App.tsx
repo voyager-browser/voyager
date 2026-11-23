@@ -78,8 +78,12 @@ export default function App(): React.JSX.Element {
 
   // Extension menus and popups live in their own in-window views. Clicking
   // anywhere in the chrome dismisses them, just like Chrome's toolbar UI.
+  // Dialogs are exempt: answering one must not destroy the extension page that
+  // is waiting for the permission result.
   useEffect(() => {
-    const dismiss = (): void => {
+    const dismiss = (event: MouseEvent): void => {
+      const target = event.target
+      if (target instanceof Element && target.closest('[role="dialog"]')) return
       void window.voyager.extensions.closePanel()
     }
     document.addEventListener('mousedown', dismiss)
