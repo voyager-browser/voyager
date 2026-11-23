@@ -1480,11 +1480,9 @@ export function registerIpcHandlers(context: IpcContext): void {
       const extensionId = extensionIdForSender(event.sender)
       if (!extensionId) return null
       const profileId = profileFor(event as any)
-      const owner =
-        windowForAnyWebContents(event.sender) ??
-        allWindows().find((candidate) => candidate.profile === profileId) ??
-        activeWindow()
-      if (!owner) return null
+      const sendToSender = (channel: string, payload: unknown): void => {
+        if (!event.sender.isDestroyed()) event.sender.send(channel, payload)
+      }
       try {
         return connectNative(
           {
@@ -1493,12 +1491,9 @@ export function registerIpcHandlers(context: IpcContext): void {
             extensionId,
             sender: event.sender,
             onMessage: (message, id) =>
-              owner.sendToChrome(IpcChannels.ExtensionNativeMessageEvent, {
-                portId: id,
-                message
-              }),
+              sendToSender(IpcChannels.ExtensionNativeMessageEvent, { portId: id, message }),
             onDisconnect: (id) =>
-              owner.sendToChrome(IpcChannels.ExtensionNativeDisconnectEvent, { portId: id })
+              sendToSender(IpcChannels.ExtensionNativeDisconnectEvent, { portId: id })
           },
           portId
         )
