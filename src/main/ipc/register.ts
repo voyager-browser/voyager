@@ -1041,15 +1041,12 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(
-    IpcChannels.AutofillGetFillData,
-    (event, payload: { kind?: unknown }) => {
-      const profileId = profileForSender(event.sender)
-      const kind = payload?.kind
-      if (kind !== 'address' && kind !== 'contact' && kind !== 'payment') return []
-      return getAutofillProfileSuggestions(profileId, kind)
-    }
-  )
+  ipcMain.handle(IpcChannels.AutofillGetFillData, (event, payload: { kind?: unknown }) => {
+    const profileId = profileForSender(event.sender)
+    const kind = payload?.kind
+    if (kind !== 'address' && kind !== 'contact' && kind !== 'payment') return []
+    return getAutofillProfileSuggestions(profileId, kind)
+  })
 
   /* ---- downloads ------------------------------------------------------ */
 

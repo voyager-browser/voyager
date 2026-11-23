@@ -51,4 +51,10 @@ export async function applyProxyConfig(ses: Session, config: ProxyConfig): Promi
   })
 }
 
-export { isProxyMode, isProxyScheme, normalizeProxyHost, normalizeProxyPort, normalizeProxyBypassRules }
+export {
+  isProxyMode,
+  isProxyScheme,
+  normalizeProxyHost,
+  normalizeProxyPort,
+  normalizeProxyBypassRules
+}

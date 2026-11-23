@@ -139,9 +139,7 @@ export function TabStrip(): React.JSX.Element {
                 tab={tab}
                 active={tab.id === activeTabId}
                 selected={selectedIds.includes(tab.id)}
-                split={
-                  splitTabId !== null && (tab.id === splitTabId || tab.id === activeTabId)
-                }
+                split={splitTabId !== null && (tab.id === splitTabId || tab.id === activeTabId)}
                 dragging={dragId === tab.id}
                 dropTarget={overId === tab.id}
                 onSelect={(event) => handleSelect(tab.id, event)}

@@ -72,7 +72,11 @@ export function ensureProfileSession(profileId: string): Session {
   registerVoyagerProtocol(ses.protocol)
   attachPermissionHandlers(ses, profileId)
   if (autoRemoveStalePermissions(profileId)) {
-    broadcastToProfile(profileId, IpcChannels.PermissionsStateChanged, currentSitePermissions(profileId))
+    broadcastToProfile(
+      profileId,
+      IpcChannels.PermissionsStateChanged,
+      currentSitePermissions(profileId)
+    )
   }
   void applyProxyForProfile(ses, profileId)
   applyUserAgentForProfile(ses, profileId)

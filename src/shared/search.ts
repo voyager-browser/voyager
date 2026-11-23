@@ -22,8 +22,7 @@ export const SEARCH_ENGINES = {
   },
   bing: {
     name: 'Bing',
-    search: (query: string): string =>
-      `https://www.bing.com/search?q=${encodeURIComponent(query)}`,
+    search: (query: string): string => `https://www.bing.com/search?q=${encodeURIComponent(query)}`,
     suggest: (partial: string): string =>
       `https://api.bing.com/osjson.aspx?query=${encodeURIComponent(partial)}`
   },
@@ -69,9 +68,7 @@ export function parseSuggestions(text: string): string[] {
     if (data && typeof data === 'object' && 'suggestions' in data) {
       const suggestions = (data as { suggestions?: unknown }).suggestions
       if (Array.isArray(suggestions)) {
-        return suggestions
-          .filter((item): item is string => typeof item === 'string')
-          .slice(0, 6)
+        return suggestions.filter((item): item is string => typeof item === 'string').slice(0, 6)
       }
     }
     return []

@@ -6,7 +6,10 @@ interface NameWindowDialogProps {
   onClose: () => void
 }
 
-export function NameWindowDialog({ open, onClose }: NameWindowDialogProps): React.JSX.Element | null {
+export function NameWindowDialog({
+  open,
+  onClose
+}: NameWindowDialogProps): React.JSX.Element | null {
   const [value, setValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 

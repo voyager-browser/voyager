@@ -109,9 +109,7 @@ test('incognito site-wide permission choices do not leak into the normal profile
   server
 }) => {
   await voyager.chrome.evaluate(() => window.voyager.windows.openIncognito())
-  await expect
-    .poll(async () => (await chromePages(voyager.app)).length)
-    .toBeGreaterThanOrEqual(2)
+  await expect.poll(async () => (await chromePages(voyager.app)).length).toBeGreaterThanOrEqual(2)
   const incognitoChrome = (await chromePages(voyager.app)).find((page) => page !== voyager.chrome)
   if (!incognitoChrome) throw new Error('Incognito window not found')
 

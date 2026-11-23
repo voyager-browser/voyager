@@ -125,8 +125,8 @@ export function PageInfoPopover({ url, title }: PageInfoPopoverProps): React.JSX
 
           {!stats.enabled ? (
             <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
-              Tracker blocking is off for this profile. Turn it on in Settings to use the Block
-              here toggle and stop ads and trackers from loading.
+              Tracker blocking is off for this profile. Turn it on in Settings to use the Block here
+              toggle and stop ads and trackers from loading.
             </p>
           ) : (
             <>

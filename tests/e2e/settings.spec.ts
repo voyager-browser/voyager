@@ -97,7 +97,10 @@ test('theme changes broadcast to the chrome window', async ({ voyager }) => {
     .toBe(true)
 
   // Revert.
-  await settings.locator('[data-settings-section="appearance"]').getByLabel(/^system$/i).click()
+  await settings
+    .locator('[data-settings-section="appearance"]')
+    .getByLabel(/^system$/i)
+    .click()
   await expect
     .poll(async () => {
       const chromeTheme = await voyager.chrome.evaluate(() => window.voyager.theme.get())
@@ -236,7 +239,6 @@ test('opens settings from the titlebar gear', async ({ voyager }) => {
   await expect.poll(async () => windowCount(voyager.app), { timeout: 10_000 }).toBe(before + 1)
 })
 
-
 test('proxy settings default to system and persist per profile', async ({ voyager }) => {
   const settings = await openSettings(voyager)
 
@@ -288,15 +290,19 @@ test('settings changes target the settings profile, not the active browser windo
   await profileBChrome.bringToFront()
 
   await expect
-    .poll(async () => (await profileBChrome.evaluate(() => window.voyager.settings.get())).verticalTabs)
+    .poll(
+      async () => (await profileBChrome.evaluate(() => window.voyager.settings.get())).verticalTabs
+    )
     .toBe(false)
 
   await settings.evaluate(() => window.voyager.settings.set('verticalTabs', true))
 
   await expect
-    .poll(async () => (await voyager.chrome.evaluate(() => window.voyager.settings.get())).verticalTabs)
+    .poll(
+      async () => (await voyager.chrome.evaluate(() => window.voyager.settings.get())).verticalTabs
+    )
     .toBe(true)
-  expect(
-    (await profileBChrome.evaluate(() => window.voyager.settings.get())).verticalTabs
-  ).toBe(false)
+  expect((await profileBChrome.evaluate(() => window.voyager.settings.get())).verticalTabs).toBe(
+    false
+  )
 })
