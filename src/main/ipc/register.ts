@@ -1228,6 +1228,11 @@ export function registerIpcHandlers(context: IpcContext): void {
 
       const width = 420
       const height = 600
+      const manifest = extension.manifest as Record<string, unknown> | undefined
+      const action = manifest?.action as Record<string, unknown> | undefined
+      const title =
+        (typeof action?.default_title === 'string' ? action.default_title : extension.name) ||
+        extension.name
       // Resolve the owner from the sender: context.getWindow() falls back to
       // the active window, which may be a different window when the click
       // comes from a chrome WebContentsView.
@@ -1240,7 +1245,8 @@ export function registerIpcHandlers(context: IpcContext): void {
       const popup = new BrowserWindow({
         width,
         height,
-        frame: false,
+        title: `${title} — Voyager`,
+        autoHideMenuBar: true,
         resizable: false,
         show: false,
         skipTaskbar: true,
