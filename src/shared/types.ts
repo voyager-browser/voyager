@@ -293,6 +293,26 @@ export interface ContentBlockingStats {
   exceptions: string[]
 }
 
+/** Toolbar action declared by an extension manifest. */
+export interface ExtensionActionInfo {
+  /** Manifest-relative popup document, when the action has one. */
+  popup: string | null
+  title: string
+  /** Manifest-relative icon path, when one is declared. */
+  icon: string | null
+}
+
+/** An unpacked extension loaded for a profile. */
+export interface ExtensionInfo {
+  /** Chrome-assigned id; null when the stored path failed to load. */
+  id: string | null
+  name: string
+  version: string
+  path: string
+  loaded: boolean
+  action: ExtensionActionInfo | null
+}
+
 export interface UserPreferences {
   clearHistory: boolean
   clearDownloads: boolean

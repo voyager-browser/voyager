@@ -15,7 +15,8 @@ import { findLaunchUrl } from './launch/urlArgument'
 import { queuePendingUrls, takePendingUrls } from './launch/pendingUrls'
 import { DEFAULT_PROFILE_ID } from '../shared/profiles'
 import { lastProfileId } from './profiles/profiles'
-import { ensureProfileSession } from './profiles/session'
+import { ensureProfileSession, sessionForProfile } from './profiles/session'
+import { attachExtensions } from './extensions/extensions'
 
 app.setName('Voyager')
 
@@ -105,6 +106,10 @@ app.whenReady().then(async (): Promise<void> => {
   ensureProfileSession(DEFAULT_PROFILE_ID)
   const startupProfileId = lastProfileId()
   ensureProfileSession(startupProfileId)
+  // Have extension content scripts ready before the first page loads, so a
+  // password manager can act on the start page immediately.
+  await attachExtensions(sessionForProfile(DEFAULT_PROFILE_ID), DEFAULT_PROFILE_ID)
+  await attachExtensions(sessionForProfile(startupProfileId), startupProfileId)
 
   controller = new WindowController({
     profileId: startupProfileId,
