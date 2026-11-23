@@ -57,9 +57,9 @@ export const useBookmarksStore = create<BookmarksStore>()((set, get) => ({
     const browser = useBrowserStore.getState()
     const tab = browser.tabs.find((candidate) => candidate.id === browser.activeTabId)
     if (!tab || isNewTab(tab.url)) return
-    const existing = get().items.find(
-      (item) => item.url === tab.url && (item.folderId ?? null) === null
-    )
+    // Match the toolbar star: any bookmark for this URL counts, no matter
+    // which folder holds it.
+    const existing = get().items.find((item) => item.url === tab.url)
     if (existing) {
       apply(window.voyager.bookmarks.remove(existing.id))
       return
