@@ -233,6 +233,7 @@ export function BookmarksBar(): React.JSX.Element | null {
   return (
     <nav
       aria-label="Bookmarks bar"
+      data-chrome-surface
       className="no-drag relative flex h-[30px] shrink-0 items-center gap-0.5 border-b border-border bg-bg px-1.5"
       onContextMenu={(event) => openMenu(event, 'root')}
       {...barDropProps}

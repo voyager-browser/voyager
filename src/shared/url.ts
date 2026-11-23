@@ -1,4 +1,5 @@
 import { DEFAULT_NEW_TAB_URL } from './constants'
+import type { StartPageThemeParams } from './theme'
 
 /** Heuristics for whether omnibox input is a URL or a search query. */
 
@@ -123,12 +124,38 @@ export function isVoyagerInternalUrl(url: string): boolean {
   return url.startsWith('voyager://') || isNewTab(url)
 }
 
-/**
- * Build the internal start page URL. The search engine travels in the query
- * string so the page can render without access to privileged IPC APIs.
- */
-export function startPageUrl(engine: string, incognito: boolean): string {
+/** Query string shared by the packaged and dev-server start pages. */
+export function startPageQuery(
+  engine: string,
+  incognito: boolean,
+  appearance?: StartPageThemeParams
+): URLSearchParams {
   const params = new URLSearchParams({ engine })
   if (incognito) params.set('incognito', '1')
-  return `${DEFAULT_NEW_TAB_URL}?${params.toString()}`
+  if (appearance?.profileId) params.set('profile', appearance.profileId)
+  if (appearance?.version) params.set('v', String(appearance.version))
+  if (appearance?.colors) {
+    params.set('base', appearance.colors.background)
+    params.set('fg', appearance.colors.foreground)
+    params.set('accent', appearance.colors.accent)
+  }
+  const background = appearance?.background
+  if (background && background.kind !== 'default') {
+    params.set('bg', background.kind)
+    if (background.kind === 'color' && background.color) params.set('bgc', background.color)
+    if (background.kind === 'image' && background.image) params.set('bgi', background.image)
+  }
+  return params
+}
+
+/**
+ * Build the internal start page URL. The search engine and appearance travel
+ * in the query string so the page can render without privileged IPC APIs.
+ */
+export function startPageUrl(
+  engine: string,
+  incognito: boolean,
+  appearance?: StartPageThemeParams
+): string {
+  return `${DEFAULT_NEW_TAB_URL}?${startPageQuery(engine, incognito, appearance).toString()}`
 }

@@ -27,6 +27,10 @@ export const IpcChannels = {
 
   ThemeGet: 'theme:get',
   ThemeSet: 'theme:set',
+  ThemeSetColors: 'theme:set-colors',
+  ThemeSetStartPage: 'theme:set-start-page',
+  ThemeImport: 'theme:import',
+  ThemeReset: 'theme:reset',
   ThemeChanged: 'theme:changed',
 
   TabsGetState: 'tabs:get-state',

@@ -1,8 +1,11 @@
 /** Persisted user preferences; new settings extend this shape over time. */
 import type { SearchEngineId } from '../../shared/search'
+import type { BrowserTheme, StartPageBackground } from '../../shared/types'
 
 export interface SettingsShape {
   themeMode?: 'system' | 'light' | 'dark'
+  browserTheme?: BrowserTheme
+  startPageBackground?: StartPageBackground
   bookmarksBarVisible?: boolean
   clearHistory?: boolean
   clearDownloads?: boolean
