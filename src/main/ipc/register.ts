@@ -1140,15 +1140,15 @@ export function registerIpcHandlers(context: IpcContext): void {
     return profile
   })
 
-  ipcMain.handle(IpcChannels.ProfilesDelete, (event, id: string) => {
+  ipcMain.handle(IpcChannels.ProfilesDelete, async (event, id: string) => {
     if (typeof id !== 'string' || id === DEFAULT_PROFILE_ID) {
       throw new Error('Profile cannot be deleted')
     }
-    // Close windows using the profile before removing its data.
+    // Close windows using the profile before clearing its session and files.
     for (const window of allWindows()) {
       if (window.profile === id && !window.window.isDestroyed()) window.window.close()
     }
-    deleteProfile(id)
+    await deleteProfile(id)
     setLastProfileId(DEFAULT_PROFILE_ID)
     broadcastProfiles()
     void event
