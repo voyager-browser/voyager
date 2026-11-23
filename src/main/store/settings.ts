@@ -37,4 +37,5 @@ export interface SettingsShape {
   autofillProfiles?: boolean
   autofillPayments?: boolean
   saveFormHistory?: boolean
+  installedExtensions?: string[]
 }

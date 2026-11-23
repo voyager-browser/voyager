@@ -68,7 +68,12 @@ function isSettingsPage(page: Page): boolean {
 }
 
 function isTabPage(page: Page): boolean {
-  return !isChromePage(page) && !isSettingsPage(page) && !page.url().startsWith('devtools://')
+  return (
+    !isChromePage(page) &&
+    !isSettingsPage(page) &&
+    !page.url().startsWith('devtools://') &&
+    !page.url().startsWith('chrome-extension://')
+  )
 }
 
 async function waitForChrome(app: ElectronApplication): Promise<Page> {

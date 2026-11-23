@@ -1,4 +1,14 @@
-import { app, clipboard, ipcMain, nativeTheme, type WebContents } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  nativeTheme,
+  screen,
+  type WebContents
+} from 'electron'
+import { resolve } from 'node:path'
 import { IpcChannels } from '../../shared/ipc-channels'
 import { isPermissionKind, isPermissionRequestChoice } from '../../shared/permissions'
 import {
@@ -16,6 +26,7 @@ import type {
   BookmarksState,
   CertificateExportFormat,
   ClearBrowsingDataOptions,
+  ExtensionInfo,
   NewBookmarkFolderInput,
   NewBookmarkInput,
   NewTabRequest,
@@ -129,6 +140,13 @@ import {
   saveContact,
   savePaymentMethod
 } from '../autofill/autofill'
+import {
+  currentExtensionsState,
+  extensionResourceUrl,
+  installExtension,
+  installExtensionFromStore,
+  uninstallExtension
+} from '../extensions/extensions'
 
 import { isDefaultBrowser, setDefaultBrowser } from '../defaultBrowser'
 import {
@@ -1047,6 +1065,159 @@ export function registerIpcHandlers(context: IpcContext): void {
     if (kind !== 'address' && kind !== 'contact' && kind !== 'payment') return []
     return getAutofillProfileSuggestions(profileId, kind)
   })
+
+  /* ---- extensions ------------------------------------------------------ */
+
+  const publishExtensions = (profileId: string, state: ExtensionInfo[]): ExtensionInfo[] => {
+    sendToProfile(profileId, IpcChannels.ExtensionsStateChanged, state)
+    return state
+  }
+
+  const extensionPopups = new Map<string, BrowserWindow>()
+
+  ipcMain.handle(IpcChannels.ExtensionsGetState, (event) => {
+    const profileId = profileFor(event as any)
+    return currentExtensionsState(sessionForProfile(profileId), profileId)
+  })
+
+  ipcMain.handle(IpcChannels.ExtensionsChooseDirectory, async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Load unpacked extension',
+      properties: ['openDirectory']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle(IpcChannels.ExtensionsChooseCrx, async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Install CRX extension',
+      filters: [{ name: 'Chrome extensions', extensions: ['crx'] }],
+      properties: ['openFile']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle(IpcChannels.ExtensionsInstall, async (event, path: unknown) => {
+    if (typeof path !== 'string' || path.trim() === '') {
+      throw new Error('Choose an extension folder or CRX file first.')
+    }
+    const profileId = profileFor(event as any)
+    const state = await installExtension(sessionForProfile(profileId), profileId, path)
+    return publishExtensions(profileId, state)
+  })
+
+  ipcMain.handle(IpcChannels.ExtensionsInstallFromStore, async (event, input: unknown) => {
+    if (typeof input !== 'string' || input.trim() === '') {
+      throw new Error('Enter a Chrome Web Store URL or extension id.')
+    }
+    const profileId = profileFor(event as any)
+    const state = await installExtensionFromStore(sessionForProfile(profileId), profileId, input)
+    return publishExtensions(profileId, state)
+  })
+
+  ipcMain.handle(IpcChannels.ExtensionsUninstall, (event, path: unknown) => {
+    if (typeof path !== 'string' || path.trim() === '') {
+      throw new Error('No extension selected.')
+    }
+    const profileId = profileFor(event as any)
+    const ses = sessionForProfile(profileId)
+    const extension = ses.extensions
+      .getAllExtensions()
+      .find((candidate) => resolve(candidate.path) === resolve(path))
+    if (extension) extensionPopups.get(extension.id)?.close()
+    const state = uninstallExtension(ses, profileId, path)
+    return publishExtensions(profileId, state)
+  })
+
+  ipcMain.handle(
+    IpcChannels.ExtensionsOpenPopup,
+    (
+      event,
+      payload: {
+        id?: unknown
+        resource?: unknown
+        x?: unknown
+        y?: unknown
+      }
+    ) => {
+      if (typeof payload?.id !== 'string' || typeof payload.resource !== 'string') {
+        throw new Error('The extension action is invalid.')
+      }
+      const profileId = profileFor(event as any)
+      const ses = sessionForProfile(profileId)
+      const extension = ses.extensions
+        .getAllExtensions()
+        .find((candidate) => candidate.id === payload.id)
+      if (!extension) throw new Error('That extension is no longer loaded.')
+
+      const existing = extensionPopups.get(extension.id)
+      if (existing && !existing.isDestroyed()) {
+        existing.focus()
+        return true
+      }
+
+      const width = 420
+      const height = 600
+      const owner = context.getWindow(event as any)
+      const bounds = owner?.window.getContentBounds() ?? { x: 0, y: 0 }
+      const x = (typeof payload.x === 'number' ? payload.x : 0) + bounds.x
+      const y = (typeof payload.y === 'number' ? payload.y : 0) + bounds.y
+      const area = screen.getDisplayMatching({ x, y, width: 1, height: 1 }).workArea
+      const popup = new BrowserWindow({
+        width,
+        height,
+        frame: false,
+        resizable: false,
+        show: false,
+        skipTaskbar: true,
+        webPreferences: {
+          session: ses,
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: true
+        }
+      })
+      popup.setMenu(null)
+      popup.setPosition(
+        Math.max(area.x, Math.min(Math.round(x), area.x + area.width - width)),
+        Math.max(area.y, Math.min(Math.round(y), area.y + area.height - height))
+      )
+      extensionPopups.set(extension.id, popup)
+
+      const base = extension.url.endsWith('/') ? extension.url : `${extension.url}/`
+      const openExternal = (url: string): void => {
+        if (/^https?:\/\//i.test(url)) context.openWindow?.(url, profileId)
+      }
+      popup.webContents.on('will-navigate', (navigationEvent, url) => {
+        if (url.startsWith(base)) return
+        navigationEvent.preventDefault()
+        openExternal(url)
+      })
+      popup.webContents.setWindowOpenHandler(({ url }) => {
+        if (url.startsWith(base)) return { action: 'allow' }
+        openExternal(url)
+        return { action: 'deny' }
+      })
+      popup.webContents.on('before-input-event', (_inputEvent, input) => {
+        if (input.type === 'keyDown' && input.key === 'Escape') popup.close()
+      })
+      popup.on('blur', () => popup.close())
+      const closeWithOwner = (): void => popup.close()
+      owner?.window.once('closed', closeWithOwner)
+      popup.once('closed', () => {
+        owner?.window.off('closed', closeWithOwner)
+        if (extensionPopups.get(extension.id) === popup) extensionPopups.delete(extension.id)
+      })
+      popup.once('ready-to-show', () => popup.show())
+      void popup.loadURL(extensionResourceUrl(extension, payload.resource)).catch((error) => {
+        console.warn('[extensions] Could not open extension popup:', error)
+        popup.close()
+      })
+      return true
+    }
+  )
 
   /* ---- downloads ------------------------------------------------------ */
 

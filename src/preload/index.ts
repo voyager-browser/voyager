@@ -17,6 +17,7 @@ import type {
   ClearBrowsingDataOptions,
   ContentBlockingStats,
   DownloadsState,
+  ExtensionInfo,
   HistoryState,
   NewBookmarkFolderInput,
   NewBookmarkInput,
@@ -99,6 +100,23 @@ const api = {
       ipcRenderer.invoke(IpcChannels.ContentBlockingGetStats),
     setSiteEnabled: (site: string, enabled: boolean): Promise<ContentBlockingStats> =>
       ipcRenderer.invoke(IpcChannels.ContentBlockingSetSiteEnabled, site, enabled)
+  },
+
+  extensions: {
+    getState: (): Promise<ExtensionInfo[]> => ipcRenderer.invoke(IpcChannels.ExtensionsGetState),
+    chooseDirectory: (): Promise<string | null> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsChooseDirectory),
+    chooseCrx: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.ExtensionsChooseCrx),
+    install: (path: string): Promise<ExtensionInfo[]> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsInstall, path),
+    installFromStore: (url: string): Promise<ExtensionInfo[]> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsInstallFromStore, url),
+    uninstall: (path: string): Promise<ExtensionInfo[]> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsUninstall, path),
+    openPopup: (id: string, resource: string, x: number, y: number): Promise<boolean> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsOpenPopup, { id, resource, x, y }),
+    onStateChanged: (listener: (extensions: ExtensionInfo[]) => void): Unsubscribe =>
+      subscribe<ExtensionInfo[]>(IpcChannels.ExtensionsStateChanged, listener)
   },
 
   browsingData: {

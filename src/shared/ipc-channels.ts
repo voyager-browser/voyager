@@ -128,6 +128,15 @@ export const IpcChannels = {
   AutofillRecordFormField: 'autofill:record-form-field',
   AutofillGetFillData: 'autofill:get-fill-data',
 
+  ExtensionsGetState: 'extensions:get-state',
+  ExtensionsChooseDirectory: 'extensions:choose-directory',
+  ExtensionsChooseCrx: 'extensions:choose-crx',
+  ExtensionsInstall: 'extensions:install',
+  ExtensionsInstallFromStore: 'extensions:install-from-store',
+  ExtensionsUninstall: 'extensions:uninstall',
+  ExtensionsOpenPopup: 'extensions:open-popup',
+  ExtensionsStateChanged: 'extensions:state-changed',
+
   WindowsOpen: 'windows:open',
   WindowsOpenIncognito: 'windows:open-incognito',
   WindowsGetState: 'windows:get-state',

@@ -3,6 +3,7 @@ import { IpcChannels } from '../../shared/ipc-channels'
 import type { ProfilesState } from '../../shared/profiles'
 import { attachContentBlocking, primeContentBlocking } from '../contentBlocking/contentBlocking'
 import { attachDownloadsTracking } from '../downloads/downloads'
+import { attachExtensions } from '../extensions/extensions'
 import {
   attachPermissionHandlers,
   autoRemoveStalePermissions,
@@ -89,5 +90,6 @@ export function ensureProfileSession(profileId: string): Session {
     broadcastToProfile(profileId, IpcChannels.DownloadsStateChanged, state)
   )
   void runTopSitesPreload(ses, profileId)
+  void attachExtensions(ses, profileId)
   return ses
 }
