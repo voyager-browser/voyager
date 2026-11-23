@@ -17,11 +17,15 @@ interface ExtensionPermissionsDetails {
 
 const TABS_CREATE_BRIDGE = '__voyagerExtensionTabsCreate'
 const PERMISSIONS_BRIDGE = '__voyagerExtensionPermissions'
+const NATIVE_CONNECT_BRIDGE = '__voyagerExtensionNativeConnect'
+const NATIVE_POST_BRIDGE = '__voyagerExtensionNativePost'
+const NATIVE_DISCONNECT_BRIDGE = '__voyagerExtensionNativeDisconnect'
+const NATIVE_SEND_BRIDGE = '__voyagerExtensionNativeSend'
 
 /**
- * Install `chrome.webNavigation` and the missing `chrome.tabs.create` method in
- * extension main worlds. Electron's extension support omits both, so extensions
- * that register navigation listeners or open tabs throw at startup.
+ * Install the Chrome extension APIs Electron omits: `webNavigation`,
+ * `tabs.create`, `permissions`, and native messaging. This function is
+ * serialized into the extension's main world, so it must be self-contained.
  *
  * This function is serialized into the main world by `executeInMainWorld`, so
  * it must not close over anything outside its own body.
@@ -96,7 +100,7 @@ function install(): void {
     }
   }
 
-  const createTab = (globalThis as any)[TABS_CREATE_BRIDGE]
+  const createTab = (globalThis as any).__voyagerExtensionTabsCreate
   if (typeof createTab === 'function' && !chrome.tabs?.create) {
     try {
       const tabs = chrome.tabs ?? {}
@@ -124,7 +128,7 @@ function install(): void {
     }
   }
 
-  const permissionBridge = (globalThis as any)[PERMISSIONS_BRIDGE]
+  const permissionBridge = (globalThis as any).__voyagerExtensionPermissions
   if (
     typeof permissionBridge === 'function' &&
     (!chrome.permissions?.request ||
@@ -157,6 +161,119 @@ function install(): void {
       console.warn('[voyager] Could not install chrome.permissions shim:', error)
     }
   }
+
+  const nativeConnect = (globalThis as any).__voyagerExtensionNativeConnect
+  const nativePost = (globalThis as any).__voyagerExtensionNativePost
+  const nativeDisconnect = (globalThis as any).__voyagerExtensionNativeDisconnect
+  const nativeSend = (globalThis as any).__voyagerExtensionNativeSend
+  if (
+    typeof nativeConnect === 'function' &&
+    typeof nativePost === 'function' &&
+    typeof nativeDisconnect === 'function' &&
+    typeof nativeSend === 'function' &&
+    (!chrome.runtime?.connectNative || !chrome.runtime?.sendNativeMessage)
+  ) {
+    try {
+      const portRecords = new Map<
+        string,
+        { message: Set<(message: any) => void>; disconnect: Set<() => void> }
+      >()
+      const emit = (listeners: Set<any>, argument?: any): void => {
+        for (const listener of [...listeners]) {
+          try {
+            listener(argument)
+          } catch {
+            // One bad extension listener must not break the native port.
+          }
+        }
+      }
+
+      Object.defineProperty(globalThis, '__voyagerExtensionNativeMessage', {
+        value: (payload: { portId?: string; message?: any } | undefined): void => {
+          const record = payload?.portId ? portRecords.get(payload.portId) : undefined
+          if (record) emit(record.message, payload?.message)
+        },
+        configurable: true
+      })
+      Object.defineProperty(globalThis, '__voyagerExtensionNativeDisconnectDispatch', {
+        value: (payload: { portId?: string } | undefined): void => {
+          const portId = payload?.portId
+          if (!portId) return
+          const record = portRecords.get(portId)
+          if (!record) return
+          portRecords.delete(portId)
+          emit(record.disconnect)
+        },
+        configurable: true
+      })
+
+      const makeEvent = (listeners: Set<any>) => ({
+        addListener(listener: any): void {
+          listeners.add(listener)
+        },
+        removeListener(listener: any): void {
+          listeners.delete(listener)
+        },
+        hasListener(listener: any): boolean {
+          return listeners.has(listener)
+        }
+      })
+      const makePortId = (): string =>
+        typeof globalThis.crypto?.randomUUID === 'function'
+          ? globalThis.crypto.randomUUID()
+          : `port-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+      const runtime = chrome.runtime ?? {}
+      if (!runtime.connectNative) {
+        runtime.connectNative = (hostName: string): any => {
+          const portId = makePortId()
+          const record: {
+            message: Set<(message: any) => void>
+            disconnect: Set<() => void>
+          } = { message: new Set(), disconnect: new Set() }
+          portRecords.set(portId, record)
+          void Promise.resolve(nativeConnect(hostName, portId)).then((result: unknown) => {
+            if (typeof result !== 'string') {
+              portRecords.delete(portId)
+              emit(record.disconnect)
+            }
+          })
+          return {
+            name: hostName,
+            onMessage: makeEvent(record.message),
+            onDisconnect: makeEvent(record.disconnect),
+            postMessage(message: any): void {
+              void nativePost(portId, message)
+            },
+            disconnect(): void {
+              portRecords.delete(portId)
+              void nativeDisconnect(portId)
+            }
+          }
+        }
+      }
+      if (!runtime.sendNativeMessage) {
+        runtime.sendNativeMessage = (
+          hostName: string,
+          message: any,
+          callback?: (response: any) => void
+        ): Promise<any> => {
+          const result = Promise.resolve(nativeSend(hostName, message))
+          if (typeof callback === 'function') void result.then(callback)
+          return result
+        }
+      }
+      if (!chrome.runtime) {
+        Object.defineProperty(chrome, 'runtime', {
+          value: runtime,
+          enumerable: true,
+          configurable: true
+        })
+      }
+    } catch (error) {
+      console.warn('[voyager] Could not install native messaging shim:', error)
+    }
+  }
 }
 
 const inExtension =
@@ -178,24 +295,79 @@ if (inExtension) {
     }
   })
 
+  ipcRenderer.on(
+    IpcChannels.ExtensionNativeMessageEvent,
+    (_event, payload: { portId: string; message: unknown }) => {
+      const dispatch = (value: typeof payload): void => {
+        const handler = (globalThis as any).__voyagerExtensionNativeMessage
+        if (handler) handler(value)
+      }
+      if (process.contextIsolated) {
+        void contextBridge.executeInMainWorld({
+          func: (eventPayload: { portId: string; message: unknown }) => {
+            const handler = (globalThis as any).__voyagerExtensionNativeMessage
+            if (handler) handler(eventPayload)
+          },
+          args: [payload]
+        })
+      } else {
+        dispatch(payload)
+      }
+    }
+  )
+  ipcRenderer.on(
+    IpcChannels.ExtensionNativeDisconnectEvent,
+    (_event, payload: { portId: string }) => {
+      const dispatch = (value: typeof payload): void => {
+        const handler = (globalThis as any).__voyagerExtensionNativeDisconnectDispatch
+        if (handler) handler(value)
+      }
+      if (process.contextIsolated) {
+        void contextBridge.executeInMainWorld({
+          func: (eventPayload: { portId: string }) => {
+            const handler = (globalThis as any).__voyagerExtensionNativeDisconnectDispatch
+            if (handler) handler(eventPayload)
+          },
+          args: [payload]
+        })
+      } else {
+        dispatch(payload)
+      }
+    }
+  )
+
   const createTabBridge = (details: ExtensionTabsCreateDetails): Promise<unknown> =>
     ipcRenderer.invoke(IpcChannels.ExtensionTabsCreate, details)
-  const permissionsBridge = (details: ExtensionPermissionsDetails & { checkOnly?: boolean }) =>
-    ipcRenderer.invoke(IpcChannels.ExtensionPermissionRequest, details)
+  const permissionsBridge = (
+    details: ExtensionPermissionsDetails & { mode?: string; checkOnly?: boolean }
+  ) => ipcRenderer.invoke(IpcChannels.ExtensionPermissionRequest, details)
+  const nativeConnectBridge = (hostName: string, portId: string): Promise<unknown> =>
+    ipcRenderer.invoke(IpcChannels.ExtensionNativeConnect, hostName, portId)
+  const nativePostBridge = (portId: string, message: unknown): Promise<unknown> =>
+    ipcRenderer.invoke(IpcChannels.ExtensionNativePostMessage, portId, message)
+  const nativeDisconnectBridge = (portId: string): Promise<unknown> =>
+    ipcRenderer.invoke(IpcChannels.ExtensionNativeDisconnect, portId)
+  const nativeSendBridge = (hostName: string, message: unknown): Promise<unknown> =>
+    ipcRenderer.invoke(IpcChannels.ExtensionNativeSendMessage, hostName, message)
+
+  const bridges: Record<string, (...args: any[]) => Promise<unknown>> = {
+    [TABS_CREATE_BRIDGE]: createTabBridge,
+    [PERMISSIONS_BRIDGE]: permissionsBridge,
+    [NATIVE_CONNECT_BRIDGE]: nativeConnectBridge,
+    [NATIVE_POST_BRIDGE]: nativePostBridge,
+    [NATIVE_DISCONNECT_BRIDGE]: nativeDisconnectBridge,
+    [NATIVE_SEND_BRIDGE]: nativeSendBridge
+  }
   if (process.contextIsolated) {
-    contextBridge.exposeInMainWorld(TABS_CREATE_BRIDGE, createTabBridge)
-    contextBridge.exposeInMainWorld(PERMISSIONS_BRIDGE, permissionsBridge)
+    for (const [key, value] of Object.entries(bridges)) {
+      contextBridge.exposeInMainWorld(key, value)
+    }
     void contextBridge.executeInMainWorld({ func: install })
   } else {
     // Service worker preload realms share the main world.
-    Object.defineProperty(globalThis, TABS_CREATE_BRIDGE, {
-      value: createTabBridge,
-      configurable: true
-    })
-    Object.defineProperty(globalThis, PERMISSIONS_BRIDGE, {
-      value: permissionsBridge,
-      configurable: true
-    })
+    for (const [key, value] of Object.entries(bridges)) {
+      Object.defineProperty(globalThis, key, { value, configurable: true })
+    }
     install()
   }
 }

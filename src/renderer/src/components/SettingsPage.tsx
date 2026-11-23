@@ -41,6 +41,7 @@ import type {
   AutofillState,
   ContentBlockingStats,
   ExtensionInfo,
+  NativeMessagingHost,
   ThemeMode,
   UserPreferences
 } from '../../../shared/types'
@@ -213,6 +214,10 @@ export function SettingsPage(): React.JSX.Element {
   const [extensionError, setExtensionError] = useState<string | null>(null)
   const [installingExtension, setInstallingExtension] = useState(false)
   const [storeUrl, setStoreUrl] = useState('')
+  const [nativeHosts, setNativeHosts] = useState<NativeMessagingHost[]>([])
+  const [nativeHostName, setNativeHostName] = useState('')
+  const [nativeHostPath, setNativeHostPath] = useState('')
+  const [nativeHostOrigins, setNativeHostOrigins] = useState('')
 
   useEffect(() => {
     const bookmarks = useBookmarksStore.getState()
@@ -231,6 +236,7 @@ export function SettingsPage(): React.JSX.Element {
     void window.voyager.profiles.getState().then(setProfiles)
     void window.voyager.autofill.getState().then(setAutofill)
     void window.voyager.extensions.getState().then(setExtensions)
+    void window.voyager.extensions.getNativeHosts().then(setNativeHosts)
 
     const unsubscribes = [
       window.voyager.profiles.onStateChanged(setProfiles),
@@ -325,6 +331,47 @@ export function SettingsPage(): React.JSX.Element {
       setExtensions(await window.voyager.extensions.uninstall(path))
     } catch (error) {
       setExtensionError(error instanceof Error ? error.message : 'Could not remove extension.')
+    }
+  }
+
+  const addNativeHost = async (): Promise<void> => {
+    const name = nativeHostName.trim()
+    const path = nativeHostPath.trim()
+    const allowedOrigins = nativeHostOrigins
+      .split(/[\s,]+/)
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+    if (!name || !path || allowedOrigins.length === 0) {
+      setExtensionError('Enter a host name, executable path, and at least one allowed origin.')
+      return
+    }
+    setExtensionError(null)
+    try {
+      const next = [
+        ...nativeHosts.filter((host) => host.name !== name),
+        { name, path, allowedOrigins }
+      ]
+      setNativeHosts(await window.voyager.extensions.setNativeHosts(next))
+      setNativeHostName('')
+      setNativeHostPath('')
+      setNativeHostOrigins('')
+    } catch (error) {
+      setExtensionError(error instanceof Error ? error.message : 'Could not save the native host.')
+    }
+  }
+
+  const removeNativeHost = async (name: string): Promise<void> => {
+    setExtensionError(null)
+    try {
+      setNativeHosts(
+        await window.voyager.extensions.setNativeHosts(
+          nativeHosts.filter((host) => host.name !== name)
+        )
+      )
+    } catch (error) {
+      setExtensionError(
+        error instanceof Error ? error.message : 'Could not remove the native host.'
+      )
     }
   }
 
@@ -2031,13 +2078,79 @@ export function SettingsPage(): React.JSX.Element {
                     ))
                   )}
                 </div>
+                <div className="mt-5 border-t border-border pt-4">
+                  <h3 className="mb-1 text-[13px] font-semibold text-fg">Native messaging hosts</h3>
+                  <p className="mb-3 text-[12px] text-muted">
+                    Register executables that extensions may exchange JSON messages with. Each host
+                    needs an absolute path and the extension origins allowed to contact it.
+                  </p>
+                  <div className="grid gap-2">
+                    <input
+                      value={nativeHostName}
+                      onChange={(event) => setNativeHostName(event.target.value)}
+                      placeholder="Host name, e.g. com.example.password_manager"
+                      aria-label="Native messaging host name"
+                      className="rounded-md border border-border bg-background px-3 py-1.5 text-[12px] text-fg placeholder:text-muted"
+                    />
+                    <input
+                      value={nativeHostPath}
+                      onChange={(event) => setNativeHostPath(event.target.value)}
+                      placeholder="Absolute path to the executable"
+                      aria-label="Native messaging host executable path"
+                      className="rounded-md border border-border bg-background px-3 py-1.5 text-[12px] text-fg placeholder:text-muted"
+                    />
+                    <input
+                      value={nativeHostOrigins}
+                      onChange={(event) => setNativeHostOrigins(event.target.value)}
+                      placeholder="chrome-extension://abcdefghijklmnop/"
+                      aria-label="Allowed extension origins"
+                      className="rounded-md border border-border bg-background px-3 py-1.5 text-[12px] text-fg placeholder:text-muted"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void addNativeHost()}
+                      className="w-fit rounded-md border border-border px-3 py-1.5 text-[13px] text-fg hover:bg-hover"
+                    >
+                      Add native host
+                    </button>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {nativeHosts.length === 0 ? (
+                      <p className="text-[12px] text-muted">
+                        No native messaging hosts registered.
+                      </p>
+                    ) : (
+                      nativeHosts.map((host) => (
+                        <div
+                          key={host.name}
+                          className="flex items-start justify-between gap-3 rounded-md border border-border px-3 py-2"
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate text-[13px] text-fg">{host.name}</div>
+                            <div className="truncate text-[11px] text-muted">{host.path}</div>
+                            <div className="truncate text-[11px] text-muted">
+                              {host.allowedOrigins.join(', ')}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void removeNativeHost(host.name)}
+                            className="shrink-0 rounded-md border border-border px-2 py-1 text-[12px] text-fg hover:bg-hover"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
                 <p className="mt-4 text-[11px] text-muted">
                   Extensions run in this profile only and are loaded again on startup. CRX packages
                   are unpacked into Voyager's profile storage. Web Store downloads depend on Google
                   continuing to serve the extension package. Electron does not implement every
-                  Chrome extension API. Voyager supplies `chrome.webNavigation`, but extensions may
-                  still log unknown-permission warnings or fail in background scripts that use other
-                  unsupported APIs.
+                  Chrome extension API. Voyager supplies `chrome.webNavigation`, `tabs.create`,
+                  `permissions`, and native messaging, but extensions may still log
+                  unknown-permission warnings or fail in scripts that use other unsupported APIs.
                 </p>
               </section>
             )}
