@@ -57,6 +57,7 @@ export function Omnibox(): React.JSX.Element {
   const prevUrlRef = useRef(activeUrl)
   useEffect(() => {
     if (prevUrlRef.current !== activeUrl) {
+      setHighlight(0)
       if (!isNewTab(activeUrl)) {
         setFocused(false)
         inputRef.current?.blur()
@@ -67,13 +68,17 @@ export function Omnibox(): React.JSX.Element {
   }, [activeUrl])
 
   useEffect(() => {
-    if (!focused) setValue(displayUrl(activeUrl))
+    if (!focused) {
+      setValue(displayUrl(activeUrl))
+      setHighlight(0)
+    }
   }, [activeUrl, focused])
 
   useEffect(() => {
     const handleFocus = (): void => {
       setValue(isNewTab(activeUrl) ? '' : activeUrl)
       setFocused(true)
+      setHighlight(0)
       setPageInfoOpen(false)
       inputRef.current?.focus()
       inputRef.current?.select()
@@ -85,6 +90,7 @@ export function Omnibox(): React.JSX.Element {
   const prevTabIdRef = useRef<string | null>(null)
   useEffect(() => {
     if (prevTabIdRef.current !== null && prevTabIdRef.current !== activeTabId) {
+      setHighlight(0)
       if (focused) {
         setValue(isNewTab(activeUrl) ? '' : activeUrl)
         inputRef.current?.select()
@@ -104,23 +110,35 @@ export function Omnibox(): React.JSX.Element {
   const showDropdown = focused && value.trim() !== '' && !pageInfoOpen
   const rowCount = suggestions.length + 1 // index 0 is "search for ..."
 
+  // A refresh can remove rows out from under the current highlight.
+  useEffect(() => {
+    setHighlight((index) => (index < rowCount ? index : 0))
+  }, [rowCount])
+
   // Let the dropdown / page-info popover escape the chrome strip.
   useOverlaySignal(showDropdown || pageInfoOpen)
 
   const searchFor = (query: string): void => {
     navigate(buildSearchUrl(searchEngine, query))
     setFocused(false)
+    setHighlight(0)
     inputRef.current?.blur()
   }
   const submit = (): void => {
     if (value.trim() === '') return
     navigate(value)
     setFocused(false)
+    setHighlight(0)
     inputRef.current?.blur()
   }
   const runRow = (index: number): void => {
-    if (index === 0) submit()
-    else searchFor(suggestions[index - 1])
+    if (index === 0) {
+      submit()
+      return
+    }
+    const suggestion = suggestions[index - 1]
+    if (suggestion === undefined) return
+    searchFor(suggestion)
   }
 
   return (
@@ -141,11 +159,13 @@ export function Omnibox(): React.JSX.Element {
           onFocus={() => {
             setValue(isNewTab(activeUrl) ? '' : activeUrl)
             setFocused(true)
+            setHighlight(0)
             setPageInfoOpen(false)
           }}
           onBlur={(event) => {
             if (rootRef.current?.contains(event.relatedTarget as Node)) return
             setFocused(false)
+            setHighlight(0)
             setValue(displayUrl(activeUrl))
           }}
           onChange={(event) => {
@@ -164,6 +184,7 @@ export function Omnibox(): React.JSX.Element {
               runRow(highlight)
             } else if (event.key === 'Escape') {
               setFocused(false)
+              setHighlight(0)
               setValue(displayUrl(activeUrl))
               inputRef.current?.blur()
             }
