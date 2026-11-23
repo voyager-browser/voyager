@@ -1,9 +1,38 @@
-import { test as base } from '@playwright/test'
+import { test as base, type TestInfo } from '@playwright/test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startTestServer, type TestServer } from './helpers/server'
 import { launchVoyager, type VoyagerApp } from './helpers/voyager'
+
+const capturedApps = new WeakSet<VoyagerApp>()
+
+/**
+ * Electron windows are not part of Playwright's automatic screenshot recorder,
+ * so attach their screenshots explicitly for UI mode and HTML reports.
+ */
+export async function attachWindowScreenshots(
+  voyager: VoyagerApp,
+  testInfo: TestInfo
+): Promise<void> {
+  if (capturedApps.has(voyager)) return
+  capturedApps.add(voyager)
+
+  const pages = voyager
+    .pages()
+    .filter((page) => !page.isClosed() && !page.url().startsWith('devtools://'))
+  for (const [index, page] of pages.entries()) {
+    try {
+      const body = await page.screenshot({ timeout: 5_000 })
+      await testInfo.attach(index === 0 ? 'screenshot' : `screenshot-${index + 1}`, {
+        body,
+        contentType: 'image/png'
+      })
+    } catch {
+      // A window can close mid-capture; keep screenshots of the other windows.
+    }
+  }
+}
 
 interface LaunchOverrides {
   userDataDir?: string
@@ -38,7 +67,7 @@ export const test = base.extend<Fixtures>({
     await server.close()
   },
 
-  launchVoyager: async ({ userDataDir, downloadDir }, provide) => {
+  launchVoyager: async ({ userDataDir, downloadDir }, provide, testInfo) => {
     const launched: VoyagerApp[] = []
     const launch = async (overrides: LaunchOverrides = {}): Promise<VoyagerApp> => {
       const voyager = await launchVoyager({
@@ -47,6 +76,11 @@ export const test = base.extend<Fixtures>({
         seed: overrides.seed,
         args: overrides.args
       })
+      const close = voyager.close
+      voyager.close = async () => {
+        await attachWindowScreenshots(voyager, testInfo)
+        await close()
+      }
       launched.push(voyager)
       return voyager
     }

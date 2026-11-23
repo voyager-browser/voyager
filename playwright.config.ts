@@ -16,7 +16,8 @@ export default defineConfig({
   use: {
     actionTimeout: 10_000,
     trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
+    // UI mode only shows screenshots that were attached to the test result.
+    screenshot: process.env.CI ? 'only-on-failure' : 'on',
     video: 'off'
   }
 })
