@@ -24,7 +24,7 @@ test('revisiting the same URL increments the visit count', async ({ voyager, ser
 
   // Force another load so did-navigate fires again.
   await voyager.chrome.evaluate((url) => window.voyager.navigation.go(url), server.url('/home'))
-  await expect.poll(async () => !(await voyager.activeTab()).loading)
+  await expect.poll(async () => !(await voyager.activeTab()).loading).toBe(true)
 
   await expect
     .poll(async () => {

@@ -232,7 +232,7 @@ test('reloads the active tab when requested', async ({ voyager, server }) => {
   const countBefore = Number(await voyager.tab.locator('#hits').textContent())
 
   await voyager.chrome.evaluate(() => window.voyager.navigation.reload())
-  await expect.poll(async () => !(await voyager.activeTab()).loading)
+  await expect.poll(async () => !(await voyager.activeTab()).loading).toBe(true)
   await expect
     .poll(async () => Number(await voyager.tab.locator('#hits').textContent()))
     .toBeGreaterThan(countBefore)

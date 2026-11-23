@@ -68,11 +68,11 @@ test('page-level reload and force-reload shortcuts', async ({ voyager, server })
   await voyager.navigate(server.url('/count'))
   const countUrl = server.url('/count')
   await expect.poll(async () => (await voyager.activeTab()).url).toBe(countUrl)
-  await expect.poll(async () => !(await voyager.activeTab()).loading)
+  await expect.poll(async () => !(await voyager.activeTab()).loading).toBe(true)
   const countBefore = Number(await voyager.tab.locator('#hits').textContent())
 
   await pressPageShortcut(voyager, 'r', ['meta'])
-  await expect.poll(async () => !(await voyager.activeTab()).loading)
+  await expect.poll(async () => !(await voyager.activeTab()).loading).toBe(true)
   await expect
     .poll(async () => Number(await voyager.tab.locator('#hits').textContent()))
     .toBeGreaterThan(countBefore)
