@@ -232,8 +232,10 @@ export function registerIpcHandlers(context: IpcContext): void {
   // Apply the persisted theme before any renderer starts.
   nativeTheme.themeSource = getThemeMode()
 
+  // Use the sender's browser window first: context.getWindow() falls back to
+  // the active window for settings IPC, which would misroute profile actions.
   const profileFor = (event?: SenderEvent): string =>
-    context.getWindow(event)?.profile ??
+    windowForAnyWebContents(event?.sender)?.profile ??
     (event?.sender ? settingsProfileFor(event.sender) : null) ??
     activeWindow()?.profile ??
     DEFAULT_PROFILE_ID

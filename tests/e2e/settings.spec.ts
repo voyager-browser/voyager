@@ -1,6 +1,13 @@
+import type { ElectronApplication, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
 import { openSettings, windowCount } from './helpers/voyager'
 import { primaryKey } from './helpers/voyager'
+
+async function chromePages(app: ElectronApplication): Promise<Page[]> {
+  return app
+    .windows()
+    .filter((page) => !page.isClosed() && /\/renderer\/index\.html(?:[?#]|$)/.test(page.url()))
+}
 
 test('opens settings with the Cmd/Ctrl+, shortcut', async ({ voyager }) => {
   const before = await windowCount(voyager.app)
@@ -264,4 +271,32 @@ test('proxy settings default to system and persist per profile', async ({ voyage
   await expect
     .poll(async () => (await settings.evaluate(() => window.voyager.settings.get())).proxyMode)
     .toBe('direct')
+})
+
+test('settings changes target the settings profile, not the active browser window', async ({
+  voyager
+}) => {
+  const settings = await openSettings(voyager)
+
+  const profileB = await voyager.chrome.evaluate(() =>
+    window.voyager.profiles.create({ name: 'Settings Scope B' })
+  )
+  await voyager.chrome.evaluate((id) => window.voyager.profiles.openWindow(id), profileB.id)
+  await expect.poll(async () => (await chromePages(voyager.app)).length).toBe(2)
+  const profileBChrome = (await chromePages(voyager.app)).find((page) => page !== voyager.chrome)
+  if (!profileBChrome) throw new Error('Second browser window not found')
+  await profileBChrome.bringToFront()
+
+  await expect
+    .poll(async () => (await profileBChrome.evaluate(() => window.voyager.settings.get())).verticalTabs)
+    .toBe(false)
+
+  await settings.evaluate(() => window.voyager.settings.set('verticalTabs', true))
+
+  await expect
+    .poll(async () => (await voyager.chrome.evaluate(() => window.voyager.settings.get())).verticalTabs)
+    .toBe(true)
+  expect(
+    (await profileBChrome.evaluate(() => window.voyager.settings.get())).verticalTabs
+  ).toBe(false)
 })
