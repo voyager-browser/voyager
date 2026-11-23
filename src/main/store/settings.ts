@@ -39,4 +39,5 @@ export interface SettingsShape {
   autofillPayments?: boolean
   saveFormHistory?: boolean
   installedExtensions?: string[]
+  extensionPermissionDecisions?: Record<string, Record<string, 'allow' | 'block'>>
 }

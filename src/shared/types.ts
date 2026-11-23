@@ -153,6 +153,16 @@ export interface PermissionPromptCancelled {
   id: string
 }
 
+export type ExtensionPermissionChoice = 'allow' | 'block' | 'dismiss'
+
+export interface ExtensionPermissionRequest {
+  id: string
+  extensionId: string
+  extensionName: string
+  permissions: string[]
+  origins: string[]
+}
+
 /** A synchronous `window.prompt()` waiting for a value in the chrome UI. */
 export interface PromptRequest {
   id: string

@@ -1,4 +1,4 @@
-import type { PermissionKind, PermissionRequestChoice } from './types'
+import type { ExtensionPermissionChoice, PermissionKind, PermissionRequestChoice } from './types'
 
 /** Every category in the order Settings and prompts should present them. */
 export const PERMISSION_KINDS: readonly PermissionKind[] = [
@@ -43,6 +43,34 @@ export const PERMISSION_ACTIONS: Record<PermissionKind, string> = {
 
 export function isPermissionKind(value: unknown): value is PermissionKind {
   return typeof value === 'string' && (PERMISSION_KINDS as readonly string[]).includes(value)
+}
+
+/**
+ * Permission strings declared by extensions that need a plain-language warning.
+ * Unknown permissions fall back to a generic "Use this permission" label.
+ */
+export const EXTENSION_PERMISSION_LABELS: Record<string, string> = {
+  privacy: 'Change your privacy-related settings',
+  tabs: 'See your browsing tabs and activity',
+  nativeMessaging: 'Communicate with cooperating native applications',
+  downloads: 'Download files',
+  bookmarks: 'Read and change your bookmarks',
+  history: 'Read and change your browsing history',
+  notifications: 'Show notifications',
+  contextMenus: 'Add items to context menus',
+  scripting: 'Read and change site content',
+  storage: 'Store extension data'
+}
+
+export function extensionPermissionLabel(permission: string): string {
+  if (permission.startsWith('origin:')) {
+    return `Access ${permission.slice('origin:'.length)}`
+  }
+  return EXTENSION_PERMISSION_LABELS[permission] ?? `Use the ${permission} permission`
+}
+
+export function isExtensionPermissionChoice(value: unknown): value is ExtensionPermissionChoice {
+  return value === 'allow' || value === 'block' || value === 'dismiss'
 }
 
 export function isPermissionRequestChoice(value: unknown): value is PermissionRequestChoice {

@@ -10,7 +10,13 @@ interface ExtensionTabsCreateDetails {
   index?: number
 }
 
+interface ExtensionPermissionsDetails {
+  permissions?: string[]
+  origins?: string[]
+}
+
 const TABS_CREATE_BRIDGE = '__voyagerExtensionTabsCreate'
+const PERMISSIONS_BRIDGE = '__voyagerExtensionPermissions'
 
 /**
  * Install `chrome.webNavigation` and the missing `chrome.tabs.create` method in
@@ -91,32 +97,65 @@ function install(): void {
   }
 
   const createTab = (globalThis as any)[TABS_CREATE_BRIDGE]
-  if (typeof createTab !== 'function') return
-  if (chrome.tabs && typeof chrome.tabs.create === 'function') return
-
-  try {
-    const tabs = chrome.tabs ?? {}
-    Object.defineProperty(tabs, 'create', {
-      value: (
-        details?: ExtensionTabsCreateDetails,
-        callback?: (tab: { id: number; url?: string }) => void
-      ): Promise<{ id: number; url?: string }> => {
-        const input = details && typeof details === 'object' ? details : {}
-        const result = Promise.resolve(createTab(input)).then((id: unknown) => ({
-          id: typeof id === 'number' ? id : 0,
-          url: typeof input.url === 'string' ? input.url : undefined
-        }))
-        if (typeof callback === 'function') void result.then(callback)
-        return result
-      },
-      enumerable: true,
-      configurable: true
-    })
-    if (!chrome.tabs) {
-      Object.defineProperty(chrome, 'tabs', { value: tabs, enumerable: true, configurable: true })
+  if (typeof createTab === 'function' && !chrome.tabs?.create) {
+    try {
+      const tabs = chrome.tabs ?? {}
+      Object.defineProperty(tabs, 'create', {
+        value: (
+          details?: ExtensionTabsCreateDetails,
+          callback?: (tab: { id: number; url?: string }) => void
+        ): Promise<{ id: number; url?: string }> => {
+          const input = details && typeof details === 'object' ? details : {}
+          const result = Promise.resolve(createTab(input)).then((id: unknown) => ({
+            id: typeof id === 'number' ? id : 0,
+            url: typeof input.url === 'string' ? input.url : undefined
+          }))
+          if (typeof callback === 'function') void result.then(callback)
+          return result
+        },
+        enumerable: true,
+        configurable: true
+      })
+      if (!chrome.tabs) {
+        Object.defineProperty(chrome, 'tabs', { value: tabs, enumerable: true, configurable: true })
+      }
+    } catch (error) {
+      console.warn('[voyager] Could not install chrome.tabs.create shim:', error)
     }
-  } catch (error) {
-    console.warn('[voyager] Could not install chrome.tabs.create shim:', error)
+  }
+
+  const permissionBridge = (globalThis as any)[PERMISSIONS_BRIDGE]
+  if (
+    typeof permissionBridge === 'function' &&
+    (!chrome.permissions?.request ||
+      !chrome.permissions?.contains ||
+      !chrome.permissions?.getAll ||
+      !chrome.permissions?.remove)
+  ) {
+    try {
+      const permissions = chrome.permissions ?? {}
+      const call =
+        (mode: 'request' | 'contains' | 'getAll' | 'remove') =>
+        (details?: ExtensionPermissionsDetails, callback?: (result: any) => void): Promise<any> => {
+          const input = details && typeof details === 'object' ? details : {}
+          const result = Promise.resolve(permissionBridge({ ...input, mode }))
+          if (typeof callback === 'function') void result.then(callback)
+          return result
+        }
+      if (!permissions.request) permissions.request = call('request')
+      if (!permissions.contains) permissions.contains = call('contains')
+      if (!permissions.getAll) permissions.getAll = call('getAll')
+      if (!permissions.remove) permissions.remove = call('remove')
+      if (!chrome.permissions) {
+        Object.defineProperty(chrome, 'permissions', {
+          value: permissions,
+          enumerable: true,
+          configurable: true
+        })
+      }
+    } catch (error) {
+      console.warn('[voyager] Could not install chrome.permissions shim:', error)
+    }
   }
 }
 
@@ -141,13 +180,20 @@ if (inExtension) {
 
   const createTabBridge = (details: ExtensionTabsCreateDetails): Promise<unknown> =>
     ipcRenderer.invoke(IpcChannels.ExtensionTabsCreate, details)
+  const permissionsBridge = (details: ExtensionPermissionsDetails & { checkOnly?: boolean }) =>
+    ipcRenderer.invoke(IpcChannels.ExtensionPermissionRequest, details)
   if (process.contextIsolated) {
     contextBridge.exposeInMainWorld(TABS_CREATE_BRIDGE, createTabBridge)
+    contextBridge.exposeInMainWorld(PERMISSIONS_BRIDGE, permissionsBridge)
     void contextBridge.executeInMainWorld({ func: install })
   } else {
     // Service worker preload realms share the main world.
     Object.defineProperty(globalThis, TABS_CREATE_BRIDGE, {
       value: createTabBridge,
+      configurable: true
+    })
+    Object.defineProperty(globalThis, PERMISSIONS_BRIDGE, {
+      value: permissionsBridge,
       configurable: true
     })
     install()

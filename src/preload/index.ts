@@ -19,6 +19,8 @@ import type {
   ContentBlockingStats,
   DownloadsState,
   ExtensionInfo,
+  ExtensionPermissionChoice,
+  ExtensionPermissionRequest,
   HistoryState,
   NewBookmarkFolderInput,
   NewBookmarkInput,
@@ -133,7 +135,13 @@ const api = {
         listener
       ),
     onStateChanged: (listener: (extensions: ExtensionInfo[]) => void): Unsubscribe =>
-      subscribe<ExtensionInfo[]>(IpcChannels.ExtensionsStateChanged, listener)
+      subscribe<ExtensionInfo[]>(IpcChannels.ExtensionsStateChanged, listener),
+    onPermissionRequest: (listener: (request: ExtensionPermissionRequest) => void): Unsubscribe =>
+      subscribe<ExtensionPermissionRequest>(IpcChannels.ExtensionPermissionRequest, listener),
+    onPermissionRequestCancelled: (listener: (payload: { id: string }) => void): Unsubscribe =>
+      subscribe<{ id: string }>(IpcChannels.ExtensionPermissionRequestCancelled, listener),
+    respondPermission: (id: string, choice: ExtensionPermissionChoice): Promise<boolean> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionPermissionRespond, id, choice)
   },
 
   browsingData: {
