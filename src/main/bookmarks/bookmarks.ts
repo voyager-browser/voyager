@@ -97,10 +97,12 @@ function revealBarIfNeeded(
   added: boolean,
   setBarExtent?: (visible: boolean) => void
 ): void {
-  if (added && !resolveBookmarksBarVisibility(profileId)) {
-    setSettings(profileId, 'bookmarksBarVisible', true)
-    setBarExtent?.(true)
-  }
+  // The new item is already in the store here. resolveBookmarksBarVisibility()
+  // would therefore see it and report the bar as visible even though no chrome
+  // view has been resized, so use the explicit flag to detect the transition.
+  if (!added || getSettings(profileId, 'bookmarksBarVisible') === true) return
+  setSettings(profileId, 'bookmarksBarVisible', true)
+  setBarExtent?.(true)
 }
 
 /**
