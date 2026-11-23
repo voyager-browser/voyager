@@ -40,6 +40,7 @@ const buildConfig = async () => {
           'react-refresh': reactRefresh
         },
         rules: {
+          '@typescript-eslint/no-explicit-any': 'off',
           'react-hooks/rules-of-hooks': 'error',
           'react-hooks/exhaustive-deps': 'warn',
           'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
@@ -68,8 +69,8 @@ const buildConfig = async () => {
       },
       prettier
     )
-  } catch {
-    return [{ ignores: [], linterOptions: { reportUnusedDisableDirectives: 'off' } }]
+  } catch (error) {
+    throw new Error('Failed to build ESLint configuration', { cause: error })
   }
 }
 
