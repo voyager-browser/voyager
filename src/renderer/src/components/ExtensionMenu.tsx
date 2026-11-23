@@ -1,5 +1,5 @@
 import { Puzzle } from 'lucide-react'
-import { useState, type MouseEvent } from 'react'
+import { useEffect, useState, type MouseEvent } from 'react'
 import type { ExtensionInfo } from '../../../shared/types'
 import { menuAnchorFromElement, type MenuAnchor } from '../lib/menuAnchor'
 import { useOverlaySignal } from '../lib/overlay'
@@ -12,7 +12,25 @@ interface ExtensionMenuProps {
 /** Toolbar menu for extension actions that declare a popup document. */
 export function ExtensionMenu({ extensions }: ExtensionMenuProps): React.JSX.Element | null {
   const [anchor, setAnchor] = useState<MenuAnchor | null>(null)
-  useOverlaySignal(anchor !== null)
+  const hasActions = extensions.some(
+    (extension) => extension.loaded && extension.id && extension.action?.popup
+  )
+  useOverlaySignal(anchor !== null && hasActions)
+
+  // A native popup takes focus away from the chrome renderer, so the DOM menu
+  // would never receive its mouseup/click. Close it as soon as that happens;
+  // otherwise the full-window overlay stays open and hides the browser chrome.
+  useEffect(() => {
+    if (!anchor) return
+    const close = (): void => setAnchor(null)
+    window.addEventListener('blur', close)
+    return () => window.removeEventListener('blur', close)
+  }, [anchor])
+
+  useEffect(() => {
+    if (!hasActions) setAnchor(null)
+  }, [hasActions])
+
   const actions = extensions.filter(
     (extension) => extension.loaded && extension.id && extension.action?.popup
   )
@@ -20,13 +38,10 @@ export function ExtensionMenu({ extensions }: ExtensionMenuProps): React.JSX.Ele
 
   const openPopup = (extension: ExtensionInfo, element: HTMLElement): void => {
     const rect = element.getBoundingClientRect()
-    void window.voyager.extensions.openPopup(
-      extension.id as string,
-      extension.action?.popup as string,
-      rect.right,
-      rect.bottom
-    )
     setAnchor(null)
+    void window.voyager.extensions
+      .openPopup(extension.id as string, extension.action?.popup as string, rect.right, rect.bottom)
+      .catch(() => undefined)
   }
 
   const toggle = (event: MouseEvent<HTMLButtonElement>): void => {

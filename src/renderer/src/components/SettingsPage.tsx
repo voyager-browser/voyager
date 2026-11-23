@@ -1953,9 +1953,9 @@ export function SettingsPage(): React.JSX.Element {
               >
                 <h2 className="mb-1 text-[15px] font-semibold text-fg">Extensions</h2>
                 <p className="mb-4 text-[12px] text-muted">
-                  Install Chrome extensions for this profile from an unpacked folder, a CRX file,
-                  or the Chrome Web Store. Password managers such as Bitwarden can then offer and
-                  fill saved logins.
+                  Install Chrome extensions for this profile from an unpacked folder, a CRX file, or
+                  the Chrome Web Store. Password managers such as Bitwarden can then offer and fill
+                  saved logins.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -2034,7 +2034,9 @@ export function SettingsPage(): React.JSX.Element {
                 <p className="mt-4 text-[11px] text-muted">
                   Extensions run in this profile only and are loaded again on startup. CRX packages
                   are unpacked into Voyager's profile storage. Web Store downloads depend on Google
-                  continuing to serve the extension package.
+                  continuing to serve the extension package. Electron does not implement every
+                  Chrome extension API, so some extensions may log permission warnings or fail in
+                  background scripts that use unsupported APIs such as `webNavigation`.
                 </p>
               </section>
             )}
