@@ -43,6 +43,11 @@ function handleVoyagerRequest(
     callback({ path: resolveRendererPath('extensionMenu.html') })
     return
   }
+  // Relative asset URLs from extensionMenu.html resolve under this host.
+  if (url.startsWith('extension-menu/')) {
+    callback({ path: resolveRendererPath(url.substring('extension-menu/'.length)) })
+    return
+  }
   if (url.startsWith('assets/')) {
     callback({ path: resolveRendererPath(join('assets', url.substring('assets/'.length))) })
     return
