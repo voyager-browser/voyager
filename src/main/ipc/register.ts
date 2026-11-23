@@ -1373,8 +1373,10 @@ export function registerIpcHandlers(context: IpcContext): void {
 
       const owner = windowForAnyWebContents(event.sender)
       const ownerWindow = owner && !owner.window.isDestroyed() ? owner.window : null
-      const x = typeof payload?.x === 'number' ? payload.x : 0
-      const y = typeof payload?.y === 'number' ? payload.y : 0
+      // Electron requires integer coordinates relative to the owner window;
+      // DOM getBoundingClientRect() values are often fractional.
+      const x = Math.round(typeof payload?.x === 'number' ? payload.x : 0)
+      const y = Math.round(typeof payload?.y === 'number' ? payload.y : 0)
       const menu = Menu.buildFromTemplate(
         actions.map((item) => ({
           label: item.action?.title || item.name,
