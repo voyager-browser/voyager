@@ -2,7 +2,9 @@
   "manifest_version": 3,
   "name": "Voyager E2E Password Filler",
   "version": "1.0.0",
-  "description": "Minimal unpacked extension used to verify content script support.",
+  "description": "Minimal unpacked extension used to verify extension API support.",
+  "permissions": ["tabs", "nativeMessaging"],
+  "optional_permissions": ["privacy"],
   "action": {
     "default_title": "Voyager E2E Password Filler",
     "default_popup": "popup.html",

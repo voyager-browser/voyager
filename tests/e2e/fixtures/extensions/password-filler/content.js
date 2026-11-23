@@ -1,4 +1,3 @@
-/* global document */
 ;(() => {
   if (document.getElementById('voyager-e2e-extension')) return
   const marker = document.createElement('div')
