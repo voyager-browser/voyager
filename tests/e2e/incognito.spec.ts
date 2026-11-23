@@ -61,11 +61,16 @@ test('incognito tabs use the user agent of the profile that opened them', async 
   await workChrome.evaluate((ua) => window.voyager.settings.set('userAgent', ua), workUA)
 
   // The named profile's normal tabs are the control: they must show its UA.
-  await workChrome.evaluate((url) => window.voyager.navigation.go(url), server.url('/home'))
+  // Create the tab after setting the preference because the tab preload reads
+  // the profile UA once, when its WebContents is created.
+  await workChrome.evaluate((url) => window.voyager.tabs.create({ url }), server.url('/home'))
   const workTab = await voyager.tabPage('/home')
   await expect.poll(() => workTab.evaluate(() => navigator.userAgent)).toBe(workUA)
 
-  await workChrome.evaluate((url) => window.voyager.windows.openIncognito(url), server.url('/second'))
+  await workChrome.evaluate(
+    (url) => window.voyager.windows.openIncognito(url),
+    server.url('/second')
+  )
   const incognitoChrome = await chromePageForProfile(voyager.app, profile.id, true)
   const incognitoState = await incognitoChrome.evaluate(() => window.voyager.windows.getState())
   expect(incognitoState.incognito).toBe(true)
