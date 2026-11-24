@@ -193,7 +193,10 @@ test('downloads a CRX from the Web Store update service', async () => {
   let requestUrl = ''
   const server = createServer((request, response) => {
     requestUrl = request.url ?? ''
-    response.writeHead(200, { 'content-type': 'application/x-chrome-extension' })
+    response.writeHead(200, {
+      'content-type': 'application/x-chrome-extension',
+      connection: 'close'
+    })
     response.end(crx)
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -203,9 +206,10 @@ test('downloads a CRX from the Web Store update service', async () => {
     const bytes = await downloadChromeWebStoreCrx(STORE_URL, `http://127.0.0.1:${address.port}/crx`)
     const theme = parseCrxTheme(bytes, false)
     expect(theme.name).toBe('Sea Foam')
-    expect(requestUrl).toContain(`id=${STORE_ID}`)
+    expect(decodeURIComponent(requestUrl)).toContain(`id=${STORE_ID}`)
     expect(requestUrl).toContain('acceptformat=crx2%2Ccrx3')
   } finally {
+    server.closeAllConnections?.()
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve()))
     )
