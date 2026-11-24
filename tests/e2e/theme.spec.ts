@@ -1,5 +1,8 @@
+import { createServer } from 'node:http'
 import { parseCrxTheme, parseThemeFiles } from '../../src/main/theme/chromeTheme'
+import { downloadChromeWebStoreCrx } from '../../src/main/theme/chromeStore'
 import {
+  chromeWebStoreExtensionId,
   contrastRatio,
   defaultColors,
   deriveChromeThemeColors,
@@ -84,6 +87,25 @@ const MANIFEST = JSON.stringify({
   }
 })
 
+const STORE_ID = 'lahipjfggmgneaopcckkaipmoandaboo'
+const STORE_URL = `https://chromewebstore.google.com/detail/sea-foam/${STORE_ID}`
+const STORE_MANIFEST = JSON.stringify({
+  manifest_version: 2,
+  name: 'Sea Foam',
+  version: '1.1',
+  theme: {
+    colors: {
+      frame: [178, 224, 223],
+      toolbar: [241, 255, 254],
+      ntp_background: [178, 224, 223],
+      tab_text: [9, 50, 47],
+      tab_background_text: [9, 50, 47],
+      ntp_text: [241, 255, 254]
+    },
+    tints: { buttons: [0.5, 1, 0.1] }
+  }
+})
+
 test('Chrome theme colors map to readable chrome tokens', () => {
   const colors = deriveChromeThemeColors(
     {
@@ -146,6 +168,48 @@ test('parses loose manifest and image files', () => {
 test('rejects archives without a Chrome theme manifest', () => {
   const zip = makeZip([{ name: 'README.txt', content: Buffer.from('not a theme') }])
   expect(() => parseCrxTheme(makeCrx2(zip), false)).toThrow(/manifest\.json/)
+})
+
+test('extracts Chrome Web Store theme ids from URLs and raw ids', () => {
+  expect(chromeWebStoreExtensionId(STORE_URL)).toBe(STORE_ID)
+  expect(chromeWebStoreExtensionId(`${STORE_URL}?hl=en`)).toBe(STORE_ID)
+  expect(chromeWebStoreExtensionId(STORE_ID.toUpperCase())).toBe(STORE_ID)
+  expect(chromeWebStoreExtensionId('https://example.com/theme')).toBeNull()
+})
+
+test('parses a color-only Web Store theme such as Sea Foam', () => {
+  const zip = makeZip([{ name: 'manifest.json', content: Buffer.from(STORE_MANIFEST) }])
+  const theme = parseCrxTheme(makeCrx3(zip), false)
+
+  expect(theme.name).toBe('Sea Foam')
+  expect(theme.image).toBeUndefined()
+  expect(theme.colors.background).toBe('#b2e0df')
+  expect(theme.colors.surface).toBe('#f1fffe')
+  expect(theme.colors.foreground).toBe('#09322f')
+})
+
+test('downloads a CRX from the Web Store update service', async () => {
+  const crx = makeCrx3(makeZip([{ name: 'manifest.json', content: Buffer.from(STORE_MANIFEST) }]))
+  let requestUrl = ''
+  const server = createServer((request, response) => {
+    requestUrl = request.url ?? ''
+    response.writeHead(200, { 'content-type': 'application/x-chrome-extension' })
+    response.end(crx)
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('No test server address')
+    const bytes = await downloadChromeWebStoreCrx(STORE_URL, `http://127.0.0.1:${address.port}/crx`)
+    const theme = parseCrxTheme(bytes, false)
+    expect(theme.name).toBe('Sea Foam')
+    expect(requestUrl).toContain(`id=${STORE_ID}`)
+    expect(requestUrl).toContain('acceptformat=crx2%2Ccrx3')
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve()))
+    )
+  }
 })
 
 test('start page URL carries per-profile appearance without privileged APIs', () => {

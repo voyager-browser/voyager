@@ -118,6 +118,8 @@ const api = {
       ipcRenderer.invoke(IpcChannels.ThemeSetStartPage, input),
     importFiles: (files: ThemeFileInput[]): Promise<ThemeState> =>
       ipcRenderer.invoke(IpcChannels.ThemeImport, files),
+    importStore: (url: string): Promise<ThemeState> =>
+      ipcRenderer.invoke(IpcChannels.ThemeImportStore, url),
     reset: (): Promise<ThemeState> => ipcRenderer.invoke(IpcChannels.ThemeReset),
     onChanged: (listener: (state: ThemeState) => void): Unsubscribe =>
       subscribe<ThemeState>(IpcChannels.ThemeChanged, listener)

@@ -51,8 +51,16 @@ const THEME_SOURCE_VALUES: readonly BrowserThemeSource[] = [
   'default',
   'custom',
   'chrome-crx',
-  'chrome-manifest'
+  'chrome-manifest',
+  'chrome-store'
 ]
+
+/** Extract a Chrome Web Store extension id from a store URL or a raw id. */
+export function chromeWebStoreExtensionId(input: string): string | null {
+  const candidate = input.trim()
+  const match = /(?:^|[/=?&#])([a-p]{32})(?=$|[/?#&=])/i.exec(candidate)
+  return match ? match[1].toLowerCase() : null
+}
 
 const THEME_ASSET_PATTERN = /^voyager:\/\/theme\/[A-Za-z0-9_-]+\/[A-Za-z0-9._-]+(?:\?v=\d+)?$/
 
