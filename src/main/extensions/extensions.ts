@@ -374,8 +374,7 @@ export async function replaceInstalledExtensionFiles(
   newPath: string
 ): Promise<void> {
   const absolute = resolve(path)
-  const unpackedRoot = unpackedExtensionsRoot(profileId)
-  if (absolute === unpackedRoot || !absolute.startsWith(unpackedRoot + sep)) {
+  if (!isManagedExtensionPath(absolute, profileId)) {
     throw new Error('Only downloaded extensions can be auto-updated.')
   }
   const source = resolve(newPath)
