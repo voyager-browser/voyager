@@ -1,5 +1,29 @@
+import { tlsConnectionTarget } from '../../src/main/certificates/tlsTarget'
 import { hasTlsCertificate } from '../../src/shared/url'
 import { expect, test } from './fixtures'
+
+test('certificate lookups strip IPv6 brackets and omit SNI for IP literals', () => {
+  // URL.hostname keeps the brackets that make IPv6 literals valid URL hosts.
+  expect(tlsConnectionTarget(new URL('https://[::1]:8443/').hostname)).toEqual({
+    host: '::1',
+    servername: undefined
+  })
+  expect(tlsConnectionTarget('[2001:db8::1]')).toEqual({
+    host: '2001:db8::1',
+    servername: undefined
+  })
+  expect(tlsConnectionTarget('[fe80::1%25en0]')).toEqual({
+    host: 'fe80::1%25en0',
+    servername: undefined
+  })
+  // Unbracketed literals and IPv4 addresses are never SNI names either.
+  expect(tlsConnectionTarget('::1')).toEqual({ host: '::1', servername: undefined })
+  expect(tlsConnectionTarget('127.0.0.1')).toEqual({ host: '127.0.0.1', servername: undefined })
+  expect(tlsConnectionTarget('example.com')).toEqual({
+    host: 'example.com',
+    servername: 'example.com'
+  })
+})
 
 test('certificate details are only available for HTTPS URLs', () => {
   expect(hasTlsCertificate('https://example.com/')).toBe(true)
