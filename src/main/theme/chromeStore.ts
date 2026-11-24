@@ -18,11 +18,15 @@ export async function downloadChromeWebStoreCrx(
 
   const url = new URL(endpoint)
   url.searchParams.set('response', 'redirect')
+  url.searchParams.set('prod', 'chromecrx')
+  url.searchParams.set('prodversion', process.versions.chrome || '141.0.0.0')
   url.searchParams.set('acceptformat', 'crx2,crx3')
-  url.searchParams.set('prodversion', process.versions.chrome ?? '120.0.0.0')
-  url.searchParams.set('x', `id=${id}&uc`)
+  url.searchParams.set('x', `id=${id}&installsource=ondemand&uc`)
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(20_000) })
+  const response = await fetch(url, {
+    redirect: 'follow',
+    signal: AbortSignal.timeout(60_000)
+  })
   if (!response.ok) throw new Error(`Chrome Web Store returned ${response.status}.`)
   const bytes = new Uint8Array(await response.arrayBuffer())
   if (bytes.byteLength === 0 || bytes.byteLength > MAX_DOWNLOAD_BYTES) {
