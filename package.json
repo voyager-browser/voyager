@@ -82,6 +82,10 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": false
     },
+    "author": {
+      "name": "Voyager developers",
+      "email": "mysticalvoid+voyager@proton.me"
+    },
     "win": {
       "target": [
         {
