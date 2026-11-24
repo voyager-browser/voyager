@@ -429,3 +429,63 @@ document.addEventListener(
   },
   true
 )
+
+/**
+ * Chrome Web Store keeps its install button disabled unless the page detects
+ * Chrome's private extension API. On theme pages, enable that button and send
+ * its click to Voyager's theme importer instead of the extension installer.
+ */
+function installChromeWebStoreThemeButton(): void {
+  if (window.location.hostname !== 'chromewebstore.google.com') return
+
+  const isThemePage = (): boolean =>
+    document.querySelector('a[href*="/category/themes"]') !== null ||
+    /\bTheme\b/.test(document.body?.innerText ?? '')
+
+  const enableInstallButton = (): void => {
+    if (!isThemePage()) return
+    for (const element of document.querySelectorAll('button, [role="button"]')) {
+      const label = element.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+      if (!/\bAdd to (?:Chrome|Desktop)\b/i.test(label)) continue
+      element.removeAttribute('disabled')
+      if (element.getAttribute('aria-disabled') === 'true') {
+        element.removeAttribute('aria-disabled')
+      }
+    }
+  }
+
+  const watchInstallButton = (): void => {
+    enableInstallButton()
+    new MutationObserver(enableInstallButton).observe(document.documentElement ?? document, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['disabled', 'aria-disabled']
+    })
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', watchInstallButton, { once: true })
+  } else {
+    watchInstallButton()
+  }
+
+  document.addEventListener(
+    'click',
+    (event: MouseEvent) => {
+      if (!(event.target instanceof Element) || !isThemePage()) return
+      const button = event.target.closest('button, [role="button"]')
+      const label = button?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+      if (!/\bAdd to (?:Chrome|Desktop)\b/i.test(label)) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      void ipcRenderer.invoke(IpcChannels.ThemeImportStore, window.location.href).catch(() => {
+        // The theme importer reports invalid or unavailable packages in Settings.
+      })
+    },
+    true
+  )
+}
+
+installChromeWebStoreThemeButton()

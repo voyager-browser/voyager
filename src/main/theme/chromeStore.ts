@@ -11,7 +11,7 @@ const MAX_DOWNLOAD_BYTES = 32 * 1024 * 1024
 /** Fetch the CRX for a Chrome Web Store item URL or raw extension id. */
 export async function downloadChromeWebStoreCrx(
   input: string,
-  endpoint = DEFAULT_ENDPOINT
+  endpoint = process.env.VOYAGER_CHROME_WEB_STORE_ENDPOINT ?? DEFAULT_ENDPOINT
 ): Promise<Uint8Array> {
   const id = chromeWebStoreExtensionId(input)
   if (!id) throw new Error('Enter a Chrome Web Store theme URL or 32-character id.')
