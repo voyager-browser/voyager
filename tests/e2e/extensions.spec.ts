@@ -1,5 +1,6 @@
 import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
 import { openSettings, windowCount, type VoyagerApp } from './helpers/voyager'
 
@@ -394,13 +395,16 @@ test('opens a Chrome-style HTML extension menu with grouped actions', async ({ l
     )
     .toBe(true)
 
-  const menu = voyager.app
-    .windows()
-    .find(
-      (page) =>
-        page.url().includes('extensionMenu.html') ||
-        page.url().startsWith('voyager://extension-menu')
-    )
+  const menuPage = (): Page | undefined =>
+    voyager.app
+      .windows()
+      .find(
+        (page) =>
+          page.url().includes('extensionMenu.html') ||
+          page.url().startsWith('voyager://extension-menu')
+      )
+  await expect.poll(() => menuPage() !== undefined).toBe(true)
+  const menu = menuPage()
   expect(menu).toBeDefined()
   await expect(menu!.getByRole('heading', { name: 'Extensions' })).toBeVisible()
   await expect(menu!.getByText('Voyager E2E Password Filler')).toBeVisible()
@@ -435,8 +439,10 @@ test('opens a popup when an extension row in the HTML menu is clicked', async ({
 
   const isMenuPage = (url: string): boolean =>
     url.includes('extensionMenu.html') || url.startsWith('voyager://extension-menu')
-  await expect.poll(() => voyager.app.windows().some((page) => isMenuPage(page.url()))).toBe(true)
-  const menu = voyager.app.windows().find((page) => isMenuPage(page.url()))
+  const menuPage = (): Page | undefined =>
+    voyager.app.windows().find((page) => isMenuPage(page.url()))
+  await expect.poll(() => menuPage() !== undefined).toBe(true)
+  const menu = menuPage()
   const row = menu!.getByRole('button', { name: 'Voyager E2E Password Filler', exact: true })
   await expect(row).toBeVisible()
   await row.click()
