@@ -9,6 +9,7 @@ import type {
 } from '../../shared/types'
 import { getSettings, setSettings } from '../store'
 import { downloadWebStoreCrx, unpackCrx, unpackedExtensionsRoot, webStoreId } from './crx'
+import { removeIllegalExtensionFiles } from './illegalFiles'
 
 const SETTINGS_KEY = 'installedExtensions'
 const PINNED_KEY = 'pinnedExtensions'
@@ -16,6 +17,13 @@ const SITE_ACCESS_KEY = 'extensionSiteAccess'
 
 function isSamePath(first: string, second: string): boolean {
   return resolve(first) === resolve(second)
+}
+
+/** Only scrub Voyager-owned unpack directories, never a user-selected folder. */
+function isManagedExtensionPath(path: string, profileId: string): boolean {
+  const root = resolve(unpackedExtensionsRoot(profileId))
+  const target = resolve(path)
+  return target.startsWith(`${root}${sep}`)
 }
 
 function readAction(manifest: Record<string, unknown>): ExtensionActionInfo | null {
@@ -188,6 +196,7 @@ async function loadStoredExtensions(ses: Session, profileId: string): Promise<vo
   )
   for (const path of installedExtensionPaths(profileId)) {
     if (loaded.has(resolve(path))) continue
+    if (isManagedExtensionPath(path, profileId)) removeIllegalExtensionFiles(path)
     try {
       await ses.extensions.loadExtension(path)
     } catch (error) {
