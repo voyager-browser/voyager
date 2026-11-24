@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
@@ -208,6 +208,30 @@ test('strips illegal Windows metadata from unpacked CRX extensions', async ({
     extensionPath
   )
   expect(removed).toEqual([])
+})
+
+test('cleans illegal metadata from managed unpacks at startup', async ({
+  launchVoyager,
+  userDataDir
+}) => {
+  const extensionPath = join(userDataDir, 'unpacked-extensions', 'default', 'legacy-unpack')
+  mkdirSync(extensionPath, { recursive: true })
+  cpSync(EXTENSION_PATH, extensionPath, { recursive: true })
+  const illegalFile = join(extensionPath, 'desktop.ini')
+  writeFileSync(illegalFile, '[.ShellClassInfo]\r\n')
+
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [extensionPath] } }
+  })
+  const state = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  expect(state).toEqual([
+    expect.objectContaining({
+      name: 'Voyager E2E Password Filler',
+      path: extensionPath,
+      loaded: true
+    })
+  ])
+  expect(existsSync(illegalFile)).toBe(false)
 })
 
 test('opens an extension action popup inside the browser window', async ({ launchVoyager }) => {
