@@ -5,6 +5,8 @@ import { getSettings, setSettings } from '../store'
 
 const DECISIONS_KEY = 'extensionPermissionDecisions'
 const ORIGIN_PREFIX = 'origin:'
+/** Required permissions Voyager grants from the manifest without a prompt. */
+const AUTO_GRANTED_PERMISSIONS = new Set(['nativeMessaging'])
 
 type Decision = 'allow' | 'block'
 type Decisions = Record<string, Record<string, Decision>>
@@ -54,6 +56,31 @@ export function recordExtensionPermissionDecision(
   for (const key of keys) current[key] = decision
   decisions[extensionId] = current
   setSettings(profileId, DECISIONS_KEY, decisions)
+}
+
+/**
+ * Grant permissions the extension already declares in its manifest and that
+ * Voyager supports without user consent. Both MV2 and MV3 use these fields.
+ */
+export function autoGrantDeclaredPermissions(
+  profileId: string,
+  extensionId: string,
+  manifest: Record<string, unknown>
+): string[] {
+  const declared = new Set<string>()
+  for (const field of ['permissions', 'optional_permissions']) {
+    const values = manifest[field]
+    if (!Array.isArray(values)) continue
+    for (const value of values) {
+      if (typeof value === 'string') declared.add(value)
+    }
+  }
+  const granted = [...declared].filter((permission) => AUTO_GRANTED_PERMISSIONS.has(permission))
+  if (granted.length === 0) return []
+  if (!hasAllExtensionPermissions(profileId, extensionId, granted)) {
+    recordExtensionPermissionDecision(profileId, extensionId, granted, 'allow')
+  }
+  return granted
 }
 
 interface PendingRequest {
