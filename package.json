@@ -9,6 +9,10 @@
   "engines": {
     "node": ">=22.12.0"
   },
+  "author": {
+    "name": "Voyager developers",
+    "email": "mysticalvoid+voyager@proton.me"
+  },
   "scripts": {
     "prepare": "husky",
     "dev": "electron-vite dev",
@@ -81,10 +85,6 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": false
-    },
-    "author": {
-      "name": "Voyager developers",
-      "email": "mysticalvoid+voyager@proton.me"
     },
     "win": {
       "target": [
