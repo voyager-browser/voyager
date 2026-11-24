@@ -140,6 +140,12 @@ export function ThemeProvider({ children }: { children: ReactNode }): React.JSX.
         setState(next)
         return next
       },
+      importStore: async (url: string) => {
+        if (!window.voyager?.theme) return state
+        const next = await window.voyager.theme.importStore(url)
+        setState(next)
+        return next
+      },
       resetTheme: () => {
         if (window.voyager?.theme) {
           void window.voyager.theme.reset().then(setState)

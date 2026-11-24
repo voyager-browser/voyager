@@ -18,6 +18,7 @@ export interface ThemeContextValue {
   setColors: (patch: ThemeColorPatch) => void
   setStartPage: (input: ThemeStartPageInput) => Promise<ThemeState>
   importFiles: (files: ThemeFileInput[]) => Promise<ThemeState>
+  importStore: (url: string) => Promise<ThemeState>
   resetTheme: () => void
 }
 
