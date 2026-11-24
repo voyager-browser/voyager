@@ -19,6 +19,7 @@ export interface LaunchOptions {
   downloadDir: string
   seed?: Record<string, unknown>
   args?: string[]
+  env?: Record<string, string>
 }
 
 export interface VoyagerApp {
@@ -166,7 +167,8 @@ export async function launchVoyager(options: LaunchOptions): Promise<VoyagerApp>
   const env = {
     ...process.env,
     VOYAGER_E2E: '1',
-    ELECTRON_DISABLE_SECURITY_WARNINGS: '1'
+    ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
+    ...options.env
   } as Record<string, string>
 
   const app = await launchWithRetry({

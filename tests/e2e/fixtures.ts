@@ -38,6 +38,7 @@ interface LaunchOverrides {
   userDataDir?: string
   seed?: Record<string, unknown>
   args?: string[]
+  env?: Record<string, string>
 }
 
 interface Fixtures {
@@ -74,7 +75,8 @@ export const test = base.extend<Fixtures>({
         userDataDir: overrides.userDataDir ?? userDataDir,
         downloadDir,
         seed: overrides.seed,
-        args: overrides.args
+        args: overrides.args,
+        env: overrides.env
       })
       const close = voyager.close
       voyager.close = async () => {
