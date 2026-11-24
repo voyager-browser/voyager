@@ -1,3 +1,4 @@
+import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from './fixtures'
 import { openSettings, windowCount, type VoyagerApp } from './helpers/voyager'
@@ -6,6 +7,70 @@ const EXTENSIONS_DIR = join(process.cwd(), 'tests', 'e2e', 'fixtures', 'extensio
 const EXTENSION_PATH = join(EXTENSIONS_DIR, 'password-filler')
 const CRX_PATH = join(EXTENSIONS_DIR, 'password-filler.crx')
 const NATIVE_HOST_PATH = join(EXTENSION_PATH, 'nativeHost.js')
+
+interface ZipEntry {
+  name: string
+  data: Buffer
+}
+
+/** Minimal stored-entry ZIP writer for CRX regression fixtures. */
+function storedZip(entries: ZipEntry[]): Buffer {
+  const local: Buffer[] = []
+  const central: Buffer[] = []
+  let offset = 0
+
+  for (const entry of entries) {
+    const name = Buffer.from(entry.name, 'utf8')
+    const header = Buffer.alloc(30)
+    header.writeUInt32LE(0x04034b50, 0)
+    header.writeUInt16LE(20, 4)
+    header.writeUInt32LE(entry.data.length, 18)
+    header.writeUInt32LE(entry.data.length, 22)
+    header.writeUInt16LE(name.length, 26)
+    local.push(header, name, entry.data)
+
+    const directory = Buffer.alloc(46)
+    directory.writeUInt32LE(0x02014b50, 0)
+    directory.writeUInt16LE(20, 4)
+    directory.writeUInt16LE(20, 6)
+    directory.writeUInt32LE(entry.data.length, 20)
+    directory.writeUInt32LE(entry.data.length, 24)
+    directory.writeUInt16LE(name.length, 28)
+    directory.writeUInt32LE(offset, 42)
+    central.push(directory, name)
+
+    offset += header.length + name.length + entry.data.length
+  }
+
+  const centralSize = central.reduce((total, chunk) => total + chunk.length, 0)
+  const end = Buffer.alloc(22)
+  end.writeUInt32LE(0x06054b50, 0)
+  end.writeUInt16LE(entries.length, 8)
+  end.writeUInt16LE(entries.length, 10)
+  end.writeUInt32LE(centralSize, 12)
+  end.writeUInt32LE(offset, 16)
+  return Buffer.concat([...local, ...central, end])
+}
+
+function crx2(archive: Buffer): Buffer {
+  const header = Buffer.alloc(16)
+  header.write('Cr24', 0, 'ascii')
+  header.writeUInt32LE(2, 4)
+  return Buffer.concat([header, archive])
+}
+
+const ILLEGAL_NAMES_CRX = crx2(
+  storedZip([
+    {
+      name: 'manifest.json',
+      data: Buffer.from(
+        JSON.stringify({ manifest_version: 2, name: 'Illegal Names', version: '1.0' })
+      )
+    },
+    { name: 'desktop.ini', data: Buffer.from('[.ShellClassInfo]') },
+    { name: '_metadata/verified_contents.json', data: Buffer.from('{}') }
+  ])
+)
 
 /** Bottom-right corner of a toolbar button, in window coordinates. */
 async function buttonAnchor(voyager: VoyagerApp, label: string): Promise<{ x: number; y: number }> {
@@ -95,6 +160,32 @@ test('unpacks and installs a CRX extension', async ({ voyager }) => {
   const removed = await voyager.chrome.evaluate(
     (path) => window.voyager.extensions.uninstall(path),
     installed[0].path
+  )
+  expect(removed).toEqual([])
+})
+
+test('strips illegal Windows metadata from unpacked CRX extensions', async ({
+  voyager,
+  downloadDir
+}) => {
+  const crxPath = join(downloadDir, 'illegal-names.crx')
+  writeFileSync(crxPath, ILLEGAL_NAMES_CRX)
+
+  const installed = await voyager.chrome.evaluate(
+    (path) => window.voyager.extensions.install(path),
+    crxPath
+  )
+  expect(installed).toEqual([expect.objectContaining({ name: 'Illegal Names', loaded: true })])
+
+  const extensionPath = installed[0]?.path
+  expect(extensionPath).toBeTruthy()
+  if (!extensionPath) return
+  expect(existsSync(join(extensionPath, 'desktop.ini'))).toBe(false)
+  expect(existsSync(join(extensionPath, '_metadata'))).toBe(false)
+
+  const removed = await voyager.chrome.evaluate(
+    (path) => window.voyager.extensions.uninstall(path),
+    extensionPath
   )
   expect(removed).toEqual([])
 })

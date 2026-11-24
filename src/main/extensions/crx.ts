@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { app } from 'electron'
 import { inflateRawSync } from 'node:zlib'
+import { isIllegalExtensionEntry, removeIllegalExtensionFiles } from './illegalFiles'
 
 const EOCD_SIGNATURE = 0x06054b50
 const CENTRAL_SIGNATURE = 0x02014b50
@@ -99,6 +100,7 @@ function extractArchive(archive: Buffer, destination: string): void {
     }
     const target = safeExtractPath(destination, name)
     if (!target) throw new Error('The extension archive contains an unsafe file path.')
+    if (isIllegalExtensionEntry(name)) continue
     if (mode === 0o120000 || mode === 0o140000) continue
     if (name.endsWith('/')) {
       mkdirSync(target, { recursive: true })
@@ -142,11 +144,16 @@ export function unpackCrx(filePath: string, profileId: string): string {
   const archive = crxArchive(file)
   const hash = createHash('sha256').update(file).digest('hex').slice(0, 24)
   const destination = join(unpackedExtensionsRoot(profileId), hash)
-  if (existsSync(join(destination, 'manifest.json'))) return destination
+  if (existsSync(join(destination, 'manifest.json'))) {
+    // Repair unpacks created before illegal metadata files were filtered.
+    removeIllegalExtensionFiles(destination)
+    return destination
+  }
 
   mkdirSync(destination, { recursive: true })
   try {
     extractArchive(archive, destination)
+    removeIllegalExtensionFiles(destination)
     return destination
   } catch (error) {
     rmSync(destination, { recursive: true, force: true })
