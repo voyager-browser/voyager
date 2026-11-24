@@ -6,12 +6,31 @@ import { openSettings, windowCount, type VoyagerApp } from './helpers/voyager'
 
 const EXTENSIONS_DIR = join(process.cwd(), 'tests', 'e2e', 'fixtures', 'extensions')
 const EXTENSION_PATH = join(EXTENSIONS_DIR, 'password-filler')
+const MV2_NATIVE_EXTENSION_PATH = join(EXTENSIONS_DIR, 'native-messaging-mv2')
 const CRX_PATH = join(EXTENSIONS_DIR, 'password-filler.crx')
 const NATIVE_HOST_PATH = join(EXTENSION_PATH, 'nativeHost.js')
 
 interface ZipEntry {
   name: string
   data: Buffer
+}
+
+/** Probe the permission API without hanging forever if a prompt appears. */
+async function probeNativeMessagingPermission(popup: Page): Promise<{
+  all: string[]
+  contains: boolean
+  request: unknown
+}> {
+  return popup.evaluate(async () => {
+    const permissions = (globalThis as any).chrome.permissions
+    const all = await permissions.getAll()
+    const contains = await permissions.contains({ permissions: ['nativeMessaging'] })
+    const request = await Promise.race([
+      permissions.request({ permissions: ['nativeMessaging'] }),
+      new Promise((resolve) => setTimeout(() => resolve('timed-out'), 2000))
+    ])
+    return { all: all?.permissions ?? [], contains, request }
+  })
 }
 
 /** Minimal stored-entry ZIP writer for CRX regression fixtures. */
@@ -365,6 +384,63 @@ test('exchanges native messages between an extension and a native host', async (
 
   await popup!.getByRole('button', { name: 'Connect native port' }).click()
   await expect(popup!.locator('#native-port-result')).toHaveText('port')
+})
+
+test('auto-grants nativeMessaging from an MV3 manifest without prompting', async ({
+  launchVoyager
+}) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+  await voyager.chrome.evaluate((extensionId) => {
+    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  }, id)
+
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+
+  const result = await probeNativeMessagingPermission(popup!)
+  expect(result.all).toContain('nativeMessaging')
+  expect(result.contains).toBe(true)
+  expect(result.request).toBe(true)
+  await expect(voyager.chrome.getByRole('dialog')).toHaveCount(0)
+
+  // Unrelated optional permissions must still go through the normal prompt.
+  await popup!.getByRole('button', { name: 'Request privacy access' }).click()
+  const prompt = voyager.chrome.getByRole('dialog')
+  await expect(prompt).toContainText('Change your privacy-related settings')
+  await prompt.getByRole('button', { name: 'Allow', exact: true }).click()
+  await expect(prompt).toHaveCount(0)
+})
+
+test('auto-grants nativeMessaging from an MV2 manifest without prompting', async ({
+  launchVoyager
+}) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [MV2_NATIVE_EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+  expect(id).toBeTruthy()
+
+  await voyager.chrome.evaluate((extensionId) => {
+    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  }, id)
+
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+
+  const result = await probeNativeMessagingPermission(popup!)
+  expect(result.all).toContain('nativeMessaging')
+  expect(result.contains).toBe(true)
+  expect(result.request).toBe(true)
+  await expect(voyager.chrome.getByRole('dialog')).toHaveCount(0)
 })
 
 test('opens a Chrome-style HTML extension menu with grouped actions', async ({ launchVoyager }) => {

@@ -1,0 +1,11 @@
+{
+  "manifest_version": 2,
+  "name": "Voyager E2E MV2 Native Messaging",
+  "version": "1.0.0",
+  "description": "Minimal MV2 extension used to verify native messaging auto-grants.",
+  "permissions": ["nativeMessaging"],
+  "browser_action": {
+    "default_title": "Voyager E2E MV2 Native Messaging",
+    "default_popup": "popup.html"
+  }
+}
