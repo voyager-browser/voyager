@@ -1,4 +1,6 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
+import { join } from 'node:path'
 import { parseCrxTheme, parseThemeFiles } from '../../src/main/theme/chromeTheme'
 import { downloadChromeWebStoreCrx } from '../../src/main/theme/chromeStore'
 import {
@@ -186,6 +188,34 @@ test('parses a color-only Web Store theme such as Sea Foam', () => {
   expect(theme.colors.background).toBe('#b2e0df')
   expect(theme.colors.surface).toBe('#f1fffe')
   expect(theme.colors.foreground).toBe('#09322f')
+})
+
+test('adopts an already installed Chrome theme at startup', async ({
+  userDataDir,
+  launchVoyager
+}) => {
+  const extensionPath = join(userDataDir, 'installed-themes', 'sea-foam')
+  mkdirSync(extensionPath, { recursive: true })
+  writeFileSync(join(extensionPath, 'manifest.json'), STORE_MANIFEST)
+
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [extensionPath] } }
+  })
+
+  await expect
+    .poll(() => voyager.chrome.evaluate(() => window.voyager.theme.get()))
+    .toEqual(
+      expect.objectContaining({
+        chrome: expect.objectContaining({ name: 'Sea Foam', source: 'chrome-extension' })
+      })
+    )
+  await expect
+    .poll(() =>
+      voyager.chrome.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--voyager-bg').trim()
+      )
+    )
+    .toBe('#b2e0df')
 })
 
 test('downloads a CRX from the Web Store update service', async () => {

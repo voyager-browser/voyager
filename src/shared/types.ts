@@ -17,7 +17,7 @@ export type BrowserThemeColors = Record<ThemeColorKey, string>
 
 /** Where a browser theme came from, used by Settings and reset behavior. */
 export type BrowserThemeSource =
-  'default' | 'custom' | 'chrome-crx' | 'chrome-manifest' | 'chrome-store'
+  'default' | 'custom' | 'chrome-crx' | 'chrome-manifest' | 'chrome-store' | 'chrome-extension'
 
 /** Per-profile chrome theme. Images are URLs served from the profile's theme directory. */
 export interface BrowserTheme {

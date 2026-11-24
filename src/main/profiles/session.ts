@@ -16,6 +16,7 @@ import { applyProxyForProfile } from '../proxy/proxy'
 import { applyUserAgentForProfile } from '../userAgent/userAgent'
 import { runTopSitesPreload } from '../preload/preloadTopSites'
 import { getSettings } from '../store'
+import { migrateInstalledThemeExtension } from '../theme/migrate'
 import {
   sendToSettingsWindow,
   sendToSettingsWindowAlways,
@@ -110,6 +111,7 @@ function attachSessionPolicies(
   )
   void runTopSitesPreload(ses, profileId)
   attachExtensionCompatibility(ses, profileId)
+  migrateInstalledThemeExtension(profileId)
   void attachExtensions(ses, profileId)
   return ses
 }

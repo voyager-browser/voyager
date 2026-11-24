@@ -52,7 +52,8 @@ const THEME_SOURCE_VALUES: readonly BrowserThemeSource[] = [
   'custom',
   'chrome-crx',
   'chrome-manifest',
-  'chrome-store'
+  'chrome-store',
+  'chrome-extension'
 ]
 
 /** Extract a Chrome Web Store extension id from a store URL or a raw id. */

@@ -7,6 +7,8 @@ export interface SettingsShape {
   themeMode?: 'system' | 'light' | 'dark'
   browserTheme?: BrowserTheme
   startPageBackground?: StartPageBackground
+  /** One-time migration flag for themes installed before Voyager had theme state. */
+  installedThemeMigrated?: boolean
   bookmarksBarVisible?: boolean
   clearHistory?: boolean
   clearDownloads?: boolean

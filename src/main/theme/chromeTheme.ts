@@ -5,6 +5,8 @@
  * testable in isolation.
  */
 
+import { existsSync, readFileSync } from 'node:fs'
+import { join, resolve, sep } from 'node:path'
 import { inflateRawSync } from 'node:zlib'
 import { deriveChromeThemeColors } from '../../shared/theme'
 import type { BrowserThemeColors, BrowserThemeSource, ThemeFileInput } from '../../shared/types'
@@ -190,6 +192,13 @@ function imageType(name: string): string | null {
   return IMAGE_MIME_TYPES[extension] ?? null
 }
 
+/** True when a manifest declares a Chrome theme section. */
+function hasThemeSection(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const theme = (value as Record<string, unknown>).theme
+  return !!theme && typeof theme === 'object' && !Array.isArray(theme)
+}
+
 interface ManifestInfo {
   name: string
   version?: string
@@ -252,6 +261,56 @@ function asArtifact(
   }
 }
 
+/** Convert a parsed Chrome manifest into a Voyager theme artifact. */
+export function parseThemeManifest(
+  value: unknown,
+  dark: boolean,
+  images: ThemeImageArtifact[] = [],
+  source: BrowserThemeSource = 'chrome-manifest'
+): ChromeThemeArtifact {
+  const info = readManifest(value, dark)
+  return asArtifact(info, source, pickImage(info.imagePaths, images))
+}
+
+/** Read a Chrome theme from an already unpacked extension directory. */
+export function readThemeDirectory(
+  path: string,
+  dark: boolean,
+  source: BrowserThemeSource = 'chrome-extension'
+): ChromeThemeArtifact | null {
+  const root = resolve(path)
+  const manifestPath = join(root, 'manifest.json')
+  if (!existsSync(manifestPath)) return null
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(readFileSync(manifestPath, 'utf8').replace(/^\uFEFF/, ''))
+  } catch {
+    throw new Error('Installed extension manifest is not valid JSON')
+  }
+  if (!hasThemeSection(parsed)) return null
+
+  const info = readManifest(parsed, dark)
+  const images: ThemeImageArtifact[] = []
+  for (const rawPath of info.imagePaths) {
+    const relative = normalizeEntryPath(rawPath)
+    if (!relative) continue
+    const imagePath = resolve(root, relative)
+    if (imagePath === root || !imagePath.startsWith(root + sep)) continue
+    const mimeType = imageType(relative)
+    if (!mimeType) continue
+    let data: Buffer
+    try {
+      data = readFileSync(imagePath)
+    } catch {
+      continue
+    }
+    if (data.byteLength === 0 || data.byteLength > MAX_FILE_BYTES) continue
+    images.push({ name: relative, mimeType, data: new Uint8Array(data) })
+  }
+  return asArtifact(info, source, pickImage(info.imagePaths, images))
+}
+
 /** Parse a `.crx`, `.zip` or CRX bytes supplied under any file name. */
 export function parseCrxTheme(bytes: Uint8Array, dark: boolean): ChromeThemeArtifact {
   if (bytes.byteLength > MAX_TOTAL_BYTES) throw new Error('Theme archive is too large')
@@ -267,13 +326,12 @@ export function parseCrxTheme(bytes: Uint8Array, dark: boolean): ChromeThemeArti
   } catch {
     throw new Error('Theme manifest is not valid JSON')
   }
-  const info = readManifest(parsed, dark)
   const images: ThemeImageArtifact[] = []
   for (const file of files) {
     const mimeType = imageType(file.path)
     if (mimeType) images.push({ name: file.path, mimeType, data: file.data })
   }
-  return asArtifact(info, 'chrome-crx', pickImage(info.imagePaths, images))
+  return parseThemeManifest(parsed, dark, images, 'chrome-crx')
 }
 
 /**
@@ -298,7 +356,6 @@ export function parseThemeFiles(files: ThemeFileInput[], dark: boolean): ChromeT
   } catch {
     throw new Error('Theme manifest is not valid JSON')
   }
-  const info = readManifest(parsed, dark)
   const images: ThemeImageArtifact[] = []
   for (const file of files) {
     const mimeType = imageType(file.name)
@@ -307,5 +364,5 @@ export function parseThemeFiles(files: ThemeFileInput[], dark: boolean): ChromeT
     if (data.byteLength > MAX_FILE_BYTES) throw new Error('Theme image is too large')
     images.push({ name: file.name, mimeType, data })
   }
-  return asArtifact(info, 'chrome-manifest', pickImage(info.imagePaths, images))
+  return parseThemeManifest(parsed, dark, images)
 }
