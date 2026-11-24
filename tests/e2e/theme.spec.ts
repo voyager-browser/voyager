@@ -216,6 +216,14 @@ test('adopts an already installed Chrome theme at startup', async ({
       )
     )
     .toBe('#b2e0df')
+
+  const badgeColors = await voyager.chrome
+    .locator('[aria-label="Developer build"]')
+    .evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { foreground: style.color, background: style.backgroundColor }
+    })
+  expect(contrastRatio(badgeColors.foreground, badgeColors.background)).toBeGreaterThanOrEqual(4.5)
 })
 
 test('downloads a CRX from the Web Store update service', async () => {

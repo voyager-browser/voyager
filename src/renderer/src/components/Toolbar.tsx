@@ -187,7 +187,7 @@ export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element
 
       {devBuild && (
         <span
-          className="no-drag ml-1 rounded border border-amber-400/30 bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-500 dark:text-amber-300"
+          className="no-drag ml-1 rounded border border-amber-600 bg-amber-300 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-neutral-950 shadow-sm shadow-black/20"
           title="Developer build"
           aria-label="Developer build"
         >
