@@ -27,6 +27,17 @@ const PRIVACY_GET_BRIDGE = '__voyagerExtensionPrivacyGet'
 const PRIVACY_SET_BRIDGE = '__voyagerExtensionPrivacySet'
 
 /**
+ * Extension service workers can start before a main-process IPC handler is
+ * ready during profile setup. Return a safe fallback instead of rejecting the
+ * extension's promise, which would surface as a runtime error in its console.
+ */
+const safeInvoke = (channel: string, fallback: unknown, ...args: unknown[]): Promise<unknown> =>
+  ipcRenderer.invoke(channel, ...args).catch((error: unknown) => {
+    console.warn(`[voyager] Extension bridge ${channel} is unavailable:`, error)
+    return fallback
+  })
+
+/**
  * Install the Chrome extension APIs Electron omits: `webNavigation`,
  * `tabs.create`, action popups, `permissions`, and native messaging.
  *
@@ -489,26 +500,29 @@ if (inExtension) {
   )
 
   const createTabBridge = (details: ExtensionTabsCreateDetails): Promise<unknown> =>
-    ipcRenderer.invoke(IpcChannels.ExtensionTabsCreate, details)
+    safeInvoke(IpcChannels.ExtensionTabsCreate, null, details)
   const openOptionsBridge = (): Promise<unknown> =>
-    ipcRenderer.invoke(IpcChannels.ExtensionOpenOptionsPage)
+    safeInvoke(IpcChannels.ExtensionOpenOptionsPage, false)
   const openPopupBridge = (): Promise<unknown> =>
-    ipcRenderer.invoke(IpcChannels.ExtensionActionOpenPopup)
+    safeInvoke(IpcChannels.ExtensionActionOpenPopup, false)
   const permissionsBridge = (
     details: ExtensionPermissionsDetails & { mode?: string; checkOnly?: boolean }
-  ) => ipcRenderer.invoke(IpcChannels.ExtensionPermissionRequest, details)
+  ): Promise<unknown> => {
+    const fallback = details?.mode === 'getAll' ? { permissions: [], origins: [] } : false
+    return safeInvoke(IpcChannels.ExtensionPermissionRequest, fallback, details)
+  }
   const nativeConnectBridge = (hostName: string, portId: string): Promise<unknown> =>
-    ipcRenderer.invoke(IpcChannels.ExtensionNativeConnect, hostName, portId)
+    safeInvoke(IpcChannels.ExtensionNativeConnect, null, hostName, portId)
   const nativePostBridge = (portId: string, message: unknown): Promise<unknown> =>
-    ipcRenderer.invoke(IpcChannels.ExtensionNativePostMessage, portId, message)
+    safeInvoke(IpcChannels.ExtensionNativePostMessage, false, portId, message)
   const nativeDisconnectBridge = (portId: string): Promise<unknown> =>
-    ipcRenderer.invoke(IpcChannels.ExtensionNativeDisconnect, portId)
+    safeInvoke(IpcChannels.ExtensionNativeDisconnect, false, portId)
   const nativeSendBridge = (hostName: string, message: unknown): Promise<unknown> =>
-    ipcRenderer.invoke(IpcChannels.ExtensionNativeSendMessage, hostName, message)
+    safeInvoke(IpcChannels.ExtensionNativeSendMessage, null, hostName, message)
   const privacyGetBridge = (key: string): Promise<unknown> =>
-    ipcRenderer.invoke(IpcChannels.ExtensionPrivacyGet, key)
+    safeInvoke(IpcChannels.ExtensionPrivacyGet, null, key)
   const privacySetBridge = (key: string, value: unknown): Promise<unknown> =>
-    ipcRenderer.invoke(IpcChannels.ExtensionPrivacySet, key, value)
+    safeInvoke(IpcChannels.ExtensionPrivacySet, false, key, value)
 
   const bridges: Record<string, (...args: any[]) => Promise<unknown>> = {
     [TABS_CREATE_BRIDGE]: createTabBridge,
