@@ -230,10 +230,9 @@ test('adopts an already installed Chrome theme at startup', async ({
       // Tailwind v4 emits oklch(), which contrastRatio() cannot parse. Draw the
       // colors to a canvas so the assertion measures the rendered sRGB pixels.
       const toHex = (color: string): string => {
+        if (!CSS.supports('color', color)) throw new Error(`Unsupported CSS color: ${color}`)
         context.clearRect(0, 0, 1, 1)
-        context.fillStyle = '#ff00ff'
         context.fillStyle = color
-        if (context.fillStyle === '#ff00ff') throw new Error(`Unsupported CSS color: ${color}`)
         context.fillRect(0, 0, 1, 1)
         const [red, green, blue] = context.getImageData(0, 0, 1, 1).data
         return `#${[red, green, blue]
