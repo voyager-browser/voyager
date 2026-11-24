@@ -401,6 +401,16 @@ export async function replaceInstalledExtensionFiles(
   rmSync(backup, { recursive: true, force: true })
 }
 
+/** Resolve the options page declared by an extension, if it has one. */
+export function extensionOptionsPage(extension: Extension): string | null {
+  const manifest = (extension.manifest ?? {}) as Record<string, unknown>
+  const optionsUi = manifest.options_ui as Record<string, unknown> | undefined
+  const page =
+    (typeof optionsUi?.page === 'string' ? optionsUi.page : null) ??
+    (typeof manifest.options_page === 'string' ? manifest.options_page : null)
+  return page?.trim() ? page : null
+}
+
 /** Resolve a manifest-relative action resource to its chrome-extension URL. */
 export function extensionResourceUrl(extension: Extension, resource: string): string {
   const url = new URL(resource.replace(/^\/+/, ''), extension.url)

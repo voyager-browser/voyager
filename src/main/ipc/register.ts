@@ -157,6 +157,7 @@ import {
 } from '../autofill/autofill'
 import {
   currentExtensionsState,
+  extensionOptionsPage,
   extensionResourceUrl,
   hostAccessForManifest,
   installExtension,
@@ -751,6 +752,31 @@ export function registerIpcHandlers(context: IpcContext): void {
       return owner.tabs.webContentsIdForTab(tabId)
     }
   )
+
+  ipcMain.handle(IpcChannels.ExtensionOpenOptionsPage, (event): boolean => {
+    const extensionId = extensionIdForSender(event.sender)
+    if (!extensionId) return false
+    const profileId = profileForSender(event.sender)
+    const extension = sessionForProfile(profileId)
+      .extensions.getAllExtensions()
+      .find((candidate) => candidate.id === extensionId)
+    if (!extension) return false
+    const optionsPage = extensionOptionsPage(extension)
+    if (!optionsPage) return false
+    let url: string
+    try {
+      url = extensionResourceUrl(extension, optionsPage)
+    } catch {
+      return false
+    }
+    const owner =
+      windowForAnyWebContents(event.sender) ??
+      allWindows().find((window) => window.profile === profileId) ??
+      activeWindow()
+    if (!owner) return false
+    owner.tabs.create({ url, active: true })
+    return true
+  })
 
   ipcMain.handle(IpcChannels.TabsClose, (event, id: string) =>
     context.getWindow(event as any)?.tabs.close(id)
@@ -1802,10 +1828,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       if (!extension) return false
       const owner = windowForAnyWebContents(event.sender)
       const manifest = (extension.manifest ?? {}) as Record<string, unknown>
-      const optionsUi = manifest.options_ui as Record<string, unknown> | undefined
-      const optionsPage =
-        (typeof optionsUi?.page === 'string' ? optionsUi.page : null) ??
-        (typeof manifest.options_page === 'string' ? manifest.options_page : null)
+      const optionsPage = extensionOptionsPage(extension)
       const current = currentExtensionsState(ses, profileId).find(
         (item) => item.id === extension.id
       )

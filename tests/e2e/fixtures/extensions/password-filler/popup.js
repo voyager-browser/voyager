@@ -3,6 +3,7 @@ localStorage.setItem('popupOpenCount', String(openCount))
 const popupCount = document.getElementById('popup-open-count')
 if (popupCount) popupCount.textContent = String(openCount)
 
+const optionsResult = document.getElementById('options-result')
 const tabsResult = document.getElementById('tabs-result')
 const permissionResult = document.getElementById('permission-result')
 const privacyResult = document.getElementById('privacy-result')
@@ -16,6 +17,14 @@ document.getElementById('request-popup')?.addEventListener('click', () => {
 document.getElementById('open-tab')?.addEventListener('click', () => {
   chrome.tabs.create({ url: 'https://example.test/' }, (tab) => {
     if (tabsResult) tabsResult.textContent = tab && tab.id ? 'tab opened' : 'no tab'
+  })
+})
+
+document.getElementById('open-options')?.addEventListener('click', () => {
+  void chrome.runtime.openOptionsPage((opened) => {
+    if (optionsResult) {
+      optionsResult.textContent = opened ? 'settings opened' : 'no settings page'
+    }
   })
 })
 

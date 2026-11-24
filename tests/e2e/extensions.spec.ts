@@ -302,6 +302,41 @@ test('opens a Voyager tab when an extension calls chrome.tabs.create', async ({
     .toBe(true)
 })
 
+test('opens an extension settings page as a Voyager tab', async ({ launchVoyager }) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+  await voyager.chrome.evaluate((extensionId) => {
+    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  }, id)
+
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+  expect(
+    await popup!.evaluate(() => typeof (globalThis as any).chrome.runtime?.openOptionsPage)
+  ).toBe('function')
+
+  await popup!.getByRole('button', { name: 'Open settings' }).click()
+
+  await expect
+    .poll(async () => {
+      const state = await voyager.state()
+      return state.tabs.some((tab) => tab.url.includes(`${id}/options.html`))
+    })
+    .toBe(true)
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().includes(`${id}/options.html`)))
+    .toBe(true)
+  const optionsPage = voyager.app
+    .windows()
+    .find((page) => page.url().includes(`${id}/options.html`))
+  await expect(optionsPage!.getByText('extension-options-page')).toBeVisible()
+})
+
 test('opens its action popup when an extension calls chrome.action.openPopup', async ({
   launchVoyager
 }) => {

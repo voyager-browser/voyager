@@ -16,6 +16,7 @@ interface ExtensionPermissionsDetails {
 }
 
 const TABS_CREATE_BRIDGE = '__voyagerExtensionTabsCreate'
+const OPEN_OPTIONS_BRIDGE = '__voyagerExtensionOpenOptionsPage'
 const ACTION_OPEN_POPUP_BRIDGE = '__voyagerExtensionOpenPopup'
 const PERMISSIONS_BRIDGE = '__voyagerExtensionPermissions'
 const NATIVE_CONNECT_BRIDGE = '__voyagerExtensionNativeConnect'
@@ -148,6 +149,23 @@ const install = function install(): void {
       }
     } catch (error) {
       console.warn('[voyager] Could not install chrome.tabs.create shim:', error)
+    }
+  }
+
+  const openOptionsPage = (globalThis as any).__voyagerExtensionOpenOptionsPage
+  if (typeof openOptionsPage === 'function') {
+    try {
+      const runtime = chrome.runtime ?? {}
+      const open = (callback?: (opened: boolean) => void): Promise<boolean> => {
+        const result = Promise.resolve(openOptionsPage()).then((opened) => opened === true)
+        if (typeof callback === 'function') void result.then(callback)
+        return result
+      }
+      if (define(runtime, 'openOptionsPage', open) && !chrome.runtime) {
+        define(chrome, 'runtime', runtime)
+      }
+    } catch (error) {
+      console.warn('[voyager] Could not install chrome.runtime.openOptionsPage shim:', error)
     }
   }
 
@@ -472,6 +490,8 @@ if (inExtension) {
 
   const createTabBridge = (details: ExtensionTabsCreateDetails): Promise<unknown> =>
     ipcRenderer.invoke(IpcChannels.ExtensionTabsCreate, details)
+  const openOptionsBridge = (): Promise<unknown> =>
+    ipcRenderer.invoke(IpcChannels.ExtensionOpenOptionsPage)
   const openPopupBridge = (): Promise<unknown> =>
     ipcRenderer.invoke(IpcChannels.ExtensionActionOpenPopup)
   const permissionsBridge = (
@@ -492,6 +512,7 @@ if (inExtension) {
 
   const bridges: Record<string, (...args: any[]) => Promise<unknown>> = {
     [TABS_CREATE_BRIDGE]: createTabBridge,
+    [OPEN_OPTIONS_BRIDGE]: openOptionsBridge,
     [ACTION_OPEN_POPUP_BRIDGE]: openPopupBridge,
     [PERMISSIONS_BRIDGE]: permissionsBridge,
     [NATIVE_CONNECT_BRIDGE]: nativeConnectBridge,
