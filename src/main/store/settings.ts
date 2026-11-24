@@ -42,6 +42,15 @@ export interface SettingsShape {
   autofillPayments?: boolean
   saveFormHistory?: boolean
   installedExtensions?: string[]
+  extensionUpdateInfo?: Record<
+    string,
+    {
+      storeId?: string
+      updateUrl?: string
+      version?: string
+      lastCheckedAt?: number
+    }
+  >
   extensionPermissionDecisions?: Record<string, Record<string, 'allow' | 'block'>>
   passwordSavingEnabled?: boolean
   nativeMessagingHosts?: NativeMessagingHost[]

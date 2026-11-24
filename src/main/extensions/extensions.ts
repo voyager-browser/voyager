@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { cpSync, existsSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs'
 import { extname, join, resolve, sep } from 'node:path'
 import type { Extension, Session } from 'electron'
 import type {
@@ -10,6 +11,7 @@ import type {
 import { getSettings, setSettings } from '../store'
 import { downloadWebStoreCrx, unpackCrx, unpackedExtensionsRoot, webStoreId } from './crx'
 import { removeIllegalExtensionFiles } from './illegalFiles'
+import { forgetExtensionUpdateInfo, recordExtensionUpdateInfo } from './updateMetadata'
 
 const SETTINGS_KEY = 'installedExtensions'
 const PINNED_KEY = 'pinnedExtensions'
@@ -133,12 +135,8 @@ export function setExtensionSiteAccess(
   setSettings(profileId, SITE_ACCESS_KEY, { ...siteAccessMap(profileId), [id]: access })
 }
 
-/** Read and validate the small part of a manifest needed to describe an extension. */
-function manifestSummary(path: string): {
-  name: string
-  version: string
-  action: ExtensionActionInfo | null
-} {
+/** Read and validate an installed extension's manifest. */
+function extensionManifest(path: string): Record<string, unknown> {
   const absolute = resolve(path)
   let isDirectory = false
   try {
@@ -172,7 +170,21 @@ function manifestSummary(path: string): {
   if (typeof manifest.version !== 'string' || manifest.version.trim() === '') {
     throw new Error('The extension manifest has no version.')
   }
-  return { name: manifest.name, version: manifest.version, action: readAction(manifest) }
+  return manifest
+}
+
+/** Read and validate the small part of a manifest needed to describe an extension. */
+function manifestSummary(path: string): {
+  name: string
+  version: string
+  action: ExtensionActionInfo | null
+} {
+  const manifest = extensionManifest(path)
+  return {
+    name: manifest.name as string,
+    version: manifest.version as string,
+    action: readAction(manifest)
+  }
 }
 
 /** Normalized list of stored extension directories for a profile. */
@@ -285,10 +297,11 @@ function prepareExtensionPath(path: string, profileId: string): string {
 export async function installExtension(
   ses: Session,
   profileId: string,
-  path: string
+  path: string,
+  options: { storeId?: string } = {}
 ): Promise<ExtensionInfo[]> {
   const absolute = prepareExtensionPath(path, profileId)
-  manifestSummary(absolute)
+  const manifest = extensionManifest(absolute)
   const paths = installedExtensionPaths(profileId)
   const alreadyLoaded = ses.extensions
     .getAllExtensions()
@@ -297,6 +310,17 @@ export async function installExtension(
   if (!paths.some((stored) => isSamePath(stored, absolute))) {
     persistPaths(profileId, [...paths, absolute])
   }
+
+  const manifestUpdateUrl =
+    typeof manifest.update_url === 'string' && manifest.update_url.trim() !== ''
+      ? manifest.update_url.trim()
+      : undefined
+  recordExtensionUpdateInfo(profileId, absolute, {
+    storeId: options.storeId,
+    updateUrl: manifestUpdateUrl,
+    version: manifest.version as string,
+    lastCheckedAt: Date.now()
+  })
   return currentExtensionsState(ses, profileId)
 }
 
@@ -309,7 +333,7 @@ export async function installExtensionFromStore(
   const id = webStoreId(input)
   const temporaryPath = await downloadWebStoreCrx(id)
   try {
-    return await installExtension(ses, profileId, temporaryPath)
+    return await installExtension(ses, profileId, temporaryPath, { storeId: id })
   } finally {
     rmSync(temporaryPath, { force: true })
   }
@@ -322,6 +346,7 @@ export function uninstallExtension(ses: Session, profileId: string, path: string
     profileId,
     installedExtensionPaths(profileId).filter((stored) => !isSamePath(stored, absolute))
   )
+  forgetExtensionUpdateInfo(profileId, absolute)
   const extension = ses.extensions
     .getAllExtensions()
     .find((candidate) => isSamePath(candidate.path, absolute))
@@ -332,6 +357,45 @@ export function uninstallExtension(ses: Session, profileId: string, path: string
     rmSync(absolute, { recursive: true, force: true })
   }
   return currentExtensionsState(ses, profileId)
+}
+
+/**
+ * Replace a downloaded extension's files in place so its stored path and
+ * Chrome id stay stable. User-selected unpacked folders are never touched.
+ */
+export async function replaceInstalledExtensionFiles(
+  ses: Session,
+  profileId: string,
+  path: string,
+  newPath: string
+): Promise<void> {
+  const absolute = resolve(path)
+  const unpackedRoot = unpackedExtensionsRoot(profileId)
+  if (absolute === unpackedRoot || !absolute.startsWith(unpackedRoot + sep)) {
+    throw new Error('Only downloaded extensions can be auto-updated.')
+  }
+  const source = resolve(newPath)
+  if (!existsSync(join(source, 'manifest.json'))) {
+    throw new Error('The extension update has no manifest.')
+  }
+
+  const loaded = ses.extensions
+    .getAllExtensions()
+    .find((candidate) => isSamePath(candidate.path, absolute))
+  if (loaded) ses.extensions.removeExtension(loaded.id)
+
+  const backup = `${absolute}.voyager-backup-${randomUUID()}`
+  renameSync(absolute, backup)
+  try {
+    cpSync(source, absolute, { recursive: true, force: true })
+    await ses.extensions.loadExtension(absolute)
+  } catch (error) {
+    rmSync(absolute, { recursive: true, force: true })
+    renameSync(backup, absolute)
+    if (loaded) await ses.extensions.loadExtension(absolute).catch(() => undefined)
+    throw error
+  }
+  rmSync(backup, { recursive: true, force: true })
 }
 
 /** Resolve a manifest-relative action resource to its chrome-extension URL. */

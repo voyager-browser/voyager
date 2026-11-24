@@ -214,6 +214,8 @@ export function SettingsPage(): React.JSX.Element {
   const [extensions, setExtensions] = useState<ExtensionInfo[]>([])
   const [extensionError, setExtensionError] = useState<string | null>(null)
   const [installingExtension, setInstallingExtension] = useState(false)
+  const [checkingExtensionUpdates, setCheckingExtensionUpdates] = useState(false)
+  const [extensionUpdateMessage, setExtensionUpdateMessage] = useState<string | null>(null)
   const [storeUrl, setStoreUrl] = useState('')
   const [nativeHosts, setNativeHosts] = useState<NativeMessagingHost[]>([])
   const [nativeHostName, setNativeHostName] = useState('')
@@ -332,6 +334,29 @@ export function SettingsPage(): React.JSX.Element {
       setExtensions(await window.voyager.extensions.uninstall(path))
     } catch (error) {
       setExtensionError(error instanceof Error ? error.message : 'Could not remove extension.')
+    }
+  }
+
+  const checkExtensionUpdates = async (): Promise<void> => {
+    setCheckingExtensionUpdates(true)
+    setExtensionError(null)
+    setExtensionUpdateMessage(null)
+    try {
+      const results = await window.voyager.extensions.checkUpdates()
+      const updated = results.filter((result) => result.status === 'updated').length
+      const failed = results.filter((result) => result.status === 'failed').length
+      setExtensions(await window.voyager.extensions.getState())
+      setExtensionUpdateMessage(
+        updated > 0
+          ? `Updated ${updated} extension${updated === 1 ? '' : 's'}.`
+          : failed > 0
+            ? `Update check finished with ${failed} error${failed === 1 ? '' : 's'}.`
+            : 'Extensions are up to date.'
+      )
+    } catch (error) {
+      setExtensionError(error instanceof Error ? error.message : 'Could not check for updates.')
+    } finally {
+      setCheckingExtensionUpdates(false)
     }
   }
 
@@ -2042,6 +2067,24 @@ export function SettingsPage(): React.JSX.Element {
                     Install from Web Store
                   </button>
                 </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void checkExtensionUpdates()}
+                    disabled={checkingExtensionUpdates}
+                    className="rounded-md border border-border px-3 py-1.5 text-[13px] text-fg hover:bg-hover disabled:opacity-50"
+                  >
+                    {checkingExtensionUpdates ? 'Checking…' : 'Check for updates'}
+                  </button>
+                  <span className="text-[11px] text-muted">
+                    Downloaded extensions also update automatically at startup and every 6 hours.
+                  </span>
+                </div>
+                {extensionUpdateMessage && (
+                  <p className="mt-2 text-[12px] text-muted" role="status">
+                    {extensionUpdateMessage}
+                  </p>
+                )}
                 {extensionError && (
                   <p className="mt-2 text-[12px] text-danger" role="alert">
                     {extensionError}

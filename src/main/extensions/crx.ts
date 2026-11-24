@@ -12,6 +12,7 @@ const LOCAL_SIGNATURE = 0x04034b50
 const MAX_FILES = 10_000
 const MAX_FILE_BYTES = 64 * 1024 * 1024
 const MAX_TOTAL_BYTES = 256 * 1024 * 1024
+const MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
 
 /** Strip the CRX2/CRX3 header and return the embedded ZIP archive. */
 function crxArchive(file: Buffer): Buffer {
@@ -213,6 +214,43 @@ export async function downloadWebStoreCrx(id: string): Promise<string> {
   }
   crxArchive(file)
   const temporaryPath = join(tmpdir(), `voyager-extension-${randomUUID()}.crx`)
+  writeFileSync(temporaryPath, file)
+  return temporaryPath
+}
+
+/**
+ * Download a CRX referenced by an extension update manifest. The optional
+ * SHA-256 check uses the hash advertised by the update service when present.
+ */
+export async function downloadCrx(url: string, expectedSha256?: string): Promise<string> {
+  let target: URL
+  try {
+    target = new URL(url)
+  } catch {
+    throw new Error('The extension update URL is invalid.')
+  }
+  if (target.protocol !== 'https:' && target.protocol !== 'http:') {
+    throw new Error('Only HTTP(S) extension update URLs are supported.')
+  }
+
+  const response = await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(60_000) })
+  if (!response.ok) throw new Error(`The extension update returned HTTP ${response.status}.`)
+  const file = Buffer.from(await response.arrayBuffer())
+  if (file.length === 0 || file.length > MAX_DOWNLOAD_BYTES) {
+    throw new Error('The extension update package is invalid or too large.')
+  }
+  if (file.toString('ascii', 0, 4) !== 'Cr24') {
+    throw new Error('The extension update is not a CRX package.')
+  }
+  crxArchive(file)
+  if (expectedSha256) {
+    const actual = createHash('sha256').update(file).digest('hex')
+    if (actual.toLowerCase() !== expectedSha256.toLowerCase()) {
+      throw new Error('The extension update failed its integrity check.')
+    }
+  }
+
+  const temporaryPath = join(tmpdir(), `voyager-extension-update-${randomUUID()}.crx`)
   writeFileSync(temporaryPath, file)
   return temporaryPath
 }

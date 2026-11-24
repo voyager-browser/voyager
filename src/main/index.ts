@@ -17,6 +17,7 @@ import { DEFAULT_PROFILE_ID } from '../shared/profiles'
 import { lastProfileId } from './profiles/profiles'
 import { ensureProfileSession, sessionForProfile } from './profiles/session'
 import { attachExtensions } from './extensions/extensions'
+import { startExtensionUpdateScheduler, stopExtensionUpdateScheduler } from './extensions/updates'
 
 app.setName('Voyager')
 
@@ -93,6 +94,7 @@ registerIpcHandlers({
 
 // Persist any debounced store writes before the process goes away.
 app.on('will-quit', () => {
+  stopExtensionUpdateScheduler()
   flushAllStores()
 })
 
@@ -124,6 +126,8 @@ app.whenReady().then(async (): Promise<void> => {
   const startupUrls = takePendingUrls()
   await controller.show(startupUrls[0])
   for (const url of startupUrls.slice(1)) controller.openUrl(url)
+  // Non-blocking: a failed update check must never delay browser startup.
+  startExtensionUpdateScheduler()
   starting = false
   // Links delivered during startup were queued rather than opened against a
   // half-initialized window; open them now, in arrival order.

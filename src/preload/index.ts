@@ -20,6 +20,7 @@ import type {
   ExtensionInfo,
   ExtensionPermissionChoice,
   ExtensionPermissionRequest,
+  ExtensionUpdateResult,
   HistoryState,
   NativeMessagingHost,
   NewBookmarkFolderInput,
@@ -119,6 +120,8 @@ const api = {
       ipcRenderer.invoke(IpcChannels.ExtensionsInstallFromStore, url),
     uninstall: (path: string): Promise<ExtensionInfo[]> =>
       ipcRenderer.invoke(IpcChannels.ExtensionsUninstall, path),
+    checkUpdates: (): Promise<ExtensionUpdateResult[]> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsCheckUpdates),
     openPopup: (id: string, resource: string, x: number, y: number): Promise<boolean> =>
       ipcRenderer.invoke(IpcChannels.ExtensionsOpenPopup, { id, resource, x, y }),
     showActionMenu: (x: number, y: number): Promise<boolean> =>
