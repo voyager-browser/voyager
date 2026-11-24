@@ -403,6 +403,15 @@ export interface ExtensionInfo {
   siteAccess: ExtensionSiteAccess
 }
 
+/** Outcome of an automatic or manual extension update check. */
+export interface ExtensionUpdateResult {
+  name: string
+  fromVersion: string
+  toVersion?: string
+  status: 'updated' | 'up-to-date' | 'skipped' | 'failed'
+  message?: string
+}
+
 export interface UserPreferences {
   clearHistory: boolean
   clearDownloads: boolean

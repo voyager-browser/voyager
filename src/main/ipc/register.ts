@@ -165,6 +165,7 @@ import {
   setExtensionSiteAccess,
   uninstallExtension
 } from '../extensions/extensions'
+import { checkProfileExtensionUpdates } from '../extensions/updates'
 import {
   autoGrantDeclaredPermissions,
   extensionOriginKey,
@@ -1334,6 +1335,13 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
     const state = uninstallExtension(ses, profileId, path)
     return publishExtensions(profileId, state)
+  })
+
+  ipcMain.handle(IpcChannels.ExtensionsCheckUpdates, async (event) => {
+    const profileId = profileFor(event as any)
+    const results = await checkProfileExtensionUpdates(profileId)
+    publishExtensions(profileId, currentExtensionsState(sessionForProfile(profileId), profileId))
+    return results
   })
 
   /** Open an extension action popup inside the browser window, like Chrome. */
