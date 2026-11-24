@@ -315,12 +315,16 @@ export async function installExtension(
     typeof manifest.update_url === 'string' && manifest.update_url.trim() !== ''
       ? manifest.update_url.trim()
       : undefined
-  recordExtensionUpdateInfo(profileId, absolute, {
-    storeId: options.storeId,
-    updateUrl: manifestUpdateUrl,
-    version: manifest.version as string,
-    lastCheckedAt: Date.now()
-  })
+  // Only Voyager-owned downloads have update information; leave user-selected
+  // unpacked folders out of the update registry entirely.
+  if (options.storeId || manifestUpdateUrl) {
+    recordExtensionUpdateInfo(profileId, absolute, {
+      storeId: options.storeId,
+      updateUrl: manifestUpdateUrl,
+      version: manifest.version as string,
+      lastCheckedAt: Date.now()
+    })
+  }
   return currentExtensionsState(ses, profileId)
 }
 
