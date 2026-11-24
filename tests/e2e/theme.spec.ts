@@ -216,6 +216,38 @@ test('downloads a CRX from the Web Store update service', async () => {
   }
 })
 
+test('imported Chrome theme recolors the chrome and start page', async ({ voyager }) => {
+  const manifest = Buffer.from(STORE_MANIFEST).toString('base64')
+  const state = await voyager.chrome.evaluate(
+    async (data) =>
+      window.voyager.theme.importFiles([
+        { name: 'manifest.json', mimeType: 'application/json', data }
+      ]),
+    manifest
+  )
+
+  expect(state.chrome.source).toBe('chrome-manifest')
+  await expect
+    .poll(() =>
+      voyager.chrome.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--voyager-bg').trim()
+      )
+    )
+    .toBe('#b2e0df')
+  expect(await voyager.chrome.evaluate(() => document.documentElement.dataset.voyagerTheme)).toBe(
+    'chrome-manifest'
+  )
+
+  await expect
+    .poll(() =>
+      voyager.tab.evaluate(() => {
+        const root = document.querySelector('[data-start-background]')
+        return root ? getComputedStyle(root).backgroundColor : ''
+      })
+    )
+    .toBe('rgb(178, 224, 223)')
+})
+
 test('start page URL carries per-profile appearance without privileged APIs', () => {
   const url = startPageUrl('brave', false, {
     profileId: 'default',
