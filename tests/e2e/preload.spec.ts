@@ -74,6 +74,7 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
     'install',
     'installFromStore',
     'uninstall',
+    'checkUpdates',
     'openPopup',
     'showActionMenu',
     'showContextMenu',
