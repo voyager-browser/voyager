@@ -248,6 +248,64 @@ test('imported Chrome theme recolors the chrome and start page', async ({ voyage
     .toBe('rgb(178, 224, 223)')
 })
 
+test('Chrome Web Store install button downloads and applies the theme', async ({
+  launchVoyager
+}) => {
+  const crx = makeCrx3(makeZip([{ name: 'manifest.json', content: Buffer.from(STORE_MANIFEST) }]))
+  let crxRequests = 0
+  const server = createServer((_request, response) => {
+    crxRequests += 1
+    response.writeHead(200, {
+      'content-type': 'application/x-chrome-extension',
+      connection: 'close'
+    })
+    response.end(crx)
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+
+  try {
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('No test server address')
+    const voyager = await launchVoyager({
+      env: {
+        VOYAGER_CHROME_WEB_STORE_ENDPOINT: `http://127.0.0.1:${address.port}/crx`
+      }
+    })
+
+    await voyager.tab.route('https://chromewebstore.google.com/**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: '<!doctype html><html><body><h1>Sea Foam Theme</h1><button disabled>Add to Chrome</button></body></html>'
+      })
+    )
+    await voyager.navigate(STORE_URL)
+
+    const installButton = voyager.tab.getByRole('button', { name: 'Add to Chrome' })
+    await expect(installButton).toBeEnabled()
+    await installButton.click()
+
+    await expect
+      .poll(() => voyager.chrome.evaluate(() => window.voyager.theme.get()))
+      .toEqual(
+        expect.objectContaining({ chrome: expect.objectContaining({ source: 'chrome-store' }) })
+      )
+    await expect
+      .poll(() =>
+        voyager.chrome.evaluate(() =>
+          getComputedStyle(document.documentElement).getPropertyValue('--voyager-bg').trim()
+        )
+      )
+      .toBe('#b2e0df')
+    expect(crxRequests).toBeGreaterThan(0)
+  } finally {
+    server.closeAllConnections?.()
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve()))
+    )
+  }
+})
+
 test('start page URL carries per-profile appearance without privileged APIs', () => {
   const url = startPageUrl('brave', false, {
     profileId: 'default',

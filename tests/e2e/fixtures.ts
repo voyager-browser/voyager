@@ -67,6 +67,7 @@ interface LaunchOverrides {
   userDataDir?: string
   seed?: Record<string, unknown>
   args?: string[]
+  env?: Record<string, string>
 }
 
 interface Fixtures {
@@ -105,8 +106,7 @@ export const test = base.extend<Fixtures>({
         downloadDir,
         seed: overrides.seed,
         args: overrides.args,
-        // Register the raw app before setup can fail so teardown still sees it.
-        onApp: (app) => apps.register(app)
+        env: overrides.env
       })
       const close = voyager.close
       voyager.close = async () => {
