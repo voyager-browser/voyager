@@ -29,7 +29,8 @@ import type {
   ThemeState,
   ThemeStartPageInput
 } from '../../shared/types'
-import { parseCrxTheme, parseThemeFiles } from './chromeTheme'
+import { parseCrxTheme, parseThemeFiles, type ChromeThemeArtifact } from './chromeTheme'
+import { downloadChromeWebStoreCrx } from './chromeStore'
 import { getSettings, getThemeMode, profileDataDir, setSettings } from '../store'
 import { sendToSettingsWindowAlways, settingsTargetProfileId } from '../window/settingsWindow'
 import { allWindows } from '../window/windowRegistry'
@@ -216,17 +217,12 @@ export function setStartPage(
   return finishChange(profileId, dark)
 }
 
-/** Import a CHROME theme pack (CRX/ZIP) or loose manifest and image files. */
-export function importChromeTheme(
+/** Apply a parsed Chrome theme artifact to one profile. */
+export function importChromeThemeArtifact(
   profileId: string,
-  files: ThemeFileInput[],
+  artifact: ChromeThemeArtifact,
   dark: boolean
 ): ThemeState {
-  const archive = files.find((file) => /\.(crx|zip)$/i.test(file.name))
-  const artifact = archive
-    ? parseCrxTheme(Buffer.from(archive.data, 'base64'), dark)
-    : parseThemeFiles(files, dark)
-
   let backgroundImage: string | undefined
   if (artifact.image) {
     backgroundImage = saveThemeAsset(
@@ -263,6 +259,30 @@ export function importChromeTheme(
   setSettings(profileId, 'browserTheme', theme)
   setSettings(profileId, 'startPageBackground', startPage)
   return finishChange(profileId, dark)
+}
+
+/** Import a Chrome theme pack (CRX/ZIP) or loose manifest and image files. */
+export function importChromeTheme(
+  profileId: string,
+  files: ThemeFileInput[],
+  dark: boolean
+): ThemeState {
+  const archive = files.find((file) => /\.(crx|zip)$/i.test(file.name))
+  const artifact = archive
+    ? parseCrxTheme(Buffer.from(archive.data, 'base64'), dark)
+    : parseThemeFiles(files, dark)
+  return importChromeThemeArtifact(profileId, artifact, dark)
+}
+
+/** Download and apply a Chrome theme directly from a Chrome Web Store URL. */
+export async function importChromeStoreTheme(
+  profileId: string,
+  input: string,
+  dark: boolean
+): Promise<ThemeState> {
+  const bytes = await downloadChromeWebStoreCrx(input)
+  const artifact = parseCrxTheme(bytes, dark)
+  return importChromeThemeArtifact(profileId, { ...artifact, source: 'chrome-store' }, dark)
 }
 
 /** Restore Voyager's default palette and start page for one profile. */

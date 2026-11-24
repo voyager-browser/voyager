@@ -47,9 +47,11 @@ function errorMessage(error: unknown): string {
 
 /** Appearance controls for the chrome palette, Chrome imports and New Tab art. */
 export function ThemeSettings(): React.JSX.Element {
-  const { chrome, startPage, setColors, setStartPage, importFiles, resetTheme } = useTheme()
+  const { chrome, startPage, setColors, setStartPage, importFiles, importStore, resetTheme } =
+    useTheme()
   const [draft, setDraft] = useState<BrowserThemeColors>(chrome.colors)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const [storeUrl, setStoreUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -83,6 +85,22 @@ export function ThemeSettings(): React.JSX.Element {
       const inputs = await Promise.all(Array.from(files).map(readThemeFile))
       const result = await importFiles(inputs)
       setNotice(`Applied ${result.chrome.name}.`)
+    } catch (caught) {
+      setError(errorMessage(caught))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const importStoreTheme = async (): Promise<void> => {
+    if (!storeUrl.trim()) return
+    setBusy(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const result = await importStore(storeUrl)
+      setNotice(`Applied ${result.chrome.name}.`)
+      setStoreUrl('')
     } catch (caught) {
       setError(errorMessage(caught))
     } finally {
@@ -197,6 +215,30 @@ export function ThemeSettings(): React.JSX.Element {
             }}
           />
         </label>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            aria-label="Chrome Web Store theme URL"
+            value={storeUrl}
+            onChange={(event) => setStoreUrl(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void importStoreTheme()
+            }}
+            placeholder="https://chromewebstore.google.com/detail/…"
+            className="min-w-0 flex-1 rounded-md border border-border bg-transparent px-2 py-1 text-[12px] text-fg outline-none placeholder:text-muted focus:border-accent"
+          />
+          <button
+            type="button"
+            disabled={busy || !storeUrl.trim()}
+            onClick={() => void importStoreTheme()}
+            className="rounded-md bg-accent px-3 py-1.5 text-[12px] text-accent-fg disabled:opacity-50"
+          >
+            {busy ? 'Importing…' : 'Install theme'}
+          </button>
+        </div>
+        <p className="mt-1 text-[11px] text-muted">
+          Paste a Chrome Web Store theme URL to download and apply it.
+        </p>
       </div>
 
       <div className="mt-4 border-t border-border pt-4">

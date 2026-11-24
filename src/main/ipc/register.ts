@@ -199,6 +199,7 @@ import {
 import { requestPrompt, respondToPrompt } from '../prompt/prompt'
 import {
   broadcastThemeState,
+  importChromeStoreTheme,
   importChromeTheme,
   resetTheme,
   setChromeColors,
@@ -677,6 +678,20 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(IpcChannels.ThemeImport, (event, files: ThemeFileInput[]): ThemeState =>
     importChromeTheme(profileFor(event as any), files, nativeTheme.shouldUseDarkColors)
+  )
+
+  ipcMain.handle(
+    IpcChannels.ThemeImportStore,
+    async (event, input: unknown): Promise<ThemeState> => {
+      if (typeof input !== 'string' || input.trim() === '') {
+        throw new Error('Enter a Chrome Web Store theme URL first.')
+      }
+      return importChromeStoreTheme(
+        profileFor(event as any),
+        input,
+        nativeTheme.shouldUseDarkColors
+      )
+    }
   )
 
   ipcMain.handle(IpcChannels.ThemeReset, (event): ThemeState =>
