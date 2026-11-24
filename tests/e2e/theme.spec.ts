@@ -221,7 +221,26 @@ test('adopts an already installed Chrome theme at startup', async ({
     .locator('[aria-label="Developer build"]')
     .evaluate((element) => {
       const style = getComputedStyle(element)
-      return { foreground: style.color, background: style.backgroundColor }
+      const canvas = document.createElement('canvas')
+      canvas.width = 1
+      canvas.height = 1
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('Could not create a color sampling canvas')
+
+      // Tailwind v4 emits oklch(), which contrastRatio() cannot parse. Draw the
+      // colors to a canvas so the assertion measures the rendered sRGB pixels.
+      const toHex = (color: string): string => {
+        context.clearRect(0, 0, 1, 1)
+        context.fillStyle = '#ff00ff'
+        context.fillStyle = color
+        if (context.fillStyle === '#ff00ff') throw new Error(`Unsupported CSS color: ${color}`)
+        context.fillRect(0, 0, 1, 1)
+        const [red, green, blue] = context.getImageData(0, 0, 1, 1).data
+        return `#${[red, green, blue]
+          .map((channel) => channel.toString(16).padStart(2, '0'))
+          .join('')}`
+      }
+      return { foreground: toHex(style.color), background: toHex(style.backgroundColor) }
     })
   expect(contrastRatio(badgeColors.foreground, badgeColors.background)).toBeGreaterThanOrEqual(4.5)
 })
