@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import type { Session } from 'electron'
+import { attachExtensionServiceWorkerIpc } from './serviceWorkerIpc'
 import { attachExtensionWebNavigation } from './webNavigation'
 
 /**
@@ -20,5 +21,6 @@ export function attachExtensionCompatibility(ses: Session, profileId: string): v
     type: 'service-worker',
     filePath
   })
+  attachExtensionServiceWorkerIpc(ses)
   attachExtensionWebNavigation(ses)
 }

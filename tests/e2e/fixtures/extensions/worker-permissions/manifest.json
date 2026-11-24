@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Voyager E2E Worker Permissions",
+  "version": "1.0.0",
+  "description": "Minimal MV3 worker fixture used to verify service-worker IPC bridges.",
+  "permissions": ["tabs", "nativeMessaging"],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

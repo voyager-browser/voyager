@@ -9,10 +9,28 @@ const HOSTS_KEY = 'nativeMessagingHosts'
 const MAX_MESSAGE_BYTES = 1024 * 1024
 const RESPONSE_TIMEOUT_MS = 30_000
 
+/** Sender surface needed to scope a native messaging port to its owner. */
+export interface NativeMessagingSender {
+  id: string
+  isDestroyed(): boolean
+  onDestroyed(listener: () => void): void
+  removeDestroyedListener(listener: () => void): void
+}
+
+/** Adapt a frame's WebContents to the native messaging sender surface. */
+export function webContentsNativeSender(sender: WebContents): NativeMessagingSender {
+  return {
+    id: `web:${sender.id}`,
+    isDestroyed: () => sender.isDestroyed(),
+    onDestroyed: (listener) => sender.once('destroyed', listener),
+    removeDestroyedListener: (listener) => sender.removeListener('destroyed', listener)
+  }
+}
+
 interface NativePort {
   id: string
   extensionId: string
-  sender: WebContents
+  sender: NativeMessagingSender
   child: ChildProcessWithoutNullStreams
   onMessage: (message: unknown, portId: string) => void
   onDisconnect: (portId: string) => void
@@ -104,7 +122,7 @@ function closePort(id: string): void {
   port.closed = true
   ports.delete(id)
   if (!port.sender.isDestroyed()) {
-    port.sender.removeListener('destroyed', port.onSenderDestroyed)
+    port.sender.removeDestroyedListener(port.onSenderDestroyed)
   }
   try {
     port.child.stdin.end()
@@ -123,7 +141,7 @@ export interface NativeConnectionInput {
   profileId: string
   hostName: string
   extensionId: string
-  sender: WebContents
+  sender: NativeMessagingSender
   onMessage: (message: unknown, portId: string) => void
   onDisconnect: (portId: string) => void
 }
@@ -147,7 +165,7 @@ export function connectNative(input: NativeConnectionInput, id: string = randomU
     closed: false
   }
   ports.set(id, port)
-  input.sender.once('destroyed', port.onSenderDestroyed)
+  input.sender.onDestroyed(port.onSenderDestroyed)
   child.once('close', () => closePort(id))
   child.once('error', () => closePort(id))
   child.stderr.on('data', (chunk: Buffer) => {
@@ -179,7 +197,7 @@ export function connectNative(input: NativeConnectionInput, id: string = randomU
   return id
 }
 
-function writeToPort(portId: string, sender: WebContents, message: unknown): boolean {
+function writeToPort(portId: string, sender: NativeMessagingSender, message: unknown): boolean {
   const port = ports.get(portId)
   if (!port || port.closed || port.sender.id !== sender.id) return false
   try {
@@ -193,11 +211,15 @@ function writeToPort(portId: string, sender: WebContents, message: unknown): boo
   }
 }
 
-export function postToNative(portId: string, sender: WebContents, message: unknown): boolean {
+export function postToNative(
+  portId: string,
+  sender: NativeMessagingSender,
+  message: unknown
+): boolean {
   return writeToPort(portId, sender, message)
 }
 
-export function disconnectNative(portId: string, sender: WebContents): boolean {
+export function disconnectNative(portId: string, sender: NativeMessagingSender): boolean {
   const port = ports.get(portId)
   if (!port || port.sender.id !== sender.id) return false
   closePort(portId)

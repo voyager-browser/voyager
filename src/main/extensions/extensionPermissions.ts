@@ -83,12 +83,28 @@ export function autoGrantDeclaredPermissions(
   return granted
 }
 
+/** Minimal lifecycle surface needed to cancel a pending permission prompt. */
+export interface ExtensionPermissionSender {
+  isDestroyed(): boolean
+  onDestroyed(listener: () => void): void
+  removeDestroyedListener(listener: () => void): void
+}
+
+/** Adapt a frame's WebContents to the permission sender lifecycle. */
+export function webContentsPermissionSender(sender: WebContents): ExtensionPermissionSender {
+  return {
+    isDestroyed: () => sender.isDestroyed(),
+    onDestroyed: (listener) => sender.once('destroyed', listener),
+    removeDestroyedListener: (listener) => sender.removeListener('destroyed', listener)
+  }
+}
+
 interface PendingRequest {
   id: string
   profileId: string
   extensionId: string
   keys: string[]
-  sender: WebContents
+  sender: ExtensionPermissionSender
   onDestroyed: () => void
   onCancelled?: (id: string) => void
   resolve: (granted: boolean) => void
@@ -101,7 +117,7 @@ export interface ExtensionPermissionRequestInput {
   extensionId: string
   extensionName: string
   keys: string[]
-  sender: WebContents
+  sender: ExtensionPermissionSender
   sendPrompt: (request: ExtensionPermissionRequest) => void
   onCancelled?: (id: string) => void
 }
@@ -143,7 +159,7 @@ export function requestExtensionPermissions(
       resolve
     }
     pending.set(id, entry)
-    input.sender.once('destroyed', entry.onDestroyed)
+    input.sender.onDestroyed(entry.onDestroyed)
     input.sendPrompt(request)
   })
 }
@@ -152,7 +168,7 @@ export function cancelExtensionPermission(id: string): void {
   const entry = pending.get(id)
   if (!entry) return
   pending.delete(id)
-  if (!entry.sender.isDestroyed()) entry.sender.removeListener('destroyed', entry.onDestroyed)
+  if (!entry.sender.isDestroyed()) entry.sender.removeDestroyedListener(entry.onDestroyed)
   entry.onCancelled?.(id)
   entry.resolve(false)
 }
@@ -165,7 +181,7 @@ export function respondToExtensionPermission(
   if (!entry) return { handled: false }
 
   pending.delete(id)
-  if (!entry.sender.isDestroyed()) entry.sender.removeListener('destroyed', entry.onDestroyed)
+  if (!entry.sender.isDestroyed()) entry.sender.removeDestroyedListener(entry.onDestroyed)
 
   if (choice === 'allow' || choice === 'block') {
     recordExtensionPermissionDecision(entry.profileId, entry.extensionId, entry.keys, choice)

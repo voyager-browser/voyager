@@ -6,6 +6,10 @@ import {
   Menu,
   nativeTheme,
   type Extension,
+  type IpcMainInvokeEvent,
+  type IpcMainServiceWorkerInvokeEvent,
+  type ServiceWorkerMain,
+  type Session,
   type WebContents
 } from 'electron'
 import { resolve } from 'node:path'
@@ -166,6 +170,11 @@ import {
   setExtensionSiteAccess,
   uninstallExtension
 } from '../extensions/extensions'
+import {
+  registerExtensionInvokeHandlers,
+  serviceWorkerSender,
+  type ExtensionInvokeHandler
+} from '../extensions/serviceWorkerIpc'
 import { checkProfileExtensionUpdates } from '../extensions/updates'
 import {
   autoGrantDeclaredPermissions,
@@ -175,7 +184,9 @@ import {
   recordExtensionPermissionDecision,
   removeExtensionPermissions,
   requestExtensionPermissions,
-  respondToExtensionPermission
+  respondToExtensionPermission,
+  webContentsPermissionSender,
+  type ExtensionPermissionSender
 } from '../extensions/extensionPermissions'
 import {
   connectNative,
@@ -183,7 +194,9 @@ import {
   getNativeHosts,
   postToNative,
   sendNativeMessage,
-  setNativeHosts
+  setNativeHosts,
+  webContentsNativeSender,
+  type NativeMessagingSender
 } from '../extensions/nativeMessaging'
 
 import { isDefaultBrowser, setDefaultBrowser } from '../defaultBrowser'
@@ -211,6 +224,9 @@ import {
 
 type SenderEvent =
   { sender?: Electron.WebContents } | Electron.IpcMainInvokeEvent | Electron.IpcMainEvent
+
+type ExtensionInvokeEvent = IpcMainInvokeEvent | IpcMainServiceWorkerInvokeEvent
+type ExtensionSender = WebContents | ServiceWorkerMain
 
 /** Outbound channel + access to the live window so handlers can act on it. */
 export interface IpcContext {
@@ -308,20 +324,85 @@ export function registerIpcHandlers(context: IpcContext): void {
     activeWindow()?.profile ??
     DEFAULT_PROFILE_ID
 
-  const extensionIdForSender = (sender: WebContents): string | null => {
+  const profileForSender = (sender: WebContents): string =>
+    windowForWebContents(sender)?.profile ??
+    settingsProfileFor(sender) ??
+    activeWindow()?.profile ??
+    DEFAULT_PROFILE_ID
+
+  const profileForSession = (ses: Session): string => {
+    for (const profile of listProfiles()) {
+      try {
+        if (sessionForProfile(profile.id) === ses) return profile.id
+      } catch {
+        /* ignore sessions that failed to initialize */
+      }
+    }
+    return activeWindow()?.profile ?? DEFAULT_PROFILE_ID
+  }
+
+  const isWorkerEvent = (event: ExtensionInvokeEvent): event is IpcMainServiceWorkerInvokeEvent =>
+    event.type === 'service-worker'
+
+  const extensionSenderFor = (event: ExtensionInvokeEvent): ExtensionSender =>
+    isWorkerEvent(event) ? event.serviceWorker : event.sender
+
+  const extensionIdFromUrl = (value: string | undefined): string | null => {
     try {
-      const url = new URL(sender.getURL())
+      const url = new URL(value ?? '')
       return url.protocol === 'chrome-extension:' ? url.host : null
     } catch {
       return null
     }
   }
 
-  const profileForSender = (sender: WebContents): string =>
-    windowForWebContents(sender)?.profile ??
-    settingsProfileFor(sender) ??
-    activeWindow()?.profile ??
-    DEFAULT_PROFILE_ID
+  const extensionIdForEvent = (event: ExtensionInvokeEvent): string | null => {
+    if (isWorkerEvent(event)) {
+      return (
+        extensionIdFromUrl(event.serviceWorker.scriptURL) ??
+        extensionIdFromUrl(event.serviceWorker.scope)
+      )
+    }
+    return extensionIdFromUrl(event.sender.getURL())
+  }
+
+  const profileForExtensionEvent = (event: ExtensionInvokeEvent): string =>
+    isWorkerEvent(event) ? profileForSession(event.session) : profileFor(event as any)
+
+  const extensionOwnerFor = (event: ExtensionInvokeEvent, profileId: string) => {
+    const sender = extensionSenderFor(event)
+    const owner = 'getURL' in sender ? windowForAnyWebContents(sender) : null
+    return owner ?? allWindows().find((window) => window.profile === profileId) ?? activeWindow()
+  }
+
+  const sendToExtensionSender = (
+    event: ExtensionInvokeEvent,
+    channel: string,
+    payload: unknown
+  ): void => {
+    const sender = extensionSenderFor(event)
+    if (!sender.isDestroyed()) sender.send(channel, payload)
+  }
+
+  const permissionSenderFor = (event: ExtensionInvokeEvent): ExtensionPermissionSender =>
+    isWorkerEvent(event)
+      ? serviceWorkerSender(event.serviceWorker, event.session)
+      : webContentsPermissionSender(event.sender)
+
+  const nativeSenderFor = (event: ExtensionInvokeEvent): NativeMessagingSender => {
+    if (!isWorkerEvent(event)) return webContentsNativeSender(event.sender)
+    const sender = serviceWorkerSender(event.serviceWorker, event.session)
+    return {
+      id: `worker:${event.serviceWorker.versionId}`,
+      ...sender
+    }
+  }
+
+  const extensionIpcHandlers = new Map<string, ExtensionInvokeHandler>()
+  const handleExtension = (channel: string, handler: ExtensionInvokeHandler): void => {
+    ipcMain.handle(channel, handler as Parameters<typeof ipcMain.handle>[1])
+    extensionIpcHandlers.set(channel, handler)
+  }
 
   const autofillScopeFor = createAutofillScopeResolver(createEphemeralAutofillStore)
   const scopeForAutofillEvent = (event: SenderEvent): AutofillScope =>
@@ -716,16 +797,18 @@ export function registerIpcHandlers(context: IpcContext): void {
     context.getWindow(event as any)?.tabs.create(request)
   )
 
-  ipcMain.handle(
+  handleExtension(
     IpcChannels.ExtensionTabsCreate,
     (
       event,
       details: { url?: unknown; active?: unknown; index?: unknown } | undefined
     ): number | null => {
       const rawUrl = typeof details?.url === 'string' ? details.url : ''
+      const sender = extensionSenderFor(event)
+      const baseUrl = 'getURL' in sender ? sender.getURL() : sender.scope
       let url: string
       try {
-        const resolved = new URL(rawUrl, event.sender.getURL())
+        const resolved = new URL(rawUrl, baseUrl)
         if (
           resolved.protocol !== 'http:' &&
           resolved.protocol !== 'https:' &&
@@ -739,10 +822,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
       // Extension service workers are not attached to a browser window, so use
       // a window from the same profile when the sender cannot resolve one.
-      const owner =
-        windowForAnyWebContents(event.sender) ??
-        allWindows().find((window) => window.profile === profileForSender(event.sender)) ??
-        activeWindow()
+      const owner = extensionOwnerFor(event, profileForExtensionEvent(event))
       if (!owner) return null
       const tabId = owner.tabs.create({
         url,
@@ -753,10 +833,10 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(IpcChannels.ExtensionOpenOptionsPage, (event): boolean => {
-    const extensionId = extensionIdForSender(event.sender)
+  handleExtension(IpcChannels.ExtensionOpenOptionsPage, (event): boolean => {
+    const extensionId = extensionIdForEvent(event)
     if (!extensionId) return false
-    const profileId = profileForSender(event.sender)
+    const profileId = profileForExtensionEvent(event)
     const extension = sessionForProfile(profileId)
       .extensions.getAllExtensions()
       .find((candidate) => candidate.id === extensionId)
@@ -769,10 +849,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     } catch {
       return false
     }
-    const owner =
-      windowForAnyWebContents(event.sender) ??
-      allWindows().find((window) => window.profile === profileId) ??
-      activeWindow()
+    const owner = extensionOwnerFor(event, profileId)
     if (!owner) return false
     owner.tabs.create({ url, active: true })
     return true
@@ -1462,10 +1539,10 @@ export function registerIpcHandlers(context: IpcContext): void {
    * view is never resized, so the tab strip and window dragging stay intact.
    */
   /** Called by `chrome.action.openPopup()` from an extension page or worker. */
-  ipcMain.handle(IpcChannels.ExtensionActionOpenPopup, async (event): Promise<boolean> => {
-    const extensionId = extensionIdForSender(event.sender)
+  handleExtension(IpcChannels.ExtensionActionOpenPopup, async (event): Promise<boolean> => {
+    const extensionId = extensionIdForEvent(event)
     if (!extensionId) return false
-    const profileId = profileForSender(event.sender)
+    const profileId = profileForExtensionEvent(event)
     const ses = sessionForProfile(profileId)
     const extension = ses.extensions
       .getAllExtensions()
@@ -1476,10 +1553,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     )?.action?.popup
     if (!resource) return false
 
-    const owner =
-      windowForAnyWebContents(event.sender) ??
-      allWindows().find((candidate) => candidate.profile === profileId) ??
-      activeWindow()
+    const owner = extensionOwnerFor(event, profileId)
     if (!owner || owner.window.isDestroyed()) return false
 
     let anchor = { x: 0, y: 0 }
@@ -1584,10 +1658,10 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(
+  handleExtension(
     IpcChannels.ExtensionPermissionRequest,
     (
-      event,
+      event: ExtensionInvokeEvent,
       payload:
         | {
             permissions?: unknown
@@ -1597,14 +1671,8 @@ export function registerIpcHandlers(context: IpcContext): void {
           }
         | undefined
     ): Promise<boolean | { permissions: string[]; origins: string[] }> => {
-      const profileId = profileFor(event as any)
-      let extensionId: string | null = null
-      try {
-        const senderUrl = new URL(event.sender.getURL())
-        if (senderUrl.protocol === 'chrome-extension:') extensionId = senderUrl.host
-      } catch {
-        // Non-extension senders cannot request extension permissions.
-      }
+      const profileId = profileForExtensionEvent(event)
+      const extensionId = extensionIdForEvent(event)
       const extension = extensionId
         ? sessionForProfile(profileId)
             .extensions.getAllExtensions()
@@ -1646,10 +1714,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
       if (requested.length === 0) return Promise.resolve(true)
 
-      const routeWindow =
-        windowForAnyWebContents(event.sender) ??
-        allWindows().find((candidate) => candidate.profile === profileId) ??
-        activeWindow()
+      const routeWindow = extensionOwnerFor(event, profileId)
       if (!routeWindow) return Promise.resolve(false)
 
       return requestExtensionPermissions({
@@ -1657,7 +1722,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         extensionId,
         extensionName: extension.name,
         keys: requested,
-        sender: event.sender,
+        sender: permissionSenderFor(event),
         sendPrompt: (request) =>
           routeWindow.sendToChrome(IpcChannels.ExtensionPermissionRequest, request),
         onCancelled: (id) =>
@@ -1688,27 +1753,26 @@ export function registerIpcHandlers(context: IpcContext): void {
     setNativeHosts(profileFor(event as any), hosts)
   )
 
-  ipcMain.handle(
+  handleExtension(
     IpcChannels.ExtensionNativeConnect,
-    (event, hostName: unknown, requestedPortId: unknown): string | null => {
+    (event: ExtensionInvokeEvent, hostName: unknown, requestedPortId: unknown): string | null => {
       if (typeof hostName !== 'string') return null
       const portId =
         typeof requestedPortId === 'string' && /^[a-zA-Z0-9-]{1,64}$/.test(requestedPortId)
           ? requestedPortId
           : undefined
-      const extensionId = extensionIdForSender(event.sender)
+      const extensionId = extensionIdForEvent(event)
       if (!extensionId) return null
-      const profileId = profileFor(event as any)
-      const sendToSender = (channel: string, payload: unknown): void => {
-        if (!event.sender.isDestroyed()) event.sender.send(channel, payload)
-      }
+      const profileId = profileForExtensionEvent(event)
+      const sendToSender = (channel: string, payload: unknown): void =>
+        sendToExtensionSender(event, channel, payload)
       try {
         return connectNative(
           {
             profileId,
             hostName,
             extensionId,
-            sender: event.sender,
+            sender: nativeSenderFor(event),
             onMessage: (message, id) =>
               sendToSender(IpcChannels.ExtensionNativeMessageEvent, { portId: id, message }),
             onDisconnect: (id) =>
@@ -1723,29 +1787,31 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(
+  handleExtension(
     IpcChannels.ExtensionNativePostMessage,
-    (event, portId: unknown, message: unknown): boolean =>
-      typeof portId === 'string' ? postToNative(portId, event.sender, message) : false
+    (event: ExtensionInvokeEvent, portId: unknown, message: unknown): boolean =>
+      typeof portId === 'string' ? postToNative(portId, nativeSenderFor(event), message) : false
   )
 
-  ipcMain.handle(IpcChannels.ExtensionNativeDisconnect, (event, portId: unknown): boolean =>
-    typeof portId === 'string' ? disconnectNative(portId, event.sender) : false
+  handleExtension(
+    IpcChannels.ExtensionNativeDisconnect,
+    (event: ExtensionInvokeEvent, portId: unknown): boolean =>
+      typeof portId === 'string' ? disconnectNative(portId, nativeSenderFor(event)) : false
   )
 
-  ipcMain.handle(
+  handleExtension(
     IpcChannels.ExtensionNativeSendMessage,
-    async (event, hostName: unknown, message: unknown): Promise<unknown> => {
+    async (event: ExtensionInvokeEvent, hostName: unknown, message: unknown): Promise<unknown> => {
       if (typeof hostName !== 'string') return null
-      const extensionId = extensionIdForSender(event.sender)
+      const extensionId = extensionIdForEvent(event)
       if (!extensionId) return null
       try {
         return await sendNativeMessage(
           {
-            profileId: profileFor(event as any),
+            profileId: profileForExtensionEvent(event),
             hostName,
             extensionId,
-            sender: event.sender,
+            sender: nativeSenderFor(event),
             onMessage: () => {},
             onDisconnect: () => {}
           },
@@ -1760,18 +1826,23 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   const PRIVACY_PASSWORD_SAVING_KEY = 'passwordSavingEnabled'
 
-  ipcMain.handle(IpcChannels.ExtensionPrivacyGet, (event, key: unknown): boolean => {
-    if (key !== PRIVACY_PASSWORD_SAVING_KEY) return true
-    return getSettings(profileFor(event as any), PRIVACY_PASSWORD_SAVING_KEY, true) !== false
-  })
+  handleExtension(
+    IpcChannels.ExtensionPrivacyGet,
+    (event: ExtensionInvokeEvent, key: unknown): boolean => {
+      if (key !== PRIVACY_PASSWORD_SAVING_KEY) return true
+      return (
+        getSettings(profileForExtensionEvent(event), PRIVACY_PASSWORD_SAVING_KEY, true) !== false
+      )
+    }
+  )
 
-  ipcMain.handle(
+  handleExtension(
     IpcChannels.ExtensionPrivacySet,
-    async (event, key: unknown, value: unknown): Promise<boolean> => {
+    async (event: ExtensionInvokeEvent, key: unknown, value: unknown): Promise<boolean> => {
       if (key !== PRIVACY_PASSWORD_SAVING_KEY || typeof value !== 'boolean') return false
-      const extensionId = extensionIdForSender(event.sender)
+      const extensionId = extensionIdForEvent(event)
       if (!extensionId) return false
-      const profileId = profileFor(event as any)
+      const profileId = profileForExtensionEvent(event)
       const extension = sessionForProfile(profileId)
         .extensions.getAllExtensions()
         .find((candidate) => candidate.id === extensionId)
@@ -1787,17 +1858,14 @@ export function registerIpcHandlers(context: IpcContext): void {
       if (!declared.has('privacy')) return false
 
       if (!hasAllExtensionPermissions(profileId, extensionId, ['privacy'])) {
-        const routeWindow =
-          windowForAnyWebContents(event.sender) ??
-          allWindows().find((candidate) => candidate.profile === profileId) ??
-          activeWindow()
+        const routeWindow = extensionOwnerFor(event, profileId)
         if (!routeWindow) return false
         const granted = await requestExtensionPermissions({
           profileId,
           extensionId,
           extensionName: extension.name,
           keys: ['privacy.passwordSavingEnabled'],
-          sender: event.sender,
+          sender: permissionSenderFor(event),
           sendPrompt: (request) =>
             routeWindow.sendToChrome(IpcChannels.ExtensionPermissionRequest, request),
           onCancelled: (id) =>
@@ -1808,9 +1876,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
 
       setSettings(profileId, PRIVACY_PASSWORD_SAVING_KEY, value)
-      if (!event.sender.isDestroyed()) {
-        event.sender.send(IpcChannels.ExtensionPrivacyChangedEvent, { key, value })
-      }
+      sendToExtensionSender(event, IpcChannels.ExtensionPrivacyChangedEvent, { key, value })
       return true
     }
   )
@@ -2063,4 +2129,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IpcChannels.UiSetRailExpanded, (event, expanded: boolean) =>
     context.getWindow(event as any)?.setRailExpanded(expanded)
   )
+
+  registerExtensionInvokeHandlers(extensionIpcHandlers)
 }

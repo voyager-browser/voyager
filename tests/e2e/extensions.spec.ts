@@ -7,6 +7,7 @@ import { openSettings, windowCount, type VoyagerApp } from './helpers/voyager'
 const EXTENSIONS_DIR = join(process.cwd(), 'tests', 'e2e', 'fixtures', 'extensions')
 const EXTENSION_PATH = join(EXTENSIONS_DIR, 'password-filler')
 const MV2_NATIVE_EXTENSION_PATH = join(EXTENSIONS_DIR, 'native-messaging-mv2')
+const WORKER_EXTENSION_PATH = join(EXTENSIONS_DIR, 'worker-permissions')
 const CRX_PATH = join(EXTENSIONS_DIR, 'password-filler.crx')
 const NATIVE_HOST_PATH = join(EXTENSION_PATH, 'nativeHost.js')
 
@@ -371,6 +372,22 @@ test('opens its action popup when an extension calls chrome.action.openPopup', a
       return Number(await reopened.locator('#popup-open-count').textContent())
     })
     .toBe(initialCount + 1)
+})
+
+test('serves permission IPC from an MV3 background service worker', async ({ launchVoyager }) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [WORKER_EXTENSION_PATH] } }
+  })
+
+  await expect
+    .poll(
+      async () =>
+        (await voyager.state()).tabs.some(
+          (tab) => tab.url === 'https://example.test/?worker-permission=true'
+        ),
+      { timeout: 15_000 }
+    )
+    .toBe(true)
 })
 
 test('prompts before granting a new extension permission', async ({ launchVoyager }) => {
