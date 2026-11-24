@@ -155,6 +155,7 @@ import {
   uninstallExtension
 } from '../extensions/extensions'
 import {
+  autoGrantDeclaredPermissions,
   extensionOriginKey,
   extensionPermissionGrants,
   hasAllExtensionPermissions,
@@ -1464,6 +1465,9 @@ export function registerIpcHandlers(context: IpcContext): void {
         if (!Array.isArray(value)) continue
         for (const item of value) if (typeof item === 'string') declared.add(item)
       }
+      // Manifest-declared native messaging is supported directly, so grant it
+      // before any prompt logic. Host allow-lists are still enforced separately.
+      const autoGranted = new Set(autoGrantDeclaredPermissions(profileId, extensionId, manifest))
       const stringArray = (value: unknown): string[] =>
         Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
       const requested = [
@@ -1476,7 +1480,11 @@ export function registerIpcHandlers(context: IpcContext): void {
         return Promise.resolve(extensionPermissionGrants(profileId, extensionId))
       }
       if (payload?.mode === 'remove') {
-        removeExtensionPermissions(profileId, extensionId, requested)
+        removeExtensionPermissions(
+          profileId,
+          extensionId,
+          requested.filter((key) => !autoGranted.has(key))
+        )
         return Promise.resolve(true)
       }
       if (payload?.mode === 'contains' || payload?.checkOnly === true) {
