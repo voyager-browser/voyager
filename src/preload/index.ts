@@ -340,6 +340,36 @@ function installChromeWebStoreThemeButton(): void {
     document.querySelector('a[href*="/category/themes"]') !== null ||
     /\bTheme\b/.test(document.body?.innerText ?? '')
 
+  // The store leaves its install button disabled when it does not detect the
+  // Chrome Web Store API, so make it clickable for Voyager's importer.
+  const enableInstallButton = (): void => {
+    if (!isThemePage()) return
+    for (const element of document.querySelectorAll('button, [role="button"]')) {
+      const label = element.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+      if (!/\bAdd to (?:Chrome|Desktop)\b/i.test(label)) continue
+      element.removeAttribute('disabled')
+      if (element.getAttribute('aria-disabled') === 'true') {
+        element.removeAttribute('aria-disabled')
+      }
+    }
+  }
+
+  const watchInstallButton = (): void => {
+    enableInstallButton()
+    new MutationObserver(enableInstallButton).observe(document.documentElement ?? document, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['disabled', 'aria-disabled']
+    })
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', watchInstallButton, { once: true })
+  } else {
+    watchInstallButton()
+  }
+
   document.addEventListener(
     'click',
     (event: MouseEvent) => {
