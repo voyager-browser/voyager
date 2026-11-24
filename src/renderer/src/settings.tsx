@@ -11,7 +11,7 @@ if (!container) {
 
 createRoot(container).render(
   <StrictMode>
-    <ThemeProvider>
+    <ThemeProvider applyChromeTheme={false}>
       <SettingsPage />
     </ThemeProvider>
   </StrictMode>

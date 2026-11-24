@@ -12,6 +12,7 @@ import {
 } from '../../src/shared/theme'
 import { startPageUrl } from '../../src/shared/url'
 import { expect, test } from './fixtures'
+import { openSettings } from './helpers/voyager'
 
 interface ZipEntry {
   name: string
@@ -302,6 +303,49 @@ test('imported Chrome theme recolors the chrome and start page', async ({ voyage
       })
     )
     .toBe('rgb(178, 224, 223)')
+})
+
+test('imported Chrome theme leaves settings unchanged', async ({ voyager }) => {
+  const settings = await openSettings(voyager)
+  const readSettingsTheme = () =>
+    settings.evaluate(() => {
+      const style = getComputedStyle(document.documentElement)
+      return {
+        background: style.getPropertyValue('--voyager-bg').trim(),
+        surface: style.getPropertyValue('--voyager-surface').trim(),
+        dark: document.documentElement.classList.contains('dark')
+      }
+    })
+
+  await expect
+    .poll(() =>
+      settings.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--voyager-bg').trim()
+      )
+    )
+    .not.toBe('')
+  const before = await readSettingsTheme()
+
+  const manifest = Buffer.from(STORE_MANIFEST).toString('base64')
+  await voyager.chrome.evaluate(
+    async (data) =>
+      window.voyager.theme.importFiles([
+        { name: 'manifest.json', mimeType: 'application/json', data }
+      ]),
+    manifest
+  )
+  await expect
+    .poll(() =>
+      voyager.chrome.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--voyager-bg').trim()
+      )
+    )
+    .toBe('#b2e0df')
+
+  await expect.poll(readSettingsTheme).toEqual(before)
+  await expect
+    .poll(() => settings.evaluate(() => document.documentElement.dataset.voyagerTheme ?? null))
+    .toBeNull()
 })
 
 test('Chrome Web Store install button downloads and applies the theme', async ({

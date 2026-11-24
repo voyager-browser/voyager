@@ -25,19 +25,28 @@ const COLOR_VARIABLES: Record<(typeof THEME_COLOR_KEYS)[number], string> = {
   surface: '--voyager-surface'
 }
 
-function applyCssTheme(state: ThemeState): void {
+function clearChromeThemeOverrides(root: HTMLElement): void {
+  // Removing the inline overrides restores the light/dark/incognito CSS.
+  for (const key of THEME_COLOR_KEYS) root.style.removeProperty(COLOR_VARIABLES[key])
+  root.style.removeProperty('--voyager-accent-fg')
+  root.style.removeProperty('--voyager-ring')
+  root.style.removeProperty('--voyager-hover')
+  root.style.removeProperty('--voyager-theme-image')
+  root.style.removeProperty('--voyager-theme-overlay')
+}
+
+function applyCssTheme(state: ThemeState, applyChromeTheme: boolean): void {
   const root = document.documentElement
   root.classList.toggle('dark', state.dark)
+  if (!applyChromeTheme) {
+    clearChromeThemeOverrides(root)
+    delete root.dataset.voyagerTheme
+    return
+  }
   root.dataset.voyagerTheme = state.chrome.source
   const colors = state.chrome.colors
   if (state.chrome.source === 'default') {
-    // Removing the inline overrides restores the light/dark/incognito CSS.
-    for (const key of THEME_COLOR_KEYS) root.style.removeProperty(COLOR_VARIABLES[key])
-    root.style.removeProperty('--voyager-accent-fg')
-    root.style.removeProperty('--voyager-ring')
-    root.style.removeProperty('--voyager-hover')
-    root.style.removeProperty('--voyager-theme-image')
-    root.style.removeProperty('--voyager-theme-overlay')
+    clearChromeThemeOverrides(root)
     return
   }
   for (const key of THEME_COLOR_KEYS) {
@@ -60,7 +69,13 @@ function applyCssTheme(state: ThemeState): void {
   }
 }
 
-export function ThemeProvider({ children }: { children: ReactNode }): React.JSX.Element {
+export function ThemeProvider({
+  children,
+  applyChromeTheme = true
+}: {
+  children: ReactNode
+  applyChromeTheme?: boolean
+}): React.JSX.Element {
   const [state, setState] = useState<ThemeState>({
     mode: 'system',
     dark: false,
@@ -88,8 +103,8 @@ export function ThemeProvider({ children }: { children: ReactNode }): React.JSX.
   }, [])
 
   useEffect(() => {
-    applyCssTheme(state)
-  }, [state])
+    applyCssTheme(state, applyChromeTheme)
+  }, [state, applyChromeTheme])
 
   const value = useMemo<ThemeContextValue>(
     () => ({
