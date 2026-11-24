@@ -378,4 +378,37 @@ const api = {
 
 contextBridge.exposeInMainWorld('voyager', api)
 
+/**
+ * Chrome Web Store themes are installed with a button that is not exposed to
+ * other Chromium-based browsers. Wire its click to Voyager's theme importer so
+ * the reported store URL works without a manual CRX download.
+ */
+function installChromeWebStoreThemeButton(): void {
+  if (window.location.hostname !== 'chromewebstore.google.com') return
+
+  const isThemePage = (): boolean =>
+    document.querySelector('a[href*="/category/themes"]') !== null ||
+    /\bTheme\b/.test(document.body?.innerText ?? '')
+
+  document.addEventListener(
+    'click',
+    (event: MouseEvent) => {
+      if (!(event.target instanceof Element) || !isThemePage()) return
+      const button = event.target.closest('button, [role="button"]')
+      const label = button?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+      if (!/\bAdd to (?:Chrome|Desktop)\b/i.test(label)) return
+
+      // Stop the store from starting a Chrome-only install flow.
+      event.preventDefault()
+      event.stopPropagation()
+      void api.theme.importStore(window.location.href).catch(() => {
+        // The theme settings UI reports malformed or unavailable packages.
+      })
+    },
+    true
+  )
+}
+
+installChromeWebStoreThemeButton()
+
 export type VoyagerApi = typeof api
