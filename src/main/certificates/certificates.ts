@@ -1,13 +1,13 @@
 import { X509Certificate } from 'node:crypto'
 import { writeFile } from 'node:fs/promises'
-import { isIP } from 'node:net'
-import { connect, type DetailedPeerCertificate } from 'node:tls'
+import { connect, type DetailedPeerCertificate, type TLSSocket } from 'node:tls'
 import { dialog } from 'electron'
 import type {
   CertificateChainEntry,
   CertificateDetails,
   CertificateExportFormat
 } from '../../shared/types'
+import { tlsConnectionTarget } from './tlsTarget'
 
 /** Certificates change rarely; cache successful lookups briefly per host. */
 const CACHE_TTL_MS = 60_000
@@ -90,10 +90,7 @@ function chainEntry(certificate: DetailedPeerCertificate): CertificateChainEntry
   }
 }
 
-function readPeerCertificate(
-  socket: import('node:tls').TLSSocket,
-  url: URL
-): CachedCertificate | null {
+function readPeerCertificate(socket: TLSSocket, url: URL): CachedCertificate | null {
   const peer = socket.getPeerCertificate(true)
   if (!Buffer.isBuffer(peer.raw) || peer.raw.length === 0) return null
 
@@ -127,7 +124,7 @@ function readPeerCertificate(
  * user asks for certificate details, so page loads are never delayed.
  */
 async function fetchCertificate(url: URL): Promise<CachedCertificate | null> {
-  const host = url.hostname
+  const { host, servername } = tlsConnectionTarget(url.hostname)
   const port = Number(url.port || 443)
 
   return new Promise((resolve) => {
@@ -142,7 +139,7 @@ async function fetchCertificate(url: URL): Promise<CachedCertificate | null> {
     const socket = connect({
       host,
       port,
-      servername: isIP(host) === 0 ? host : undefined,
+      servername,
       rejectUnauthorized: false,
       ALPNProtocols: ['http/1.1'],
       timeout: CONNECT_TIMEOUT_MS
