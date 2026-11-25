@@ -1,6 +1,24 @@
 import type { ElectronApplication, Page } from '@playwright/test'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import type { SitePermissionDecision } from '../../src/shared/types'
 import { expect, test } from './fixtures'
 import { openSettings, pollUntil, type VoyagerApp } from './helpers/voyager'
+
+interface PermissionsStoreFile {
+  decisions: SitePermissionDecision[]
+  autoRemovedDecisions?: SitePermissionDecision[]
+}
+
+function readPermissions(userDataDir: string): PermissionsStoreFile {
+  return JSON.parse(
+    readFileSync(join(userDataDir, 'permissions.json'), 'utf8')
+  ) as PermissionsStoreFile
+}
+
+function writePermissions(userDataDir: string, state: PermissionsStoreFile): void {
+  writeFileSync(join(userDataDir, 'permissions.json'), JSON.stringify(state, null, 2))
+}
 
 async function chromePages(app: ElectronApplication): Promise<Page[]> {
   return app
@@ -160,4 +178,84 @@ test('incognito site-wide permission choices do not leak into the normal profile
   await incognitoTab.getByRole('button', { name: 'Ask for notifications' }).click()
   await expect(incognitoTab.locator('#permission-result')).toHaveText('Notifications:granted')
   await expect(incognitoChrome.getByRole('dialog')).toHaveCount(0)
+})
+
+test('undo restores every batch of auto-removed permissions', async ({ launchVoyager }) => {
+  const staleDecision = (
+    origin: string,
+    updatedAt: number,
+    decision: SitePermissionDecision['decision'] = 'allow'
+  ): SitePermissionDecision => ({ origin, kind: 'camera', decision, updatedAt })
+  const siteA = staleDecision('https://a.example', 1)
+  const siteB = staleDecision('https://b.example', 2)
+  const siteC = staleDecision('https://c.example', 3)
+
+  const first = await launchVoyager({
+    seed: {
+      history: { entries: [] },
+      permissions: { decisions: [siteA, siteB], autoRemovedDecisions: [] }
+    }
+  })
+  await expect
+    .poll(
+      async () =>
+        (await first.chrome.evaluate(() => window.voyager.permissions.getState()))
+          .autoRemovedDecisions
+    )
+    .toHaveLength(2)
+  await first.close()
+
+  const afterFirstPass = readPermissions(first.userDataDir)
+  expect(afterFirstPass.decisions).toEqual([])
+  expect(afterFirstPass.autoRemovedDecisions?.map((item) => item.origin)).toEqual([
+    siteA.origin,
+    siteB.origin
+  ])
+
+  // A later stale grant is removed on the next launch without dropping A or B.
+  writePermissions(first.userDataDir, {
+    decisions: [siteC],
+    autoRemovedDecisions: afterFirstPass.autoRemovedDecisions
+  })
+  const second = await launchVoyager({ userDataDir: first.userDataDir })
+  await expect
+    .poll(
+      async () =>
+        (await second.chrome.evaluate(() => window.voyager.permissions.getState()))
+          .autoRemovedDecisions
+    )
+    .toHaveLength(3)
+  await second.close()
+
+  const afterSecondPass = readPermissions(first.userDataDir)
+  expect(afterSecondPass.autoRemovedDecisions?.map((item) => item.origin)).toEqual([
+    siteA.origin,
+    siteB.origin,
+    siteC.origin
+  ])
+
+  // Removing C again de-duplicates by origin/category and keeps the newest
+  // decision rather than restoring an older copy on Undo.
+  const newerC = staleDecision(siteC.origin, siteC.updatedAt + 1_000, 'block')
+  writePermissions(first.userDataDir, {
+    decisions: [newerC],
+    autoRemovedDecisions: afterSecondPass.autoRemovedDecisions
+  })
+  const third = await launchVoyager({ userDataDir: first.userDataDir })
+  const beforeUndo = await third.chrome.evaluate(() => window.voyager.permissions.getState())
+  expect(beforeUndo.decisions).toEqual([])
+  expect(beforeUndo.autoRemovedDecisions).toHaveLength(3)
+  expect(
+    beforeUndo.autoRemovedDecisions?.find((item) => item.origin === siteC.origin)?.decision
+  ).toBe('block')
+
+  const afterUndo = await third.chrome.evaluate(() => window.voyager.permissions.undoAutoRemoval())
+  expect(afterUndo.decisions.map((item) => item.origin)).toEqual([
+    siteA.origin,
+    siteB.origin,
+    siteC.origin
+  ])
+  expect(afterUndo.decisions.find((item) => item.origin === siteC.origin)?.decision).toBe('block')
+  expect(afterUndo.autoRemovedDecisions).toEqual([])
+  await third.close()
 })

@@ -184,6 +184,28 @@ function autoRemovedDecisions(profileId: string): SitePermissionDecision[] {
   return storesFor(profileId).permissions.get('autoRemovedDecisions') ?? []
 }
 
+function autoRemovalKey(decision: Pick<SitePermissionDecision, 'origin' | 'kind'>): string {
+  return `${decision.origin}\n${decision.kind}`
+}
+
+/**
+ * Keep every previously removed decision undoable. Repeated removals of the
+ * same origin/category collapse to the newest decision so a later grant or
+ * block supersedes the older saved copy.
+ */
+function mergeAutoRemovedDecisions(
+  existing: SitePermissionDecision[],
+  removed: SitePermissionDecision[]
+): SitePermissionDecision[] {
+  const merged = new Map<string, SitePermissionDecision>()
+  for (const decision of [...existing, ...removed]) {
+    const key = autoRemovalKey(decision)
+    const current = merged.get(key)
+    if (!current || decision.updatedAt >= current.updatedAt) merged.set(key, decision)
+  }
+  return [...merged.values()]
+}
+
 function upsertDecision(
   profileId: string,
   origin: string,
@@ -250,7 +272,10 @@ export function autoRemoveStalePermissions(profileId: string): boolean {
   if (removed.length === 0) return false
 
   store.set('decisions', kept)
-  store.set('autoRemovedDecisions', removed)
+  store.set(
+    'autoRemovedDecisions',
+    mergeAutoRemovedDecisions(autoRemovedDecisions(profileId), removed)
+  )
   return true
 }
 
