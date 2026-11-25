@@ -421,6 +421,46 @@ test('opens a Voyager tab when an extension calls chrome.tabs.create', async ({
     .toBe(true)
 })
 
+test('maps chrome.tabs queries and actions to Voyager tabs', async ({ launchVoyager, server }) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+  await voyager.chrome.evaluate(async (extensionId) => {
+    await window.voyager.extensions.setSiteAccess(extensionId, 'all')
+  }, id)
+  for (const path of ['/home', '/second', '/third']) {
+    await voyager.chrome.evaluate(
+      async (url) => window.voyager.tabs.create({ url, active: false }),
+      server.url(path)
+    )
+  }
+  await voyager.chrome.evaluate((extensionId) => {
+    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  }, id)
+
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))!
+  await popup.getByRole('button', { name: 'Probe tabs' }).click()
+
+  await expect
+    .poll(async () => JSON.parse((await popup.locator('#tabs-probe-result').textContent()) ?? '{}'))
+    .toMatchObject({ pinned: true, firstMoved: true, zoomApplied: true, removed: true })
+  await expect.poll(async () => (await voyager.state()).tabs[0]?.url).toBe(server.url('/second'))
+  await expect
+    .poll(
+      async () =>
+        (await voyager.state()).tabs.find((tab) => tab.url === server.url('/second'))?.pinned
+    )
+    .toBe(true)
+  await expect
+    .poll(async () => (await voyager.state()).tabs.some((tab) => tab.url === server.url('/third')))
+    .toBe(false)
+})
+
 test('opens an extension settings page as a Voyager tab', async ({ launchVoyager }) => {
   const voyager = await launchVoyager({
     seed: { settings: { installedExtensions: [EXTENSION_PATH] } }

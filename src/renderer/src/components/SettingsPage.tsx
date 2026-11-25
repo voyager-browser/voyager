@@ -2200,9 +2200,15 @@ export function SettingsPage(): React.JSX.Element {
                   Extensions run in this profile only and are loaded again on startup. CRX packages
                   are unpacked into Voyager's profile storage. Web Store downloads depend on Google
                   continuing to serve the extension package. Electron does not implement every
-                  Chrome extension API. Voyager supplies `chrome.webNavigation`, `tabs.create`,
-                  `permissions`, and native messaging, but extensions may still log
-                  unknown-permission warnings or fail in scripts that use other unsupported APIs.
+                  Chrome extension API. Voyager supplies `chrome.webNavigation`,
+                  `chrome.tabs.create`, `query`, `get`, `getCurrent`, `getSelected`,
+                  `getAllInWindow`, `remove`, `update`, `move`, `duplicate`, `reload`, `goBack`,
+                  `goForward`, `getZoom`, `setZoom`, `select`, and `highlight`, plus `permissions`
+                  and native messaging. Tab details are limited to sites the extension can access;
+                  `update` supports active, pinned, and muted changes, and `move` is same-window
+                  only. Tab messaging, script/CSS injection, capture, zoom settings, discarding, tab
+                  events, and cross-window moves are not supported, so extensions may still log
+                  unknown-permission warnings or fail in scripts that call them.
                 </p>
               </section>
             )}

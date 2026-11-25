@@ -5,6 +5,7 @@ import {
   ipcMain,
   Menu,
   nativeTheme,
+  webContents as electronWebContents,
   type Extension,
   type IpcMainInvokeEvent,
   type IpcMainServiceWorkerInvokeEvent,
@@ -13,6 +14,11 @@ import {
   type WebContents
 } from 'electron'
 import { resolve } from 'node:path'
+import type {
+  ExtensionTab,
+  ExtensionTabsCall,
+  ExtensionTabsQueryInfo
+} from '../../shared/extensionTabs'
 import { IpcChannels } from '../../shared/ipc-channels'
 import {
   isExtensionPermissionChoice,
@@ -32,6 +38,7 @@ import type {
   BookmarkNodeKind,
   BookmarkPatch,
   BookmarksState,
+  BrowserState,
   CertificateExportFormat,
   ClearBrowsingDataOptions,
   ExtensionInfo,
@@ -42,6 +49,7 @@ import type {
   PermissionRequestChoice,
   SettingsTarget,
   SitePermissionsState,
+  TabState,
   ThemeColorPatch,
   ThemeFileInput,
   ThemeMode,
@@ -942,6 +950,276 @@ export function registerIpcHandlers(context: IpcContext): void {
         index: typeof details?.index === 'number' ? details.index : undefined
       })
       return owner.tabs.webContentsIdForTab(tabId)
+    }
+  )
+
+  interface ExtensionTabEntry {
+    window: WindowController
+    state: BrowserState
+    tab: TabState
+    internalId: string
+    webContentsId: number | null
+  }
+
+  type ExtensionTabEntryWithContents = ExtensionTabEntry & { webContentsId: number }
+
+  const extensionTabEntries = (profileId: string): ExtensionTabEntryWithContents[] =>
+    allWindows()
+      .filter((window) => window.profile === profileId && !window.window.isDestroyed())
+      .flatMap((window) => {
+        const state = window.tabs.snapshot()
+        return state.tabs
+          .map((tab) => ({
+            window,
+            state,
+            tab,
+            internalId: tab.id,
+            webContentsId: window.tabs.webContentsIdForTab(tab.id)
+          }))
+          .filter((entry): entry is ExtensionTabEntryWithContents => entry.webContentsId !== null)
+      })
+
+  const extensionWindowId = (owner: WindowController | null, requested?: number): number | null => {
+    if (requested === undefined || requested === -2) return owner?.window.id ?? null
+    return requested
+  }
+
+  const asExtensionTab = (entry: ExtensionTabEntryWithContents): ExtensionTab => {
+    const index = entry.state.tabs.findIndex((tab) => tab.id === entry.internalId)
+    const active = entry.state.activeTabId === entry.internalId
+    const extensionTab: ExtensionTab = {
+      id: entry.webContentsId,
+      index: Math.max(index, 0),
+      windowId: entry.window.window.id ?? 0,
+      active,
+      pinned: entry.tab.pinned,
+      muted: entry.tab.muted,
+      highlighted: active,
+      selected: active,
+      discarded: entry.tab.discarded === true,
+      status: entry.tab.loading ? 'loading' : 'complete',
+      url: entry.tab.url,
+      title: entry.tab.title,
+      favIconUrl: entry.tab.favicon ?? undefined
+    }
+    return extensionTab
+  }
+
+  const extensionTabMatches = (value: unknown, expected: unknown): boolean => {
+    if (expected === undefined) return true
+    if (Array.isArray(expected)) return expected.includes(value)
+    return expected === value
+  }
+
+  const extensionPatternMatches = (
+    value: string | undefined,
+    expected: string | string[]
+  ): boolean => {
+    if (value === undefined) return false
+    const patterns = Array.isArray(expected) ? expected : [expected]
+    return patterns.some((pattern) => {
+      if (pattern === '<all_urls>') return true
+      const expression = pattern
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '.*')
+        .replace(/\?/g, '.')
+      return new RegExp(`^${expression}$`).test(value)
+    })
+  }
+
+  const queryExtensionTabs = (
+    entries: ExtensionTabEntryWithContents[],
+    query: ExtensionTabsQueryInfo | undefined,
+    owner: WindowController | null
+  ): ExtensionTabEntryWithContents[] => {
+    if (!query) return entries
+    const requestedWindowId = query.windowId === -2 ? (owner?.window.id ?? null) : query.windowId
+    return entries.filter((entry) => {
+      const tab = asExtensionTab(entry)
+      if (!extensionTabMatches(tab.active, query.active)) return false
+      if (!extensionTabMatches(tab.pinned, query.pinned)) return false
+      if (!extensionTabMatches(tab.muted, query.muted)) return false
+      if (!extensionTabMatches(tab.highlighted, query.highlighted)) return false
+      if (!extensionTabMatches(tab.selected, query.selected)) return false
+      if (!extensionTabMatches(tab.discarded, query.discarded)) return false
+      if (!extensionTabMatches(tab.status, query.status)) return false
+      if (query.windowId !== undefined && tab.windowId !== requestedWindowId) return false
+      if (query.currentWindow === true && entry.window !== owner) return false
+      if (query.index !== undefined && tab.index !== query.index) return false
+      if (query.url !== undefined && !extensionPatternMatches(tab.url, query.url)) return false
+      if (query.title !== undefined && !extensionPatternMatches(tab.title, query.title)) {
+        return false
+      }
+      return true
+    })
+  }
+
+  handleExtension(
+    IpcChannels.ExtensionTabsCall,
+    (event, call: ExtensionTabsCall | undefined): unknown => {
+      const context = extensionContextFor(event)
+      if (!context || !call?.operation) return null
+      const owner = extensionOwnerFor(event, context.profileId)
+      const entries = extensionTabEntries(context.profileId).filter((entry) =>
+        extensionCanAccessSite(context.profileId, context.extensionId, entry.tab.url)
+      )
+      const findTab = (tabId?: number): ExtensionTabEntryWithContents | null =>
+        typeof tabId === 'number'
+          ? (entries.find((entry) => entry.webContentsId === tabId) ?? null)
+          : null
+      const activeTab = (): ExtensionTabEntryWithContents | null => {
+        const windowId = extensionWindowId(owner)
+        return (
+          entries.find(
+            (entry) =>
+              entry.window.window.id === windowId && entry.tab.id === entry.state.activeTabId
+          ) ?? null
+        )
+      }
+      const windowEntries = (windowId: number | null): ExtensionTabEntryWithContents[] =>
+        windowId === null ? [] : entries.filter((entry) => entry.window.window.id === windowId)
+
+      switch (call.operation) {
+        case 'query':
+          return queryExtensionTabs(entries, call.queryInfo, owner).map(asExtensionTab)
+        case 'get': {
+          const entry = findTab(call.tabId)
+          return entry ? asExtensionTab(entry) : null
+        }
+        case 'getCurrent': {
+          const entry = activeTab()
+          return entry ? asExtensionTab(entry) : null
+        }
+        case 'getSelected': {
+          const windowId = extensionWindowId(owner, call.windowId)
+          const entry = windowEntries(windowId).find(
+            (candidate) => candidate.tab.id === candidate.state.activeTabId
+          )
+          return entry ? asExtensionTab(entry) : null
+        }
+        case 'getAllInWindow':
+          return windowEntries(extensionWindowId(owner, call.windowId)).map(asExtensionTab)
+        case 'remove': {
+          const targets = call.tabIds ?? (typeof call.tabId === 'number' ? [call.tabId] : [])
+          let removed = false
+          for (const target of targets) {
+            const entry = findTab(target)
+            if (!entry) continue
+            entry.window.tabs.close(entry.internalId)
+            removed = true
+          }
+          return removed
+        }
+        case 'update': {
+          const entry = findTab(call.tabId)
+          if (!entry) return null
+          const properties = call.updateProperties ?? {}
+          if (
+            properties.active === true ||
+            properties.highlighted === true ||
+            properties.selected === true
+          ) {
+            entry.window.tabs.activate(entry.internalId)
+          }
+          if (properties.pinned === true && !entry.tab.pinned) {
+            entry.window.tabs.pinToggle(entry.internalId)
+          }
+          if (properties.pinned === false && entry.tab.pinned) {
+            entry.window.tabs.pinToggle(entry.internalId)
+          }
+          if (properties.muted === true && !entry.tab.muted) {
+            entry.window.tabs.muteToggle(entry.internalId)
+          }
+          if (properties.muted === false && entry.tab.muted) {
+            entry.window.tabs.muteToggle(entry.internalId)
+          }
+          const updated = extensionTabEntries(context.profileId).find(
+            (candidate) =>
+              candidate.internalId === entry.internalId && candidate.window === entry.window
+          )
+          return updated ? asExtensionTab(updated) : null
+        }
+        case 'move': {
+          const entry = findTab(call.tabId)
+          const index = call.moveProperties?.index
+          if (!entry || typeof index !== 'number') return null
+          const targetWindow = extensionWindowId(owner, call.moveProperties?.windowId)
+          if (targetWindow !== null && targetWindow !== entry.window.window.id) return null
+          const order = entry.state.tabs.map((tab) => tab.id)
+          const without = order.filter((id) => id !== entry.internalId)
+          const insertion = Math.max(
+            0,
+            Math.min(index < 0 ? without.length : index, without.length)
+          )
+          without.splice(insertion, 0, entry.internalId)
+          entry.window.tabs.reorder(without)
+          return asExtensionTab(entry)
+        }
+        case 'duplicate': {
+          const entry = findTab(call.tabId)
+          if (!entry) return null
+          const before = new Set(entry.state.tabs.map((tab) => tab.id))
+          entry.window.tabs.duplicate(entry.internalId)
+          const created = extensionTabEntries(context.profileId).find(
+            (candidate) =>
+              candidate.window === entry.window &&
+              !before.has(candidate.internalId) &&
+              candidate.tab.url === entry.tab.url
+          )
+          return created ? asExtensionTab(created) : null
+        }
+        case 'reload': {
+          const entry = findTab(call.tabId) ?? activeTab()
+          if (!entry) return null
+          entry.window.tabs.reload(entry.internalId)
+          return true
+        }
+        case 'goBack':
+        case 'goForward': {
+          const entry = findTab(call.tabId) ?? activeTab()
+          if (!entry || entry.tab.id !== entry.state.activeTabId) return false
+          if (call.operation === 'goBack') entry.window.tabs.goBack()
+          else entry.window.tabs.goForward()
+          return true
+        }
+        case 'getZoom': {
+          const entry = findTab(call.tabId) ?? activeTab()
+          if (!entry) return null
+          const contents = electronWebContents.fromId(entry.webContentsId)
+          return contents && !contents.isDestroyed() ? contents.getZoomFactor() : null
+        }
+        case 'setZoom': {
+          const entry = findTab(call.tabId) ?? activeTab()
+          const zoom = call.zoom
+          if (!entry || typeof zoom !== 'number' || !Number.isFinite(zoom)) return false
+          const contents = electronWebContents.fromId(entry.webContentsId)
+          if (!contents || contents.isDestroyed()) return false
+          contents.setZoomFactor(Math.max(0.25, Math.min(zoom, 5)))
+          return true
+        }
+        case 'select': {
+          const entry = findTab(call.tabId)
+          if (!entry) return null
+          entry.window.tabs.activate(entry.internalId)
+          return asExtensionTab(entry)
+        }
+        case 'highlight': {
+          const selected = (call.tabIds ?? [])
+            .map((tabId) => findTab(tabId))
+            .filter((entry): entry is ExtensionTabEntryWithContents => entry !== null)
+          if (selected.length === 0 || new Set(selected.map((entry) => entry.window)).size !== 1) {
+            return null
+          }
+          for (const entry of selected) entry.window.tabs.activate(entry.internalId)
+          return selected.map((entry) => ({
+            ...asExtensionTab(entry),
+            highlighted: true,
+            selected: true
+          }))
+        }
+        default:
+          return null
+      }
     }
   )
 
