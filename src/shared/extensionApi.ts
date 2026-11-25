@@ -7,6 +7,8 @@ export interface ExtensionApiMethodDefinition {
 export interface ExtensionApiNode {
   methods?: Record<string, ExtensionApiMethodDefinition>
   events?: string[]
+  /** Events whose listener registration must also reach the main process. */
+  bridgedEvents?: string[]
   constants?: Record<string, unknown>
   properties?: Record<string, ExtensionApiNode>
 }
@@ -204,6 +206,20 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       getSessions: { fallback: [] },
       restore: { fallback: {} }
     }
+  },
+  webRequest: {
+    methods: {
+      handlerBehaviorChanged: {},
+      handlerResult: {}
+    },
+    bridgedEvents: [
+      'onBeforeRequest',
+      'onBeforeSendHeaders',
+      'onSendHeaders',
+      'onHeadersReceived',
+      'onCompleted',
+      'onErrorOccurred'
+    ]
   },
   idle: {
     methods: {

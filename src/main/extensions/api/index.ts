@@ -20,6 +20,7 @@ import { registerSystemDisplay } from './systemDisplay'
 import { registerSystemMemory } from './systemMemory'
 import { registerTopSites } from './topSites'
 import { registerTts } from './tts'
+import { registerWebRequest } from './webRequest'
 import { registerI18n } from './i18n'
 
 let registered = false
@@ -52,6 +53,7 @@ export function registerExtensionApis(): void {
   registerSystemDisplay()
   registerSystemMemory()
   registerTopSites()
+  registerWebRequest()
 }
 
 export { refreshCommandShortcuts } from './commands'

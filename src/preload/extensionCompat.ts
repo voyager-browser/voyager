@@ -981,23 +981,53 @@ const installExtensionApi = function installExtensionApi(
 
   const listeners = new Map<string, Set<(...args: any[]) => void>>()
   const events = new Map<string, any>()
+  const bridgedListenerIds = new WeakMap<(...args: any[]) => void, string>()
+  let nextListenerId = 0
   const eventKey = (path: string[], event: string): string => `${path.join('.')}.${event}`
-  const makeEvent = (key: string): any => {
+  const makeEvent = (key: string, bridged = false): any => {
     let event = events.get(key)
     if (event) return event
     const registered = new Set<(...args: any[]) => void>()
     listeners.set(key, registered)
+    const notify = (method: string, args: unknown[]): void => {
+      if (!bridged) return
+      void makeMethod(key.split('.'), method, undefined)(...args)
+    }
+    const listenerId = (listener: (...args: any[]) => void): string | undefined => {
+      if (typeof listener !== 'function') return undefined
+      let id = bridgedListenerIds.get(listener)
+      if (!id) {
+        id = `${key}:${++nextListenerId}`
+        bridgedListenerIds.set(listener, id)
+      }
+      return id
+    }
     event = {
-      addListener(listener: (...args: any[]) => void): void {
-        if (typeof listener === 'function') registered.add(listener)
+      addListener(listener: (...args: any[]) => void, ...options: unknown[]): void {
+        if (typeof listener !== 'function') return
+        registered.add(listener)
+        if (bridged) {
+          const id = listenerId(listener)
+          if (id) notify('addListener', [id, ...options])
+        }
       },
       removeListener(listener: (...args: any[]) => void): void {
         registered.delete(listener)
+        if (bridged) {
+          const id = listenerId(listener)
+          if (id) notify('removeListener', [id])
+        }
       },
       hasListener(listener: (...args: any[]) => void): boolean {
-        return registered.has(listener)
+        const local = typeof listener === 'function' && registered.has(listener)
+        if (bridged) {
+          const id = listenerId(listener)
+          if (id) notify('hasListener', [id])
+        }
+        return local
       },
       hasListeners(): boolean {
+        if (bridged) notify('hasListeners', [])
         return registered.size > 0
       }
     }
@@ -1079,6 +1109,9 @@ const installExtensionApi = function installExtensionApi(
     }
     for (const event of node.events ?? []) {
       define(current, event, makeEvent(eventKey(fullPath, event)))
+    }
+    for (const event of node.bridgedEvents ?? []) {
+      define(current, event, makeEvent(eventKey(fullPath, event), true))
     }
     for (const [key, value] of Object.entries(node.constants ?? {})) {
       define(current, key, value)
