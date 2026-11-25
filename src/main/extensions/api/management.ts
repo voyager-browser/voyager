@@ -113,14 +113,18 @@ function extensionFor(
   loaded: Extension | null
 ): Extension {
   if (loaded) return loaded
+  // Disabled extensions are not loaded, so Chromium has no per-load dynamic id.
+  // Use the stable extension id; the synthetic object is only used to describe
+  // options pages, icons, and manifest metadata.
   return {
+    dynamicId: extensionId,
     id: extensionId,
     name: stringValue(manifest.name, extensionId),
     version: stringValue(manifest.version, ''),
     path,
     url: `chrome-extension://${extensionId}/`,
     manifest
-  }
+  } as Extension
 }
 
 function optionsUrlFor(extension: Extension): string {
