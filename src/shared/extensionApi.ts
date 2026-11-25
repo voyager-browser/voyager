@@ -139,6 +139,11 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     },
     events: ['onProxyError']
   },
+  search: {
+    methods: {
+      query: {}
+    }
+  },
   system: {
     properties: {
       cpu: {
