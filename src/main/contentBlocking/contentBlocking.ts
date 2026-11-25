@@ -63,8 +63,11 @@ interface RemoteBlocklistCacheFile {
 
 const BLOCKLIST_CACHE_FILE = 'blocklists-cache.json'
 const REFRESH_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000
-const MIN_REMOTE_DOMAINS = 100
-const MIN_IMPORTED_DOMAINS = 1
+// Catalog lists come from known upstreams: a suddenly tiny result likely means
+// a broken response, so keep the size guard there. User-supplied lists only
+// need one valid domain, matching local hosts-file imports.
+const MIN_CATALOG_DOMAINS = 100
+const MIN_USER_LIST_DOMAINS = 1
 const CUSTOM_CACHE_PREFIX = 'custom:'
 const FILE_CACHE_PREFIX = 'file:'
 
@@ -175,6 +178,56 @@ export function enabledCustomFilterLists(profileId: string): string[] {
   return [...new Set(urls)]
 }
 
+/** Reasons user-added remote lists could not be applied, by normalized URL. */
+export function customFilterListErrors(profileId: string): Record<string, string> {
+  const stored = getSettings(profileId, 'customFilterListErrors', {})
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {}
+  const errors: Record<string, string> = {}
+  for (const [url, message] of Object.entries(stored as Record<string, unknown>)) {
+    const normalized = normalizeCustomFilterUrl(url)
+    if (normalized && typeof message === 'string') errors[normalized] = message
+  }
+  return errors
+}
+
+type FilterListStatusListener = (profileId: string) => void
+let filterListStatusListener: FilterListStatusListener | null = null
+
+/** Let the IPC layer publish refreshed custom-list status to the Settings UI. */
+export function setFilterListStatusListener(listener: FilterListStatusListener | null): void {
+  filterListStatusListener = listener
+}
+
+function setCustomFilterListError(profileId: string, url: string, message: string): void {
+  const errors = customFilterListErrors(profileId)
+  if (errors[url] === message) return
+  errors[url] = message
+  setSettings(profileId, 'customFilterListErrors', errors)
+  filterListStatusListener?.(profileId)
+}
+
+function clearCustomFilterListError(profileId: string, url: string): void {
+  const errors = customFilterListErrors(profileId)
+  if (!(url in errors)) return
+  delete errors[url]
+  setSettings(profileId, 'customFilterListErrors', errors)
+  filterListStatusListener?.(profileId)
+}
+
+function pruneCustomFilterListErrors(profileId: string, customUrls: string[]): void {
+  const errors = customFilterListErrors(profileId)
+  const enabled = new Set(customUrls)
+  let changed = false
+  for (const url of Object.keys(errors)) {
+    if (enabled.has(url)) continue
+    delete errors[url]
+    changed = true
+  }
+  if (!changed) return
+  setSettings(profileId, 'customFilterListErrors', errors)
+  filterListStatusListener?.(profileId)
+}
+
 export function enabledCustomFilterFiles(profileId: string): CustomFilterFile[] {
   const stored = getSettings(profileId, 'customFilterFiles', [])
   if (!Array.isArray(stored)) return []
@@ -234,13 +287,34 @@ async function refreshRemoteBlocklist(profileId: string, target: RefreshTarget):
   const rk = refreshKey(profileId, target.key)
   if (refreshInProgress.has(rk)) return
   refreshInProgress.add(rk)
+  const isCustom = target.key.startsWith(CUSTOM_CACHE_PREFIX)
+  const minDomains = isCustom ? MIN_USER_LIST_DOMAINS : MIN_CATALOG_DOMAINS
   try {
     const response = await fetch(target.url, {
       signal: AbortSignal.timeout(15_000)
     })
-    if (!response.ok) return
+    if (!response.ok) {
+      if (isCustom) {
+        setCustomFilterListError(
+          profileId,
+          target.url,
+          `Could not download the list (HTTP ${response.status}).`
+        )
+      }
+      return
+    }
     const domains = parseHostsBlocklist(await response.text())
-    if (domains.length < MIN_REMOTE_DOMAINS) return
+    if (domains.length < minDomains) {
+      if (isCustom) {
+        setCustomFilterListError(
+          profileId,
+          target.url,
+          'No valid hosts entries were found. The list needs at least one domain.'
+        )
+      }
+      return
+    }
+    clearCustomFilterListError(profileId, target.url)
     const cached = readCachedLists(profileId)
     cached.set(target.key, { fetchedAt: Date.now(), domains, url: target.url })
     writeCachedLists(profileId, cached)
@@ -254,6 +328,9 @@ async function refreshRemoteBlocklist(profileId: string, target: RefreshTarget):
     )
   } catch {
     // Network or storage failures fall back to whatever is already cached.
+    if (isCustom) {
+      setCustomFilterListError(profileId, target.url, 'Could not apply the list. Check the URL.')
+    }
   } finally {
     refreshInProgress.delete(rk)
   }
@@ -304,6 +381,7 @@ export function primeContentBlocking(profileId: string): void {
   if (primedProfiles.has(profileId)) return
   primedProfiles.add(profileId)
   const config = currentConfig(profileId)
+  pruneCustomFilterListErrors(profileId, config.customUrls)
   mergeEnabledLists(
     profileId,
     config.builtin,
@@ -320,6 +398,7 @@ export function primeContentBlocking(profileId: string): void {
  */
 export function syncContentBlocking(profileId: string): void {
   const config = currentConfig(profileId)
+  pruneCustomFilterListErrors(profileId, config.customUrls)
   mergeEnabledLists(
     profileId,
     config.builtin,
@@ -337,7 +416,7 @@ export function importCustomFilterFile(
   content: string
 ): CustomFilterFile {
   const domains = parseHostsBlocklist(content)
-  if (domains.length < MIN_IMPORTED_DOMAINS) {
+  if (domains.length < MIN_USER_LIST_DOMAINS) {
     throw new Error('No valid hosts entries were found in that file.')
   }
   const file: CustomFilterFile = {

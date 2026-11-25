@@ -155,6 +155,16 @@ async function handle(req: URL, res: ServerResponse, counts: Map<string, number>
     sendHtml(res, findPage)
     return
   }
+  if (path === '/custom-hosts.txt') {
+    res.setHeader('content-type', 'text/plain; charset=utf-8')
+    res.end('# one-domain custom filter list\n0.0.0.0 insecure.test\n')
+    return
+  }
+  if (path === '/empty-hosts.txt') {
+    res.setHeader('content-type', 'text/plain; charset=utf-8')
+    res.end('# no domains in this hosts file\n')
+    return
+  }
   if (path === '/prompt') {
     sendHtml(res, promptPage)
     return

@@ -157,6 +157,7 @@ export function SettingsPage(): React.JSX.Element {
     builtinFilterList: true,
     filterLists: [...DEFAULT_FILTER_LISTS],
     customFilterLists: [],
+    customFilterListErrors: {},
     customFilterFiles: [],
     contentBlockingExceptions: [],
     proxyMode: DEFAULT_PROXY_CONFIG.mode,
@@ -229,7 +230,8 @@ export function SettingsPage(): React.JSX.Element {
       window.voyager.bookmarks.onStateChanged(bookmarks.applyState),
       window.voyager.history.onStateChanged(history.applyState),
       window.voyager.downloads.onStateChanged(downloads.applyState),
-      window.voyager.autofill.onStateChanged(setAutofill)
+      window.voyager.autofill.onStateChanged(setAutofill),
+      window.voyager.settings.onChanged(setPreferences)
     ]
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe())
   }, [])
@@ -988,6 +990,7 @@ export function SettingsPage(): React.JSX.Element {
                     />
                     <button
                       type="button"
+                      aria-label="Add custom filter list"
                       className="shrink-0 rounded-md border border-border bg-bg px-3 py-1.5 text-[12.5px] text-fg hover:bg-hover"
                       onClick={() => {
                         const url = customFilterUrl.trim()
@@ -1064,11 +1067,15 @@ export function SettingsPage(): React.JSX.Element {
                           key={url}
                           className="flex items-center gap-2 rounded-md border border-border bg-bg px-2 py-1.5"
                         >
-                          <span
-                            className="min-w-0 flex-1 truncate text-[11.5px] text-fg"
-                            title={url}
-                          >
-                            {url}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[11.5px] text-fg" title={url}>
+                              {url}
+                            </span>
+                            {preferences.customFilterListErrors[url] && (
+                              <span className="block text-[11px] text-danger">
+                                {preferences.customFilterListErrors[url]}
+                              </span>
+                            )}
                           </span>
                           <button
                             type="button"

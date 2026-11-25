@@ -76,6 +76,7 @@ import {
   builtinFilterListEnabled,
   contentBlockingExceptions,
   contentBlockingStats,
+  customFilterListErrors,
   enabledCustomFilterFiles,
   enabledCustomFilterLists,
   enabledFilterLists,
@@ -85,6 +86,7 @@ import {
   removeCustomFilterFile,
   setContentBlockingExceptions,
   setContentBlockingSiteEnabled,
+  setFilterListStatusListener,
   syncContentBlocking
 } from '../contentBlocking/contentBlocking'
 import {
@@ -195,6 +197,7 @@ function userPreferences(profileId: string): UserPreferences {
     builtinFilterList: builtinFilterListEnabled(profileId),
     filterLists: enabledFilterLists(profileId),
     customFilterLists: enabledCustomFilterLists(profileId),
+    customFilterListErrors: customFilterListErrors(profileId),
     customFilterFiles: enabledCustomFilterFiles(profileId),
     contentBlockingExceptions: contentBlockingExceptions(profileId),
     proxyMode: ((): UserPreferences['proxyMode'] => {
@@ -255,6 +258,12 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   const sendToProfile = (profileId: string, channel: string, payload?: unknown): void =>
     broadcastToProfile(profileId, channel, payload)
+
+  // Background list refreshes publish updated preferences so a rejected
+  // custom URL is visible in Settings without another user action.
+  setFilterListStatusListener((profileId) => {
+    sendToProfile(profileId, IpcChannels.SettingsChanged, userPreferences(profileId))
+  })
 
   configurePermissionPromptRouter((webContents) => {
     const window = windowForAnyWebContents(webContents) ?? context.getWindow()

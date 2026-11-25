@@ -315,6 +315,8 @@ export interface UserPreferences {
   filterLists: FilterListId[]
   /** Custom hosts-format list URLs (http/https) added by the user. */
   customFilterLists: string[]
+  /** Why a custom list could not be applied, by normalized URL. */
+  customFilterListErrors: Record<string, string>
   /** Imported hosts-format files stored locally. */
   customFilterFiles: CustomFilterFile[]
   /** Hostnames where tracker blocking is turned off. */
