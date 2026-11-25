@@ -137,6 +137,32 @@ test('renders search suggestions and runs the highlighted one', async ({ voyager
   )
 })
 
+test('clears stale suggestion rows while a new query is pending or fails', async ({
+  voyager,
+  server
+}) => {
+  await interceptSearch(voyager, server, '/suggest-stages')
+  const input = voyager.chrome.locator('#omnibox-input')
+  const alphaRow = voyager.chrome.getByRole('button', { name: 'alpha suggestion' })
+  const zetaRow = voyager.chrome.getByRole('button', { name: 'zeta suggestion' })
+
+  await input.focus()
+  await input.fill('al')
+  await expect(alphaRow).toBeVisible()
+
+  // The replacement request is deliberately slow; the old row must already be
+  // gone rather than remaining actionable until the new response arrives.
+  await input.fill('zz')
+  await expect(alphaRow).toHaveCount(0, { timeout: 500 })
+  await expect(zetaRow).toHaveCount(0)
+  await expect(zetaRow).toBeVisible()
+
+  // A dropped request must clear the current rows as well.
+  await input.fill('qq')
+  await expect(zetaRow).toHaveCount(0, { timeout: 500 })
+  await expect(voyager.chrome.getByText('Search DuckDuckGo')).toBeVisible()
+})
+
 test('Enter on an empty omnibox does not search for a stale suggestion', async ({
   voyager,
   server

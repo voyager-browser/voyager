@@ -448,7 +448,11 @@ export async function activeZoom(voyager: VoyagerApp): Promise<number> {
   }, tab.url)
 }
 
-export async function interceptSearch(voyager: VoyagerApp, server: TestServer): Promise<void> {
+export async function interceptSearch(
+  voyager: VoyagerApp,
+  server: TestServer,
+  suggestPath = '/suggest'
+): Promise<void> {
   await voyager.app.evaluate(
     ({ session }, targets) => {
       const store = globalThis as unknown as { __searchRequests?: string[] }
@@ -464,7 +468,7 @@ export async function interceptSearch(voyager: VoyagerApp, server: TestServer): 
         }
       )
     },
-    { search: server.url('/search'), suggest: server.url('/suggest') }
+    { search: server.url('/search'), suggest: server.url(suggestPath) }
   )
 }
 

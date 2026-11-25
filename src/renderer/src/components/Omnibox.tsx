@@ -13,10 +13,11 @@ function useSuggestions(query: string, active: boolean, engine: SearchEngineId):
   const [suggestions, setSuggestions] = useState<string[]>([])
 
   useEffect(() => {
-    if (!active || query.trim().length < 2) {
-      setSuggestions([])
-      return
-    }
+    // Invalidate rows from the previous query before starting another fetch so
+    // they cannot stay clickable while the replacement request is pending.
+    setSuggestions([])
+    if (!active || query.trim().length < 2) return
+
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
       fetch(SEARCH_ENGINES[engine].suggest(query.trim()), {
@@ -24,9 +25,13 @@ function useSuggestions(query: string, active: boolean, engine: SearchEngineId):
       })
         .then((response) => response.text())
         .then(parseSuggestions)
-        .then(setSuggestions)
+        .then((nextSuggestions) => {
+          if (!controller.signal.aborted) setSuggestions(nextSuggestions)
+        })
         .catch(() => {
-          /* suggestions are best-effort */
+          // Suggestions are best-effort, but a failed request must not leave
+          // rows from an earlier query actionable for the current one.
+          if (!controller.signal.aborted) setSuggestions([])
         })
     }, 140)
     return () => {
