@@ -1,7 +1,8 @@
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
+import { crx2, storedZip, storedZip64 } from './helpers/crx'
 import { openSettings, windowCount, type VoyagerApp } from './helpers/voyager'
 
 const EXTENSIONS_DIR = join(process.cwd(), 'tests', 'e2e', 'fixtures', 'extensions')
@@ -10,11 +11,6 @@ const MV2_NATIVE_EXTENSION_PATH = join(EXTENSIONS_DIR, 'native-messaging-mv2')
 const WORKER_EXTENSION_PATH = join(EXTENSIONS_DIR, 'worker-permissions')
 const CRX_PATH = join(EXTENSIONS_DIR, 'password-filler.crx')
 const NATIVE_HOST_PATH = join(EXTENSION_PATH, 'nativeHost.js')
-
-interface ZipEntry {
-  name: string
-  data: Buffer
-}
 
 /** Probe the permission API without hanging forever if a prompt appears. */
 async function probeNativeMessagingPermission(popup: Page): Promise<{
@@ -34,62 +30,28 @@ async function probeNativeMessagingPermission(popup: Page): Promise<{
   })
 }
 
-/** Minimal stored-entry ZIP writer for CRX regression fixtures. */
-function storedZip(entries: ZipEntry[]): Buffer {
-  const local: Buffer[] = []
-  const central: Buffer[] = []
-  let offset = 0
-
-  for (const entry of entries) {
-    const name = Buffer.from(entry.name, 'utf8')
-    const header = Buffer.alloc(30)
-    header.writeUInt32LE(0x04034b50, 0)
-    header.writeUInt16LE(20, 4)
-    header.writeUInt32LE(entry.data.length, 18)
-    header.writeUInt32LE(entry.data.length, 22)
-    header.writeUInt16LE(name.length, 26)
-    local.push(header, name, entry.data)
-
-    const directory = Buffer.alloc(46)
-    directory.writeUInt32LE(0x02014b50, 0)
-    directory.writeUInt16LE(20, 4)
-    directory.writeUInt16LE(20, 6)
-    directory.writeUInt32LE(entry.data.length, 20)
-    directory.writeUInt32LE(entry.data.length, 24)
-    directory.writeUInt16LE(name.length, 28)
-    directory.writeUInt32LE(offset, 42)
-    central.push(directory, name)
-
-    offset += header.length + name.length + entry.data.length
-  }
-
-  const centralSize = central.reduce((total, chunk) => total + chunk.length, 0)
-  const end = Buffer.alloc(22)
-  end.writeUInt32LE(0x06054b50, 0)
-  end.writeUInt16LE(entries.length, 8)
-  end.writeUInt16LE(entries.length, 10)
-  end.writeUInt32LE(centralSize, 12)
-  end.writeUInt32LE(offset, 16)
-  return Buffer.concat([...local, ...central, end])
-}
-
-function crx2(archive: Buffer): Buffer {
-  const header = Buffer.alloc(16)
-  header.write('Cr24', 0, 'ascii')
-  header.writeUInt32LE(2, 4)
-  return Buffer.concat([header, archive])
-}
-
 const ILLEGAL_NAMES_CRX = crx2(
   storedZip([
     {
       name: 'manifest.json',
-      data: Buffer.from(
+      content: Buffer.from(
         JSON.stringify({ manifest_version: 2, name: 'Illegal Names', version: '1.0' })
       )
     },
-    { name: 'desktop.ini', data: Buffer.from('[.ShellClassInfo]') },
-    { name: '_metadata/verified_contents.json', data: Buffer.from('{}') }
+    { name: 'desktop.ini', content: Buffer.from('[.ShellClassInfo]') },
+    { name: '_metadata/verified_contents.json', content: Buffer.from('{}') }
+  ])
+)
+
+const ZIP64_CRX = crx2(
+  storedZip64([
+    {
+      name: 'manifest.json',
+      content: Buffer.from(
+        JSON.stringify({ manifest_version: 2, name: 'ZIP64 Extension', version: '1.0' })
+      )
+    },
+    { name: 'zip64.txt', content: Buffer.from('ZIP64 payload') }
   ])
 )
 
@@ -181,6 +143,70 @@ test('unpacks and installs a CRX extension', async ({ voyager }) => {
   const removed = await voyager.chrome.evaluate(
     (path) => window.voyager.extensions.uninstall(path),
     installed[0].path
+  )
+  expect(removed).toEqual([])
+})
+
+test('unpacks a ZIP64 CRX extension', async ({ voyager, downloadDir }) => {
+  const crxPath = join(downloadDir, 'zip64.crx')
+  writeFileSync(crxPath, ZIP64_CRX)
+
+  const installed = await voyager.chrome.evaluate(
+    (path) => window.voyager.extensions.install(path),
+    crxPath
+  )
+  expect(installed).toEqual([expect.objectContaining({ name: 'ZIP64 Extension', loaded: true })])
+
+  const extensionPath = installed[0]?.path
+  expect(extensionPath).toBeTruthy()
+  if (!extensionPath) return
+  expect(readFileSync(join(extensionPath, 'zip64.txt'), 'utf8')).toBe('ZIP64 payload')
+
+  const removed = await voyager.chrome.evaluate(
+    (path) => window.voyager.extensions.uninstall(path),
+    extensionPath
+  )
+  expect(removed).toEqual([])
+})
+
+test('installs a CRX with a file larger than the previous 64 MiB limit', async ({
+  voyager,
+  downloadDir
+}) => {
+  const largeSize = 64 * 1024 * 1024 + 1
+  const largeFile = Buffer.alloc(largeSize, 0x5a)
+  const crxPath = join(downloadDir, 'large.crx')
+  writeFileSync(
+    crxPath,
+    crx2(
+      storedZip([
+        {
+          name: 'manifest.json',
+          content: Buffer.from(
+            JSON.stringify({ manifest_version: 2, name: 'Large CRX Extension', version: '1.0' })
+          )
+        },
+        { name: 'large.bin', content: largeFile }
+      ])
+    )
+  )
+
+  const installed = await voyager.chrome.evaluate(
+    (path) => window.voyager.extensions.install(path),
+    crxPath
+  )
+  expect(installed).toEqual([
+    expect.objectContaining({ name: 'Large CRX Extension', loaded: true })
+  ])
+
+  const extensionPath = installed[0]?.path
+  expect(extensionPath).toBeTruthy()
+  if (!extensionPath) return
+  expect(statSync(join(extensionPath, 'large.bin')).size).toBe(largeSize)
+
+  const removed = await voyager.chrome.evaluate(
+    (path) => window.voyager.extensions.uninstall(path),
+    extensionPath
   )
   expect(removed).toEqual([])
 })

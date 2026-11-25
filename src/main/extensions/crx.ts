@@ -7,12 +7,12 @@ import { inflateRawSync } from 'node:zlib'
 import { isIllegalExtensionEntry, removeIllegalExtensionFiles } from './illegalFiles'
 
 const EOCD_SIGNATURE = 0x06054b50
+const ZIP64_EOCD_SIGNATURE = 0x06064b50
+const ZIP64_LOCATOR_SIGNATURE = 0x07064b50
 const CENTRAL_SIGNATURE = 0x02014b50
 const LOCAL_SIGNATURE = 0x04034b50
-const MAX_FILES = 10_000
-const MAX_FILE_BYTES = 64 * 1024 * 1024
-const MAX_TOTAL_BYTES = 256 * 1024 * 1024
-const MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
+const ZIP64_EXTRA_ID = 0x0001
+const UINT32_MAX = 0xffffffff
 
 /** Strip the CRX2/CRX3 header and return the embedded ZIP archive. */
 function crxArchive(file: Buffer): Buffer {
@@ -49,6 +49,81 @@ function endOfCentralDirectory(archive: Buffer): number {
   throw new Error('The extension archive has no central directory.')
 }
 
+/** Read a ZIP64 64-bit value, rejecting values JavaScript cannot address. */
+function readUInt64(archive: Buffer, offset: number): number {
+  const value = archive.readBigUInt64LE(offset)
+  if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error('The extension archive uses offsets too large for this platform.')
+  }
+  return Number(value)
+}
+
+interface CentralDirectory {
+  count: number
+  size: number
+  offset: number
+}
+
+function centralDirectory(archive: Buffer): CentralDirectory {
+  const eocd = endOfCentralDirectory(archive)
+  let count = archive.readUInt16LE(eocd + 10)
+  let size = archive.readUInt32LE(eocd + 12)
+  let offset = archive.readUInt32LE(eocd + 16)
+
+  const locator = eocd - 20
+  if (locator >= 0 && archive.readUInt32LE(locator) === ZIP64_LOCATOR_SIGNATURE) {
+    const zip64 = readUInt64(archive, locator + 8)
+    if (zip64 + 56 > archive.length || archive.readUInt32LE(zip64) !== ZIP64_EOCD_SIGNATURE) {
+      throw new Error('The extension archive has an invalid ZIP64 end record.')
+    }
+    if (readUInt64(archive, zip64 + 4) < 44) {
+      throw new Error('The extension archive has an invalid ZIP64 end record.')
+    }
+    count = readUInt64(archive, zip64 + 32)
+    size = readUInt64(archive, zip64 + 40)
+    offset = readUInt64(archive, zip64 + 48)
+  } else if (size === UINT32_MAX || offset === UINT32_MAX) {
+    throw new Error('The extension archive is missing its ZIP64 locator.')
+  }
+
+  if (offset < 0 || size < 0 || count < 0 || offset + size > archive.length) {
+    throw new Error('The extension archive has an invalid central directory.')
+  }
+  return { count, size, offset }
+}
+
+type Zip64Field = 'uncompressed' | 'compressed' | 'offset'
+
+/** Read only the ZIP64 values whose classic header fields use sentinels. */
+function zip64Extra(
+  archive: Buffer,
+  start: number,
+  length: number,
+  fields: Zip64Field[]
+): Partial<Record<Zip64Field, number>> {
+  let cursor = start
+  const end = start + length
+  while (cursor + 4 <= end) {
+    const id = archive.readUInt16LE(cursor)
+    const size = archive.readUInt16LE(cursor + 2)
+    cursor += 4
+    if (cursor + size > end) throw new Error('The extension archive has a corrupt extra field.')
+    if (id === ZIP64_EXTRA_ID) {
+      const needed = fields.length * 8
+      if (size < needed) {
+        throw new Error('The extension archive has an incomplete ZIP64 extra field.')
+      }
+      const result: Partial<Record<Zip64Field, number>> = {}
+      fields.forEach((field, index) => {
+        result[field] = readUInt64(archive, cursor + index * 8)
+      })
+      return result
+    }
+    cursor += size
+  }
+  throw new Error('The extension archive is missing ZIP64 size information.')
+}
+
 function safeExtractPath(destination: string, entryName: string): string | null {
   const normalized = entryName.replaceAll('\\', '/')
   if (normalized.startsWith('/') || /^[a-zA-Z]:/.test(normalized) || normalized.includes('\0')) {
@@ -61,44 +136,48 @@ function safeExtractPath(destination: string, entryName: string): string | null 
 
 /** Extract a ZIP archive with a small, hardened reader (no new dependency). */
 function extractArchive(archive: Buffer, destination: string): void {
-  const eocd = endOfCentralDirectory(archive)
-  const count = archive.readUInt16LE(eocd + 10)
-  const centralSize = archive.readUInt32LE(eocd + 12)
-  const centralOffset = archive.readUInt32LE(eocd + 16)
-  if (centralOffset + centralSize > archive.length) {
-    throw new Error('The extension archive has an invalid central directory.')
-  }
-  if (count > MAX_FILES) throw new Error('The extension archive has too many files.')
+  const directory = centralDirectory(archive)
+  const centralEnd = directory.offset + directory.size
+  let cursor = directory.offset
 
-  let cursor = centralOffset
-  let totalBytes = 0
-  for (let index = 0; index < count; index += 1) {
-    if (cursor + 46 > archive.length || archive.readUInt32LE(cursor) !== CENTRAL_SIGNATURE) {
+  for (let index = 0; index < directory.count; index += 1) {
+    if (cursor + 46 > centralEnd || archive.readUInt32LE(cursor) !== CENTRAL_SIGNATURE) {
       throw new Error('The extension archive has a corrupt file entry.')
     }
     const flags = archive.readUInt16LE(cursor + 8)
     const method = archive.readUInt16LE(cursor + 10)
     const mode = (archive.readUInt32LE(cursor + 38) >>> 16) & 0o170000
-    const compressedSize = archive.readUInt32LE(cursor + 20)
-    const uncompressedSize = archive.readUInt32LE(cursor + 24)
+    let compressedSize = archive.readUInt32LE(cursor + 20)
+    let uncompressedSize = archive.readUInt32LE(cursor + 24)
     const nameLength = archive.readUInt16LE(cursor + 28)
     const extraLength = archive.readUInt16LE(cursor + 30)
     const commentLength = archive.readUInt16LE(cursor + 32)
-    const localOffset = archive.readUInt32LE(cursor + 42)
+    let localOffset = archive.readUInt32LE(cursor + 42)
     const name = archive.subarray(cursor + 46, cursor + 46 + nameLength).toString('utf8')
-    cursor += 46 + nameLength + extraLength + commentLength
+    const extraStart = cursor + 46 + nameLength
+    cursor = extraStart + extraLength + commentLength
 
+    if (flags & 0x1) throw new Error('Encrypted extension archives are not supported.')
+
+    const zip64Fields: Zip64Field[] = []
+    if (uncompressedSize === UINT32_MAX) zip64Fields.push('uncompressed')
+    if (compressedSize === UINT32_MAX) zip64Fields.push('compressed')
+    if (localOffset === UINT32_MAX) zip64Fields.push('offset')
+    if (zip64Fields.length > 0) {
+      const values = zip64Extra(archive, extraStart, extraLength, zip64Fields)
+      uncompressedSize = values.uncompressed ?? uncompressedSize
+      compressedSize = values.compressed ?? compressedSize
+      localOffset = values.offset ?? localOffset
+    }
     if (
-      flags & 0x1 ||
-      compressedSize === 0xffffffff ||
-      uncompressedSize === 0xffffffff ||
-      localOffset === 0xffffffff
+      compressedSize < 0 ||
+      uncompressedSize < 0 ||
+      localOffset < 0 ||
+      localOffset + 30 > archive.length
     ) {
-      throw new Error('Encrypted and ZIP64 extensions are not supported.')
+      throw new Error('The extension archive has invalid file sizes or offsets.')
     }
-    if (uncompressedSize > MAX_FILE_BYTES || totalBytes + uncompressedSize > MAX_TOTAL_BYTES) {
-      throw new Error('The extension archive is too large.')
-    }
+
     const target = safeExtractPath(destination, name)
     if (!target) throw new Error('The extension archive contains an unsafe file path.')
     if (isIllegalExtensionEntry(name)) continue
@@ -108,10 +187,7 @@ function extractArchive(archive: Buffer, destination: string): void {
       continue
     }
 
-    if (
-      localOffset + 30 > archive.length ||
-      archive.readUInt32LE(localOffset) !== LOCAL_SIGNATURE
-    ) {
+    if (archive.readUInt32LE(localOffset) !== LOCAL_SIGNATURE) {
       throw new Error('The extension archive has a corrupt file header.')
     }
     const dataStart =
@@ -127,7 +203,6 @@ function extractArchive(archive: Buffer, destination: string): void {
     if (!contents || contents.length !== uncompressedSize) {
       throw new Error('The extension archive could not be decompressed.')
     }
-    totalBytes += contents.length
     mkdirSync(resolve(target, '..'), { recursive: true })
     writeFileSync(target, contents)
   }
@@ -236,9 +311,7 @@ export async function downloadCrx(url: string, expectedSha256?: string): Promise
   const response = await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(60_000) })
   if (!response.ok) throw new Error(`The extension update returned HTTP ${response.status}.`)
   const file = Buffer.from(await response.arrayBuffer())
-  if (file.length === 0 || file.length > MAX_DOWNLOAD_BYTES) {
-    throw new Error('The extension update package is invalid or too large.')
-  }
+  if (file.length === 0) throw new Error('The extension update package is invalid.')
   if (file.toString('ascii', 0, 4) !== 'Cr24') {
     throw new Error('The extension update is not a CRX package.')
   }
