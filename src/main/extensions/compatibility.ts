@@ -4,6 +4,7 @@ import { refreshCommandShortcuts } from './api'
 import { attachContextMenus } from './api/contextMenus'
 import { attachCookieEvents } from './api/cookies'
 import { attachDownloadEvents } from './api/downloads'
+import { attachIdleTracking } from './api/idle'
 import { attachProxyEvents } from './api/proxy'
 import { attachExtensions } from './extensions'
 import { attachExtensionServiceWorkerIpc } from './serviceWorkerIpc'
@@ -32,6 +33,7 @@ export function attachExtensionCompatibility(ses: Session, profileId: string): v
   attachCookieEvents(ses, profileId)
   attachContextMenus(ses, profileId)
   attachDownloadEvents(ses, profileId)
+  attachIdleTracking(ses, profileId)
   attachProxyEvents(ses, profileId)
   void attachExtensions(ses, profileId).then(() => refreshCommandShortcuts(ses, profileId))
 }

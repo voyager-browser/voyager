@@ -144,6 +144,14 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       query: {}
     }
   },
+  idle: {
+    methods: {
+      setDetectionInterval: {},
+      getState: { fallback: 'active' },
+      queryState: { fallback: 'active' }
+    },
+    events: ['onStateChanged']
+  },
   system: {
     properties: {
       cpu: {

@@ -6,6 +6,7 @@ import { registerCommands } from './commands'
 import { registerContextMenus } from './contextMenus'
 import { registerCookies } from './cookies'
 import { registerDownloads } from './downloads'
+import { registerIdle } from './idle'
 import { registerNotifications } from './notifications'
 import { registerProxy } from './proxy'
 import { registerSearch } from './search'
@@ -34,6 +35,7 @@ export function registerExtensionApis(): void {
   registerContextMenus()
   registerStorageApi()
   registerDownloads()
+  registerIdle()
   registerNotifications()
   registerProxy()
   registerSearch()
