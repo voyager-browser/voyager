@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type {
+  BookmarkClipboard,
   BookmarkFolderPatch,
   BookmarkMoveInput,
   BookmarkNodeKind,
@@ -12,6 +13,7 @@ import { useBrowserStore } from './browserStore'
 
 interface BookmarksStore extends BookmarksState {
   applyState: (state: BookmarksState) => void
+  applyClipboard: (clipboard: BookmarkClipboard | null) => void
   addBookmark: (
     title: string,
     url: string,
@@ -49,6 +51,8 @@ export const useBookmarksStore = create<BookmarksStore>()((set, get) => ({
       barVisible: state.barVisible,
       clipboard: state.clipboard ?? null
     }),
+
+  applyClipboard: (clipboard) => set({ clipboard }),
 
   addBookmark: (title, url, favicon, folderId) => {
     apply(window.voyager.bookmarks.add({ title, url, favicon, folderId }))

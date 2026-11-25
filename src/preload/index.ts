@@ -6,6 +6,7 @@ import type {
   AutofillContact,
   AutofillPaymentMethod,
   AutofillState,
+  BookmarkClipboard,
   BookmarkFolderPatch,
   BookmarkMoveInput,
   BookmarkNodeKind,
@@ -185,7 +186,9 @@ const api = {
     toggleBar: (): Promise<BookmarksState> => ipcRenderer.invoke(IpcChannels.BookmarksToggleBar),
     clear: (): Promise<BookmarksState> => ipcRenderer.invoke(IpcChannels.BookmarksClear),
     onStateChanged: (listener: (state: BookmarksState) => void): Unsubscribe =>
-      subscribe<BookmarksState>(IpcChannels.BookmarksStateChanged, listener)
+      subscribe<BookmarksState>(IpcChannels.BookmarksStateChanged, listener),
+    onClipboardChanged: (listener: (clipboard: BookmarkClipboard | null) => void): Unsubscribe =>
+      subscribe<BookmarkClipboard | null>(IpcChannels.BookmarksClipboardChanged, listener)
   },
 
   permissions: {

@@ -21,7 +21,7 @@ import { getSettings, setSettings, storesFor } from '../store'
  * the star/Add Page paths dedupe within their target folder.
  */
 
-type Broadcast = (state: BookmarksState) => void
+type Broadcast = (state: BookmarksState, stateProfileId?: string) => void
 
 /** Internal clipboard is shared across profiles so bookmarks can be transferred. */
 let bookmarkClipboard: BookmarkClipboard | null = null
@@ -32,6 +32,11 @@ function clipboardFor(_profileId: string): BookmarkClipboard | null {
 
 function setClipboard(_profileId: string, clipboard: BookmarkClipboard | null): void {
   bookmarkClipboard = clipboard
+}
+
+/** Exposed so the IPC layer can publish the global clipboard to every profile. */
+export function currentBookmarkClipboard(): BookmarkClipboard | null {
+  return bookmarkClipboard
 }
 
 function storedItems(profileId: string): BookmarkItem[] {
@@ -93,7 +98,9 @@ export function currentBookmarksState(profileId: string): BookmarksState {
 
 function publish(profileId: string, broadcast: Broadcast): BookmarksState {
   const state = currentBookmarksState(profileId)
-  broadcast(state)
+  // The second argument lets a cross-profile operation send another profile's
+  // state through the acting window's broadcast callback.
+  broadcast(state, profileId)
   return state
 }
 
@@ -252,8 +259,9 @@ export function removeFolder(
     storedItems(profileId).filter((item) => !doomed.has(item.folderId ?? ''))
   )
   const clipboard = clipboardFor(profileId)
-  if (clipboard) {
-    // The clipboard contents may have been inside the removed subtree.
+  if (clipboard?.sourceProfileId === profileId) {
+    // The clipboard contents may have been inside the removed subtree. A
+    // clipboard copied in another profile must survive an unrelated deletion.
     const kindExists =
       clipboard.kind === 'folder'
         ? storedFolders(profileId).some((folder) => folder.id === clipboard.id)
@@ -313,7 +321,7 @@ export function copyBookmarkNode(
   id: string,
   broadcast: Broadcast
 ): BookmarksState {
-  setClipboard(profileId, { mode: 'copy', kind, id })
+  setClipboard(profileId, { mode: 'copy', kind, id, sourceProfileId: profileId })
   return publish(profileId, broadcast)
 }
 
@@ -323,16 +331,23 @@ export function cutBookmarkNode(
   id: string,
   broadcast: Broadcast
 ): BookmarksState {
-  setClipboard(profileId, { mode: 'cut', kind, id })
+  setClipboard(profileId, { mode: 'cut', kind, id, sourceProfileId: profileId })
   return publish(profileId, broadcast)
 }
 
-function cloneFolder(profileId: string, folder: BookmarkFolder, parentId: string | null): string {
-  const store = storesFor(profileId).bookmarks
+function cloneFolder(
+  sourceProfileId: string,
+  folder: BookmarkFolder,
+  targetProfileId: string,
+  parentId: string | null
+): string {
+  const targetStore = storesFor(targetProfileId).bookmarks
   // Snapshot the original subtree before writing anything. Reading the live
   // store afterwards would pick up clones placed inside `folder` as children.
-  const children = storedFolders(profileId).filter((candidate) => candidate.parentId === folder.id)
-  const containedItems = storedItems(profileId).filter(
+  const children = storedFolders(sourceProfileId).filter(
+    (candidate) => candidate.parentId === folder.id
+  )
+  const containedItems = storedItems(sourceProfileId).filter(
     (item) => (item.folderId ?? null) === folder.id
   )
   const newId = randomUUID()
@@ -342,9 +357,9 @@ function cloneFolder(profileId: string, folder: BookmarkFolder, parentId: string
     parentId,
     createdAt: Date.now()
   }
-  store.update('folders', (folders) => [...(folders ?? []), clone])
-  for (const child of children) cloneFolder(profileId, child, newId)
-  store.update('items', (items) => [
+  targetStore.update('folders', (folders) => [...(folders ?? []), clone])
+  for (const child of children) cloneFolder(sourceProfileId, child, targetProfileId, newId)
+  targetStore.update('items', (items) => [
     ...items,
     ...containedItems.map((item) => ({
       ...item,
@@ -356,8 +371,8 @@ function cloneFolder(profileId: string, folder: BookmarkFolder, parentId: string
   return newId
 }
 
-function cloneBookmark(profileId: string, item: BookmarkItem, folderId: string | null): void {
-  storesFor(profileId).bookmarks.update('items', (items) => [
+function cloneBookmark(item: BookmarkItem, targetProfileId: string, folderId: string | null): void {
+  storesFor(targetProfileId).bookmarks.update('items', (items) => [
     ...items,
     { ...item, id: randomUUID(), folderId, createdAt: Date.now() }
   ])
@@ -367,13 +382,84 @@ function cloneBookmark(profileId: string, item: BookmarkItem, folderId: string |
 export function pasteBookmarkNode(
   profileId: string,
   parentId: string | null,
-  broadcast: Broadcast
+  broadcast: Broadcast,
+  setBarExtent: (targetProfileId: string, visible: boolean) => void
 ): BookmarksState {
   const clipboard = clipboardFor(profileId)
   if (!clipboard) return publish(profileId, broadcast)
   if (!folderExists(profileId, parentId)) throw new Error('Folder not found')
 
-  const { mode, kind, id } = clipboard
+  const { mode, kind, id, sourceProfileId } = clipboard
+  const sourceProfile = sourceProfileId ?? profileId
+
+  if (sourceProfile !== profileId) {
+    if (kind === 'bookmark') {
+      const item = storedItems(sourceProfile).find((candidate) => candidate.id === id)
+      // A stale or deleted source node must not wipe a clipboard owned by
+      // another profile.
+      if (!item) return publish(profileId, broadcast)
+
+      if (mode === 'cut') {
+        storesFor(sourceProfile).bookmarks.update('items', (items) =>
+          items.filter((candidate) => candidate.id !== id)
+        )
+        storesFor(profileId).bookmarks.update('items', (items) => [
+          ...items,
+          { ...item, folderId: parentId }
+        ])
+        hideBarIfEmpty(sourceProfile, (visible) => setBarExtent(sourceProfile, visible))
+        publish(sourceProfile, broadcast)
+        revealBarIfNeeded(profileId, true, (visible) => setBarExtent(profileId, visible))
+        setClipboard(profileId, null)
+        return publish(profileId, broadcast)
+      }
+
+      cloneBookmark(item, profileId, parentId)
+      revealBarIfNeeded(profileId, true, (visible) => setBarExtent(profileId, visible))
+      // Copy is reusable: keep the source profile's clipboard available so the
+      // same node can be pasted into more than one profile.
+      return publish(profileId, broadcast)
+    }
+
+    const folder = storedFolders(sourceProfile).find((candidate) => candidate.id === id)
+    if (!folder) return publish(profileId, broadcast)
+
+    if (mode === 'cut') {
+      const doomed = folderSubtree(sourceProfile, id)
+      const sourceStore = storesFor(sourceProfile).bookmarks
+      const movedFolders = storedFolders(sourceProfile).filter((candidate) =>
+        doomed.has(candidate.id)
+      )
+      const movedItems = storedItems(sourceProfile).filter((candidate) =>
+        doomed.has(candidate.folderId ?? '')
+      )
+      sourceStore.set(
+        'folders',
+        storedFolders(sourceProfile).filter((candidate) => !doomed.has(candidate.id))
+      )
+      sourceStore.set(
+        'items',
+        storedItems(sourceProfile).filter((candidate) => !doomed.has(candidate.folderId ?? ''))
+      )
+      storesFor(profileId).bookmarks.update('folders', (folders) => [
+        ...(folders ?? []),
+        ...movedFolders.map((candidate) =>
+          candidate.id === id ? { ...candidate, parentId } : candidate
+        )
+      ])
+      storesFor(profileId).bookmarks.update('items', (items) => [...items, ...movedItems])
+      hideBarIfEmpty(sourceProfile, (visible) => setBarExtent(sourceProfile, visible))
+      publish(sourceProfile, broadcast)
+      revealBarIfNeeded(profileId, true, (visible) => setBarExtent(profileId, visible))
+      setClipboard(profileId, null)
+      return publish(profileId, broadcast)
+    }
+
+    cloneFolder(sourceProfile, folder, profileId, parentId)
+    revealBarIfNeeded(profileId, true, (visible) => setBarExtent(profileId, visible))
+    return publish(profileId, broadcast)
+  }
+
   if (kind === 'bookmark') {
     const item = storedItems(profileId).find((candidate) => candidate.id === id)
     if (!item) {
@@ -385,7 +471,7 @@ export function pasteBookmarkNode(
       setClipboard(profileId, null)
       return publish(profileId, broadcast)
     }
-    cloneBookmark(profileId, item, parentId)
+    cloneBookmark(item, profileId, parentId)
   } else {
     const folder = storedFolders(profileId).find((candidate) => candidate.id === id)
     if (!folder) {
@@ -402,7 +488,7 @@ export function pasteBookmarkNode(
       // moveBookmarkNode. Either way cloneFolder must not run here.
       if (parentId !== id) throw new Error('Cannot paste a folder into itself')
     } else {
-      cloneFolder(profileId, folder, parentId)
+      cloneFolder(profileId, folder, profileId, parentId)
     }
   }
 
@@ -418,7 +504,8 @@ export function clearBookmarks(
   const store = storesFor(profileId).bookmarks
   store.set('items', [])
   store.set('folders', [])
-  setClipboard(profileId, null)
+  // Clearing one profile must not discard a clipboard copied in another one.
+  if (clipboardFor(profileId)?.sourceProfileId === profileId) setClipboard(profileId, null)
   hideBarIfEmpty(profileId, setBarExtent)
   return publish(profileId, broadcast)
 }

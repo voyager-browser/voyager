@@ -228,6 +228,7 @@ export function SettingsPage(): React.JSX.Element {
     const unsubscribes = [
       window.voyager.profiles.onStateChanged(setProfiles),
       window.voyager.bookmarks.onStateChanged(bookmarks.applyState),
+      window.voyager.bookmarks.onClipboardChanged(bookmarks.applyClipboard),
       window.voyager.history.onStateChanged(history.applyState),
       window.voyager.downloads.onStateChanged(downloads.applyState),
       window.voyager.autofill.onStateChanged(setAutofill),
