@@ -54,6 +54,15 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       removeData: {},
       removeDataType: {}
     }
+  },
+  cookies: {
+    methods: {
+      get: {},
+      getAll: {},
+      set: {},
+      remove: {}
+    },
+    events: ['onChanged']
   }
 }
 
