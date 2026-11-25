@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, type Session } from 'electron'
+import type { Session } from 'electron'
 import { attachExtensionServiceWorkerIpc } from './serviceWorkerIpc'
 import { attachExtensionWebNavigation } from './webNavigation'
 
@@ -23,10 +23,4 @@ export function attachExtensionCompatibility(ses: Session, profileId: string): v
   })
   attachExtensionServiceWorkerIpc(ses)
   attachExtensionWebNavigation(ses)
-
-  if (!app.isPackaged) {
-    ses.serviceWorkers.on('console-message', (_event, details) => {
-      console.log(`[extension worker ${profileId}] ${details.message}`)
-    })
-  }
 }

@@ -68,6 +68,7 @@ interface LaunchOverrides {
   seed?: Record<string, unknown>
   args?: string[]
   env?: Record<string, string>
+  chromiumSandbox?: boolean
 }
 
 interface Fixtures {
@@ -106,7 +107,8 @@ export const test = base.extend<Fixtures>({
         downloadDir,
         seed: overrides.seed,
         args: overrides.args,
-        env: overrides.env
+        env: overrides.env,
+        chromiumSandbox: overrides.chromiumSandbox
       })
       const close = voyager.close
       voyager.close = async () => {

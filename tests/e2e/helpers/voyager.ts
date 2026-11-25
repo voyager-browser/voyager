@@ -20,6 +20,7 @@ export interface LaunchOptions {
   seed?: Record<string, unknown>
   args?: string[]
   env?: Record<string, string>
+  chromiumSandbox?: boolean
 }
 
 export interface VoyagerApp {
@@ -206,12 +207,13 @@ export async function launchVoyager(options: LaunchOptions): Promise<VoyagerApp>
   const app = await launchWithRetry({
     args: [
       '.',
-      '--no-sandbox',
+      ...(options.chromiumSandbox ? [] : ['--no-sandbox']),
       '--disable-dev-shm-usage',
       `--user-data-dir=${options.userDataDir}`,
       '--host-resolver-rules=MAP insecure.test 127.0.0.1',
       ...(options.args ?? [])
     ],
+    chromiumSandbox: options.chromiumSandbox,
     cwd: process.cwd(),
     env
   })

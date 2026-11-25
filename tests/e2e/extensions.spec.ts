@@ -401,39 +401,23 @@ test('opens its action popup when an extension calls chrome.action.openPopup', a
 })
 
 test('serves permission IPC from an MV3 background service worker', async ({ launchVoyager }) => {
+  // Electron 45 runs service-worker preload scripts only when its sandbox is
+  // enabled, so this regression needs a sandboxed launch instead of the shared
+  // no-sandbox harness used by the rest of the suite.
   const voyager = await launchVoyager({
+    chromiumSandbox: true,
     seed: { settings: { installedExtensions: [WORKER_EXTENSION_PATH] } }
   })
 
-  const diagnose = async (label: string): Promise<void> => {
-    const workers = await voyager.app.evaluate(({ session }) =>
-      Object.values(session.defaultSession.serviceWorkers.getAllRunning()).map((worker) => ({
-        versionId: worker.versionId,
-        scope: worker.scope,
-        scriptUrl: worker.scriptUrl
-      }))
+  await expect
+    .poll(
+      async () =>
+        (await voyager.state()).tabs.some(
+          (tab) => tab.url === 'https://example.test/?worker-permission=true'
+        ),
+      { timeout: 15_000 }
     )
-    const state = await voyager.state()
-    console.log(
-      `[worker test] ${label}`,
-      JSON.stringify({ workers, tabs: state.tabs.map((tab) => tab.url) })
-    )
-  }
-
-  await diagnose('start')
-  try {
-    await expect
-      .poll(
-        async () =>
-          (await voyager.state()).tabs.some(
-            (tab) => tab.url === 'https://example.test/?worker-permission=true'
-          ),
-        { timeout: 15_000 }
-      )
-      .toBe(true)
-  } finally {
-    await diagnose('end')
-  }
+    .toBe(true)
 })
 
 test('prompts before granting a new extension permission', async ({ launchVoyager }) => {
