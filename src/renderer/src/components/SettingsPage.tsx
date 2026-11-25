@@ -2208,9 +2208,9 @@ export function SettingsPage(): React.JSX.Element {
                   `contextMenus`, `storage`, `downloads`, `notifications`, `tts`, `system.cpu`,
                   `system.display`, `system.memory`, `topSites`, `proxy`, `search`, `idle`,
                   `contentSettings`, `history`, `sessions`, `declarativeNetRequest`, `webRequest`,
-                  `extension`, and `management`. Tab details are limited to sites the extension can
-                  access. Cross-window `tabs.move` recreates the tab with a new id, and
-                  `tabs.connect` is unavailable because Electron cannot bridge long-lived
+                  `extension`, `management`, and `tabGroups`. Tab details are limited to sites the
+                  extension can access. Cross-window `tabs.move` recreates the tab with a new id,
+                  and `tabs.connect` is unavailable because Electron cannot bridge long-lived
                   connections to content scripts. `tabs.sendMessage` and `tabs.executeScript` use
                   Electron's native support where available.
                 </p>

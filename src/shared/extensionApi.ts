@@ -207,6 +207,17 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     },
     events: ['onStart', 'onEnd', 'onWordBoundary', 'onError']
   },
+  tabGroups: {
+    constants: { TAB_GROUP_ID_NONE: -1 },
+    methods: {
+      get: { fallback: null },
+      getAll: { fallback: [] },
+      query: { fallback: [] },
+      update: { fallback: null },
+      move: { fallback: null }
+    },
+    events: ['onCreated', 'onUpdated', 'onMoved', 'onRemoved']
+  },
   topSites: {
     methods: {
       get: { fallback: [] }

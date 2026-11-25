@@ -20,6 +20,7 @@ import { registerStorageApi } from './storageApi'
 import { registerSystemCpu } from './systemCpu'
 import { registerSystemDisplay } from './systemDisplay'
 import { registerSystemMemory } from './systemMemory'
+import { registerTabGroups } from './tabGroups'
 import { registerTopSites } from './topSites'
 import { registerTts } from './tts'
 import { registerWebRequest } from './webRequest'
@@ -56,6 +57,7 @@ export function registerExtensionApis(): void {
   registerSystemCpu()
   registerSystemDisplay()
   registerSystemMemory()
+  registerTabGroups()
   registerTopSites()
   registerWebRequest()
 }
