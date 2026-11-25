@@ -48,6 +48,12 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       removeTree: {}
     },
     events: ['onCreated', 'onUpdated', 'onRemoved', 'onMoved']
+  },
+  browsingData: {
+    methods: {
+      removeData: {},
+      removeDataType: {}
+    }
   }
 }
 
