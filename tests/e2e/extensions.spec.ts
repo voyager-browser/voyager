@@ -405,15 +405,35 @@ test('serves permission IPC from an MV3 background service worker', async ({ lau
     seed: { settings: { installedExtensions: [WORKER_EXTENSION_PATH] } }
   })
 
-  await expect
-    .poll(
-      async () =>
-        (await voyager.state()).tabs.some(
-          (tab) => tab.url === 'https://example.test/?worker-permission=true'
-        ),
-      { timeout: 15_000 }
+  const diagnose = async (label: string): Promise<void> => {
+    const workers = await voyager.app.evaluate(({ session }) =>
+      Object.values(session.defaultSession.serviceWorkers.getAllRunning()).map((worker) => ({
+        versionId: worker.versionId,
+        scope: worker.scope,
+        scriptUrl: worker.scriptUrl
+      }))
     )
-    .toBe(true)
+    const state = await voyager.state()
+    console.log(
+      `[worker test] ${label}`,
+      JSON.stringify({ workers, tabs: state.tabs.map((tab) => tab.url) })
+    )
+  }
+
+  await diagnose('start')
+  try {
+    await expect
+      .poll(
+        async () =>
+          (await voyager.state()).tabs.some(
+            (tab) => tab.url === 'https://example.test/?worker-permission=true'
+          ),
+        { timeout: 15_000 }
+      )
+      .toBe(true)
+  } finally {
+    await diagnose('end')
+  }
 })
 
 test('prompts before granting a new extension permission', async ({ launchVoyager }) => {
