@@ -183,6 +183,13 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       query: {}
     }
   },
+  sessions: {
+    methods: {
+      getRecentlyClosed: { fallback: [] },
+      getSessions: { fallback: [] },
+      restore: { fallback: {} }
+    }
+  },
   idle: {
     methods: {
       setDetectionInterval: {},

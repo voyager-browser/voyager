@@ -12,6 +12,7 @@ import { registerIdle } from './idle'
 import { registerNotifications } from './notifications'
 import { registerProxy } from './proxy'
 import { registerSearch } from './search'
+import { registerSessions } from './sessions'
 import { registerStorageApi } from './storageApi'
 import { registerSystemCpu } from './systemCpu'
 import { registerSystemDisplay } from './systemDisplay'
@@ -43,6 +44,7 @@ export function registerExtensionApis(): void {
   registerNotifications()
   registerProxy()
   registerSearch()
+  registerSessions()
   registerTts()
   registerSystemCpu()
   registerSystemDisplay()
