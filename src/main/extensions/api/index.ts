@@ -1,5 +1,6 @@
 import { registerAccessibilityFeatures } from './accessibilityFeatures'
 import { registerAlarms, restoreAlarms } from './alarms'
+import { registerBookmarks } from './bookmarks'
 
 let registered = false
 
@@ -10,6 +11,7 @@ export function registerExtensionApis(): void {
   registerAccessibilityFeatures()
   registerAlarms()
   restoreAlarms()
+  registerBookmarks()
 }
 
 export { invokeExtensionApi } from './registry'

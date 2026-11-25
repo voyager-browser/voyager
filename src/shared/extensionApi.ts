@@ -33,6 +33,21 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       clearAll: {}
     },
     events: ['onAlarm']
+  },
+  bookmarks: {
+    methods: {
+      getTree: {},
+      get: {},
+      getChildren: {},
+      getRecent: {},
+      search: {},
+      create: {},
+      update: {},
+      move: {},
+      remove: {},
+      removeTree: {}
+    },
+    events: ['onCreated', 'onUpdated', 'onRemoved', 'onMoved']
   }
 }
 
