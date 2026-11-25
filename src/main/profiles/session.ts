@@ -96,7 +96,7 @@ function attachSessionPolicies(
   if (getSettings(profileId, 'contentBlocking', false) === true) {
     primeContentBlocking(profileId)
   }
-  attachContentBlocking(ses, profileId)
+  attachContentBlocking(ses, profileId, { ephemeral: !persist })
   attachDownloadsTracking(
     ses,
     profileId,
