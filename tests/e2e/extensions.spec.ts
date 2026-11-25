@@ -401,11 +401,11 @@ test('opens its action popup when an extension calls chrome.action.openPopup', a
 })
 
 test('serves permission IPC from an MV3 background service worker', async ({ launchVoyager }) => {
-  // Electron 45 runs service-worker preload scripts only when its sandbox is
-  // enabled, so this regression needs a sandboxed launch instead of the shared
-  // no-sandbox harness used by the rest of the suite.
+  // Electron 45 runs service-worker preload scripts only through its sandboxed
+  // renderer client. --enable-sandbox selects that client without requiring the
+  // setuid sandbox helper that a normal sandboxed launch needs on Linux CI.
   const voyager = await launchVoyager({
-    chromiumSandbox: true,
+    args: ['--enable-sandbox'],
     seed: { settings: { installedExtensions: [WORKER_EXTENSION_PATH] } }
   })
 
