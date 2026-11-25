@@ -114,6 +114,75 @@ test('opens an incognito window from the File menu', async ({ voyager }) => {
   await expect.poll(async () => windowCount(voyager.app), { timeout: 10_000 }).toBe(before + 1)
 })
 
+test('incognito autofill data stays isolated from the owning profile', async ({
+  voyager,
+  server
+}) => {
+  await voyager.chrome.evaluate(() =>
+    window.voyager.autofill.saveContact({
+      name: 'Alice',
+      email: 'alice@example.com',
+      phone: '555-0100'
+    })
+  )
+  const owner = await voyager.chrome.evaluate(() => window.voyager.windows.getState())
+  await voyager.chrome.evaluate(
+    (url) => window.voyager.windows.openIncognito(url),
+    server.url('/second')
+  )
+  const incognitoChrome = await chromePageForProfile(voyager.app, owner.profile.id, true)
+
+  // The incognito renderer must not see the owner's saved contacts even though
+  // it resolves to the same profile for settings and user agent purposes.
+  const incognitoState = await incognitoChrome.evaluate(() => window.voyager.autofill.getState())
+  expect(incognitoState.contacts.map((contact) => contact.email)).not.toContain('alice@example.com')
+
+  const targetUrl = server.url('/second')
+  await expect
+    .poll(async () =>
+      voyager.app.evaluate(
+        ({ webContents }, url) =>
+          webContents
+            .getAllWebContents()
+            .some((candidate) => !candidate.isDestroyed() && candidate.getURL() === url),
+        targetUrl
+      )
+    )
+    .toBe(true)
+
+  // Blurring a text control invokes AutofillRecordFormField from the tab.
+  await voyager.app.evaluate(async ({ webContents }, url) => {
+    const tab = webContents
+      .getAllWebContents()
+      .find((candidate) => !candidate.isDestroyed() && candidate.getURL() === url)
+    if (!tab) throw new Error('Incognito tab WebContents not found')
+    await tab.executeJavaScript(`
+        (() => {
+          const input = document.createElement('input')
+          input.setAttribute('autocomplete', 'email')
+          document.body.appendChild(input)
+          input.focus()
+          input.value = 'incognito-only@example.com'
+          input.dispatchEvent(new Event('input', { bubbles: true }))
+          input.blur()
+        })()
+      `)
+  }, targetUrl)
+
+  await expect
+    .poll(async () => {
+      const state = await incognitoChrome.evaluate(() => window.voyager.autofill.getState())
+      return state.formHistory.map((entry) => entry.value)
+    })
+    .toContain('incognito-only@example.com')
+
+  const normalState = await voyager.chrome.evaluate(() => window.voyager.autofill.getState())
+  expect(normalState.formHistory.map((entry) => entry.value)).not.toContain(
+    'incognito-only@example.com'
+  )
+  expect(normalState.contacts.map((contact) => contact.email)).toContain('alice@example.com')
+})
+
 test('incognito sessions inherit the owner proxy, spellcheck and content blocking', async ({
   voyager,
   server

@@ -62,7 +62,11 @@ import {
 } from '../permissions/permissions'
 import { exportCertificate, getCertificate } from '../certificates/certificates'
 import type { WindowController } from '../window/WindowController'
-import { openSettingsWindow, settingsProfileFor } from '../window/settingsWindow'
+import {
+  openSettingsWindow,
+  sendToSettingsWindow,
+  settingsProfileFor
+} from '../window/settingsWindow'
 import {
   activeWindow,
   allWindows,
@@ -132,6 +136,8 @@ import {
   saveContact,
   savePaymentMethod
 } from '../autofill/autofill'
+import { createEphemeralAutofillStore } from '../autofill/ephemeral'
+import { createAutofillScopeResolver, type AutofillScope } from '../autofill/scope'
 
 import { isDefaultBrowser, setDefaultBrowser } from '../defaultBrowser'
 import {
@@ -244,11 +250,15 @@ export function registerIpcHandlers(context: IpcContext): void {
     activeWindow()?.profile ??
     DEFAULT_PROFILE_ID
 
-  const profileForSender = (sender: WebContents): string =>
+  const profileForSender = (sender: Electron.WebContents): string =>
     windowForWebContents(sender)?.profile ??
     settingsProfileFor(sender) ??
     activeWindow()?.profile ??
     DEFAULT_PROFILE_ID
+
+  const autofillScopeFor = createAutofillScopeResolver(createEphemeralAutofillStore)
+  const scopeForAutofillEvent = (event: SenderEvent): AutofillScope =>
+    autofillScopeFor(windowForAnyWebContents(event?.sender) ?? null, profileFor(event))
 
   // Settings windows have no browser WindowController, so only browser senders
   // may resolve to an incognito counter scope. The chrome view uses the default
@@ -258,9 +268,18 @@ export function registerIpcHandlers(context: IpcContext): void {
     return owner?.isIncognito ? (owner.partition ?? undefined) : undefined
   }
 
-  const publishAutofill = (profileId: string): ReturnType<typeof currentAutofillState> => {
-    const state = currentAutofillState(profileId)
-    sendToProfile(profileId, IpcChannels.AutofillStateChanged, state)
+  const publishAutofill = (scope: AutofillScope): ReturnType<typeof currentAutofillState> => {
+    const state = currentAutofillState(scope.profileId, scope.store)
+    if (!scope.ephemeral) {
+      // Normal autofill state is profile-scoped, but incognito windows must not
+      // receive (or persist) the owning profile's saved values.
+      for (const window of allWindows()) {
+        if (window.profile === scope.profileId && !window.isIncognito) {
+          window.sendToChrome(IpcChannels.AutofillStateChanged, state)
+        }
+      }
+      sendToSettingsWindow(scope.profileId, IpcChannels.AutofillStateChanged, state)
+    }
     return state
   }
 
@@ -987,66 +1006,76 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   /* ---- autofill -------------------------------------------------------- */
 
-  ipcMain.handle(IpcChannels.AutofillGetState, (event) =>
-    currentAutofillState(profileFor(event as any))
-  )
+  ipcMain.handle(IpcChannels.AutofillGetState, (event) => {
+    const scope = scopeForAutofillEvent(event as any)
+    return currentAutofillState(scope.profileId, scope.store)
+  })
 
   ipcMain.handle(IpcChannels.AutofillSaveAddress, (event, input) => {
     if (!input || typeof input !== 'object') throw new Error('Invalid address')
-    saveAddress(profileFor(event as any), input as any)
-    return publishAutofill(profileFor(event as any))
+    const scope = scopeForAutofillEvent(event as any)
+    saveAddress(scope.profileId, input as any, scope.store)
+    return publishAutofill(scope)
   })
 
   ipcMain.handle(IpcChannels.AutofillDeleteAddress, (event, id: string) => {
     if (typeof id !== 'string') throw new Error('Invalid address id')
-    deleteAddress(profileFor(event as any), id)
-    return publishAutofill(profileFor(event as any))
+    const scope = scopeForAutofillEvent(event as any)
+    deleteAddress(scope.profileId, id, scope.store)
+    return publishAutofill(scope)
   })
 
   ipcMain.handle(IpcChannels.AutofillSaveContact, (event, input) => {
     if (!input || typeof input !== 'object') throw new Error('Invalid contact')
-    saveContact(profileFor(event as any), input as any)
-    return publishAutofill(profileFor(event as any))
+    const scope = scopeForAutofillEvent(event as any)
+    saveContact(scope.profileId, input as any, scope.store)
+    return publishAutofill(scope)
   })
 
   ipcMain.handle(IpcChannels.AutofillDeleteContact, (event, id: string) => {
     if (typeof id !== 'string') throw new Error('Invalid contact id')
-    deleteContact(profileFor(event as any), id)
-    return publishAutofill(profileFor(event as any))
+    const scope = scopeForAutofillEvent(event as any)
+    deleteContact(scope.profileId, id, scope.store)
+    return publishAutofill(scope)
   })
 
   ipcMain.handle(IpcChannels.AutofillSavePayment, (event, input) => {
     if (!input || typeof input !== 'object') throw new Error('Invalid payment method')
-    savePaymentMethod(profileFor(event as any), input as any)
-    return publishAutofill(profileFor(event as any))
+    const scope = scopeForAutofillEvent(event as any)
+    savePaymentMethod(scope.profileId, input as any, scope.store)
+    return publishAutofill(scope)
   })
 
   ipcMain.handle(IpcChannels.AutofillDeletePayment, (event, id: string) => {
     if (typeof id !== 'string') throw new Error('Invalid payment method id')
-    deletePaymentMethod(profileFor(event as any), id)
-    return publishAutofill(profileFor(event as any))
+    const scope = scopeForAutofillEvent(event as any)
+    deletePaymentMethod(scope.profileId, id, scope.store)
+    return publishAutofill(scope)
   })
 
   ipcMain.handle(IpcChannels.AutofillClearFormHistory, (event) => {
-    clearFormHistory(profileFor(event as any))
-    return publishAutofill(profileFor(event as any))
+    const scope = scopeForAutofillEvent(event as any)
+    clearFormHistory(scope.profileId, scope.store)
+    return publishAutofill(scope)
   })
 
   ipcMain.handle(IpcChannels.AutofillDeleteFormHistoryEntry, (event, id: string) => {
     if (typeof id !== 'string') throw new Error('Invalid form history id')
-    removeFormHistoryEntry(profileFor(event as any), id)
-    return publishAutofill(profileFor(event as any))
+    const scope = scopeForAutofillEvent(event as any)
+    removeFormHistoryEntry(scope.profileId, id, scope.store)
+    return publishAutofill(scope)
   })
 
   ipcMain.handle(
     IpcChannels.AutofillGetFormSuggestions,
     (event, payload: { field?: unknown; prefix?: unknown }) => {
-      const profileId = profileForSender(event.sender)
+      const scope = scopeForAutofillEvent(event as any)
       if (typeof payload?.field !== 'string') return []
       return getFormHistorySuggestions(
-        profileId,
+        scope.profileId,
         payload.field,
-        typeof payload.prefix === 'string' ? payload.prefix : ''
+        typeof payload.prefix === 'string' ? payload.prefix : '',
+        scope.store
       )
     }
   )
@@ -1054,17 +1083,17 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(
     IpcChannels.AutofillRecordFormField,
     (event, payload: { field?: unknown; value?: unknown }) => {
-      const profileId = profileForSender(event.sender)
+      const scope = scopeForAutofillEvent(event as any)
       if (typeof payload?.field !== 'string' || typeof payload?.value !== 'string') return
-      recordFormHistory(profileId, payload.field, payload.value)
+      recordFormHistory(scope.profileId, payload.field, payload.value, scope.store)
     }
   )
 
   ipcMain.handle(IpcChannels.AutofillGetFillData, (event, payload: { kind?: unknown }) => {
-    const profileId = profileForSender(event.sender)
+    const scope = scopeForAutofillEvent(event as any)
     const kind = payload?.kind
     if (kind !== 'address' && kind !== 'contact' && kind !== 'payment') return []
-    return getAutofillProfileSuggestions(profileId, kind)
+    return getAutofillProfileSuggestions(scope.profileId, kind, scope.store)
   })
 
   /* ---- downloads ------------------------------------------------------ */
