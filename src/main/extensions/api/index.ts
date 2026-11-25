@@ -9,6 +9,7 @@ import { registerDownloads } from './downloads'
 import { registerNotifications } from './notifications'
 import { registerStorageApi } from './storageApi'
 import { registerSystemCpu } from './systemCpu'
+import { registerSystemDisplay } from './systemDisplay'
 import { registerTts } from './tts'
 import { registerI18n } from './i18n'
 
@@ -32,6 +33,7 @@ export function registerExtensionApis(): void {
   registerNotifications()
   registerTts()
   registerSystemCpu()
+  registerSystemDisplay()
 }
 
 export { refreshCommandShortcuts } from './commands'

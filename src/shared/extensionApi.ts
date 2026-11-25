@@ -133,6 +133,16 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
           getInfo: { fallback: { processors: 0, model: '', speed: 0 } }
         },
         events: ['onUpdated']
+      },
+      display: {
+        methods: {
+          getInfo: { fallback: [] },
+          getMetrics: { fallback: {} },
+          setBrightness: { fallback: false },
+          clearBrightness: {},
+          enableUnifiedDesktop: { fallback: false }
+        },
+        events: ['onDisplayChanged']
       }
     }
   },
