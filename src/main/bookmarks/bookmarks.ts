@@ -400,13 +400,15 @@ export function pasteBookmarkNode(
       if (!item) return publish(profileId, broadcast)
 
       if (mode === 'cut') {
+        const targetStore = storesFor(profileId).bookmarks
+        targetStore.update('items', (items) => [...items, { ...item, folderId: parentId }])
+        // Store.update only schedules a debounced write. Persist the destination
+        // before deleting the source so a shutdown or failed destination write
+        // cannot leave the bookmark in neither profile.
+        targetStore.flush()
         storesFor(sourceProfile).bookmarks.update('items', (items) =>
           items.filter((candidate) => candidate.id !== id)
         )
-        storesFor(profileId).bookmarks.update('items', (items) => [
-          ...items,
-          { ...item, folderId: parentId }
-        ])
         hideBarIfEmpty(sourceProfile, (visible) => setBarExtent(sourceProfile, visible))
         publish(sourceProfile, broadcast)
         revealBarIfNeeded(profileId, true, (visible) => setBarExtent(profileId, visible))
@@ -433,6 +435,18 @@ export function pasteBookmarkNode(
       const movedItems = storedItems(sourceProfile).filter((candidate) =>
         doomed.has(candidate.folderId ?? '')
       )
+      const targetStore = storesFor(profileId).bookmarks
+      targetStore.update('folders', (folders) => [
+        ...(folders ?? []),
+        ...movedFolders.map((candidate) =>
+          candidate.id === id ? { ...candidate, parentId } : candidate
+        )
+      ])
+      targetStore.update('items', (items) => [...items, ...movedItems])
+      // Write the full destination subtree before scheduling source deletion;
+      // both Store writes are debounced, so ordering here determines which file
+      // reaches disk first if the app exits or the destination write fails.
+      targetStore.flush()
       sourceStore.set(
         'folders',
         storedFolders(sourceProfile).filter((candidate) => !doomed.has(candidate.id))
@@ -441,13 +455,6 @@ export function pasteBookmarkNode(
         'items',
         storedItems(sourceProfile).filter((candidate) => !doomed.has(candidate.folderId ?? ''))
       )
-      storesFor(profileId).bookmarks.update('folders', (folders) => [
-        ...(folders ?? []),
-        ...movedFolders.map((candidate) =>
-          candidate.id === id ? { ...candidate, parentId } : candidate
-        )
-      ])
-      storesFor(profileId).bookmarks.update('items', (items) => [...items, ...movedItems])
       hideBarIfEmpty(sourceProfile, (visible) => setBarExtent(sourceProfile, visible))
       publish(sourceProfile, broadcast)
       revealBarIfNeeded(profileId, true, (visible) => setBarExtent(profileId, visible))
