@@ -118,6 +118,28 @@ test('incognito autofill data stays isolated from the owning profile', async ({
   voyager,
   server
 }) => {
+  type Suggestions = {
+    contacts: Array<{ email?: string }>
+    formHistory: string[]
+  }
+  const suggestionsIn = (url: string): Promise<Suggestions> =>
+    voyager.app.evaluate(async ({ webContents }, targetUrl) => {
+      const tab = webContents
+        .getAllWebContents()
+        .find((candidate) => !candidate.isDestroyed() && candidate.getURL() === targetUrl)
+      if (!tab) throw new Error(`Tab WebContents not found for ${targetUrl}`)
+      return tab.executeJavaScript(`
+        (async () => {
+          const probe = globalThis.__voyagerAutofillTest
+          if (!probe) throw new Error('Autofill test bridge unavailable')
+          return {
+            contacts: await probe.getFillData('contact'),
+            formHistory: await probe.getFormSuggestions('email', '')
+          }
+        })()
+      `)
+    }, url)
+
   await voyager.chrome.evaluate(() =>
     window.voyager.autofill.saveContact({
       name: 'Alice',
@@ -125,6 +147,42 @@ test('incognito autofill data stays isolated from the owning profile', async ({
       phone: '555-0100'
     })
   )
+
+  // Seed normal form history too: page suggestions read contacts and history
+  // through separate IPC handlers, neither of which is getState().
+  const normalUrl = server.url('/home')
+  await voyager.navigate(normalUrl)
+  await voyager.app.evaluate(
+    async ({ webContents }, arg) => {
+      const tab = webContents
+        .getAllWebContents()
+        .find((candidate) => !candidate.isDestroyed() && candidate.getURL() === arg.url)
+      if (!tab) throw new Error('Normal tab WebContents not found')
+      await tab.executeJavaScript(`
+        (() => {
+          const input = document.createElement('input')
+          input.setAttribute('autocomplete', 'email')
+          document.body.appendChild(input)
+          input.focus()
+          input.value = ${JSON.stringify(arg.value)}
+          input.dispatchEvent(new Event('input', { bubbles: true }))
+          input.blur()
+        })()
+      `)
+    },
+    { url: normalUrl, value: 'normal-only@example.com' }
+  )
+  await expect
+    .poll(async () => {
+      const state = await voyager.chrome.evaluate(() => window.voyager.autofill.getState())
+      return state.formHistory.map((entry) => entry.value)
+    })
+    .toContain('normal-only@example.com')
+
+  const normalSuggestions = await suggestionsIn(normalUrl)
+  expect(normalSuggestions.contacts.map((contact) => contact.email)).toContain('alice@example.com')
+  expect(normalSuggestions.formHistory).toContain('normal-only@example.com')
+
   const owner = await voyager.chrome.evaluate(() => window.voyager.windows.getState())
   await voyager.chrome.evaluate(
     (url) => window.voyager.windows.openIncognito(url),
@@ -149,6 +207,28 @@ test('incognito autofill data stays isolated from the owning profile', async ({
       )
     )
     .toBe(true)
+
+  // Focus an email field, then read the handlers the tab preload uses for real
+  // page suggestions from inside the incognito tab.
+  await voyager.app.evaluate(async ({ webContents }, url) => {
+    const tab = webContents
+      .getAllWebContents()
+      .find((candidate) => !candidate.isDestroyed() && candidate.getURL() === url)
+    if (!tab) throw new Error('Incognito tab WebContents not found')
+    await tab.executeJavaScript(`
+      (() => {
+        const input = document.createElement('input')
+        input.setAttribute('autocomplete', 'email')
+        document.body.appendChild(input)
+        input.focus()
+      })()
+    `)
+  }, targetUrl)
+  const incognitoSuggestions = await suggestionsIn(targetUrl)
+  expect(incognitoSuggestions.contacts.map((contact) => contact.email)).not.toContain(
+    'alice@example.com'
+  )
+  expect(incognitoSuggestions.formHistory).not.toContain('normal-only@example.com')
 
   // Blurring a text control invokes AutofillRecordFormField from the tab.
   await voyager.app.evaluate(async ({ webContents }, url) => {
@@ -180,6 +260,7 @@ test('incognito autofill data stays isolated from the owning profile', async ({
   expect(normalState.formHistory.map((entry) => entry.value)).not.toContain(
     'incognito-only@example.com'
   )
+  expect(normalState.formHistory.map((entry) => entry.value)).toContain('normal-only@example.com')
   expect(normalState.contacts.map((contact) => contact.email)).toContain('alice@example.com')
 })
 

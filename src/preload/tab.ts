@@ -9,6 +9,17 @@ contextBridge.exposeInMainWorld(PROMPT_BRIDGE, (message: string, defaultValue: s
   ipcRenderer.sendSync(IpcChannels.TabPrompt, { message, defaultValue })
 )
 
+// E2E-only probe for the two IPC handlers that back page autofill suggestions.
+// It is omitted from normal runs so tab pages never gain a general IPC bridge.
+if (process.env.VOYAGER_E2E === '1') {
+  contextBridge.exposeInMainWorld('__voyagerAutofillTest', {
+    getFillData: (kind: 'address' | 'contact' | 'payment') =>
+      ipcRenderer.invoke(IpcChannels.AutofillGetFillData, { kind }),
+    getFormSuggestions: (field: string, prefix = '') =>
+      ipcRenderer.invoke(IpcChannels.AutofillGetFormSuggestions, { field, prefix })
+  })
+}
+
 const CUSTOM_USER_AGENT = (() => {
   try {
     const ua = ipcRenderer.sendSync(IpcChannels.TabGetUserAgent)
