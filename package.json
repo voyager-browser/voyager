@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "private": false,
   "description": "Voyager - a modern, pretty web browser built with Electron",
-  "author": "InfiniteVoid_",
   "license": "MIT",
   "main": "./out/main/index.js",
   "engines": {
