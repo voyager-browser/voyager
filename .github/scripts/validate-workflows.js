@@ -4,8 +4,8 @@ const fs = require('fs')
 const path = require('path')
 
 const WORKFLOWS_DIR = path.join(__dirname, '..', 'workflows')
-const RUN_LINE = /^\s*(?:-\s*)?run:/
-const RUN_BLOCK = /^\s*(?:-\s*)?run:\s*[|>][-+]?/
+const RUN_KEY = /^(?:-\s+)?run:\s*(.*)$/
+const BLOCK_SCALAR = /^[|>][1-9]?[+-]?$|^[|>][+-]?[1-9]?$/
 const GITHUB_EXPRESSION = /\$\{\{\s*github\./
 
 function workflowFiles(directory) {
@@ -17,27 +17,80 @@ function workflowFiles(directory) {
   })
 }
 
+function indentation(line) {
+  return line.length - line.trimStart().length
+}
+
+function isBlank(line) {
+  return line.trim() === ''
+}
+
+/**
+ * Column where the `run` key starts. For `- run:` the dash is not part of the
+ * key, so sibling keys such as `env:` align after the dash and space.
+ */
+function keyIndent(line) {
+  const indent = indentation(line)
+  const dash = line.trimStart().match(/^-\s+/)
+  return dash ? indent + dash[0].length : indent
+}
+
+function blockContentIndent(lines, start, parentIndent) {
+  for (let index = start; index < lines.length; index += 1) {
+    const line = lines[index]
+    if (isBlank(line)) continue
+    const indent = indentation(line)
+    if (indent <= parentIndent) return null
+    return indent
+  }
+  return null
+}
+
+/**
+ * Return every line that is part of a workflow `run` value. Block scalars end
+ * at the first line dedented below their content, while plain scalars include
+ * every more-indented continuation line. Either way, sibling `env:` keys are
+ * never mistaken for shell source.
+ */
 function commandLines(content) {
+  const lines = content.split(/\r?\n/)
   const commands = []
-  let blockIndent = null
 
-  content.split(/\r?\n/).forEach((line, index) => {
-    const indent = line.length - line.trimStart().length
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].trimStart().match(RUN_KEY)
+    if (!match) continue
 
-    if (blockIndent !== null) {
-      if (line.trim() === '' || indent > blockIndent) {
-        commands.push({ line: index + 1, text: line })
-        return
+    const indent = keyIndent(lines[index])
+    const value = match[1].trim()
+
+    if (BLOCK_SCALAR.test(value)) {
+      const contentIndent = blockContentIndent(lines, index + 1, indent)
+      if (contentIndent === null) continue
+
+      let cursor = index + 1
+      while (cursor < lines.length) {
+        const line = lines[cursor]
+        if (!isBlank(line) && indentation(line) < contentIndent) break
+        commands.push({ line: cursor + 1, text: line })
+        cursor += 1
       }
-      blockIndent = null
+      index = cursor - 1
+      continue
     }
 
-    if (RUN_BLOCK.test(line)) {
-      blockIndent = indent
-      return
+    if (value === '') continue
+
+    commands.push({ line: index + 1, text: lines[index] })
+
+    let cursor = index + 1
+    while (cursor < lines.length) {
+      const line = lines[cursor]
+      if (!isBlank(line) && indentation(line) <= indent) break
+      commands.push({ line: cursor + 1, text: line })
+      cursor += 1
     }
-    if (RUN_LINE.test(line)) commands.push({ line: index + 1, text: line })
-  })
+    index = cursor - 1
+  }
 
   return commands
 }
