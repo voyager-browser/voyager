@@ -91,6 +91,18 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       camera: contentSettingNode()
     }
   },
+  history: {
+    methods: {
+      search: { fallback: [] },
+      getVisits: { fallback: [] },
+      addUrl: {},
+      deleteUrl: {},
+      deleteVisits: {},
+      deleteAll: {},
+      deleteRange: {}
+    },
+    events: ['onVisited', 'onVisitRemoved']
+  },
   i18n: {
     methods: {
       getMessage: { fallback: '' },
