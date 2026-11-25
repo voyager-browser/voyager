@@ -5,6 +5,7 @@ import { registerBrowsingData } from './browsingData'
 import { registerCommands } from './commands'
 import { registerContextMenus } from './contextMenus'
 import { registerCookies } from './cookies'
+import { registerStorageApi } from './storageApi'
 import { registerI18n } from './i18n'
 
 let registered = false
@@ -22,6 +23,7 @@ export function registerExtensionApis(): void {
   registerI18n()
   registerCommands()
   registerContextMenus()
+  registerStorageApi()
 }
 
 export { refreshCommandShortcuts } from './commands'

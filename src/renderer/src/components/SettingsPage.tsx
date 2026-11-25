@@ -2205,11 +2205,11 @@ export function SettingsPage(): React.JSX.Element {
                   also available through `browser`, including
                   `accessibilityFeatures.animationPolicy` (the only non-ChromeOS accessibility
                   setting), `alarms`, `bookmarks`, `browsingData`, `cookies`, `i18n`, `commands`,
-                  and `contextMenus`. Tab details are limited to sites the extension can access.
-                  Cross-window `tabs.move` recreates the tab with a new id, and `tabs.connect` is
-                  unavailable because Electron cannot bridge long-lived connections to content
-                  scripts. `tabs.sendMessage` and `tabs.executeScript` use Electron's native support
-                  where available.
+                  `contextMenus`, and `storage`. Tab details are limited to sites the extension can
+                  access. Cross-window `tabs.move` recreates the tab with a new id, and
+                  `tabs.connect` is unavailable because Electron cannot bridge long-lived
+                  connections to content scripts. `tabs.sendMessage` and `tabs.executeScript` use
+                  Electron's native support where available.
                 </p>
               </section>
             )}

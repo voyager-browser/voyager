@@ -87,6 +87,44 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       getAll: { fallback: [] }
     },
     events: ['onClicked', 'onRemoved']
+  },
+  storage: {
+    events: ['onChanged'],
+    properties: {
+      local: {
+        methods: {
+          get: { fallback: {} },
+          getBytesInUse: { fallback: 0 },
+          set: {},
+          remove: {},
+          clear: {}
+        }
+      },
+      sync: {
+        methods: {
+          get: { fallback: {} },
+          getBytesInUse: { fallback: 0 },
+          set: {},
+          remove: {},
+          clear: {}
+        }
+      },
+      session: {
+        methods: {
+          get: { fallback: {} },
+          getBytesInUse: { fallback: 0 },
+          set: {},
+          remove: {},
+          clear: {}
+        }
+      },
+      managed: {
+        methods: {
+          get: { fallback: {} },
+          getBytesInUse: { fallback: 0 }
+        }
+      }
+    }
   }
 }
 
