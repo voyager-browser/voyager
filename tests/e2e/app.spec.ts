@@ -5,6 +5,12 @@ import { chromeBounds, windowCount } from './helpers/voyager'
 test('boots a single empty tab in a frameless Voyager window', async ({ voyager }) => {
   await expect(voyager.chrome).toHaveTitle('Voyager')
 
+  // The fixture returns as soon as the tab page exists; on a slow CI startup
+  // its initial internal load can still be in flight for a moment.
+  await expect
+    .poll(async () => (await voyager.state()).tabs[0]?.loading, { timeout: 20_000 })
+    .toBe(false)
+
   const state = await voyager.state()
   expect(state.activeTabId).not.toBeNull()
   expect(state.tabs).toHaveLength(1)
