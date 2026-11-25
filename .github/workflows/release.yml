@@ -97,7 +97,8 @@ jobs:
       - name: Generate release notes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node .github/scripts/generate-release-notes.js "${{ github.ref_name }}" release-notes.md
+          TAG: ${{ github.ref_name }}
+        run: node .github/scripts/generate-release-notes.js "$TAG" release-notes.md
 
       - name: Create release
         uses: softprops/action-gh-release@v2
