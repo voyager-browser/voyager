@@ -1,14 +1,23 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { deflateRawSync } from 'node:zlib'
 import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
-import { crx2, storedZip, storedZip64 } from './helpers/crx'
+import {
+  crx2,
+  deflatedZip,
+  signedExtensionCrx,
+  storedZip,
+  storedZip64,
+  testCrxSigner
+} from './helpers/crx'
 import { openSettings, windowCount, type VoyagerApp } from './helpers/voyager'
 
 const EXTENSIONS_DIR = join(process.cwd(), 'tests', 'e2e', 'fixtures', 'extensions')
 const EXTENSION_PATH = join(EXTENSIONS_DIR, 'password-filler')
 const MV2_NATIVE_EXTENSION_PATH = join(EXTENSIONS_DIR, 'native-messaging-mv2')
 const WORKER_EXTENSION_PATH = join(EXTENSIONS_DIR, 'worker-permissions')
+const WEB_NAVIGATION_EXTENSION_PATH = join(EXTENSIONS_DIR, 'web-navigation')
 const CRX_PATH = join(EXTENSIONS_DIR, 'password-filler.crx')
 const NATIVE_HOST_PATH = join(EXTENSION_PATH, 'nativeHost.js')
 
@@ -211,6 +220,88 @@ test('installs a CRX with a file larger than the previous 64 MiB limit', async (
   expect(removed).toEqual([])
 })
 
+test('unpacks and installs a signed CRX3 extension', async ({ voyager, downloadDir }) => {
+  const signer = testCrxSigner()
+  const crxPath = join(downloadDir, 'signed.crx')
+  writeFileSync(
+    crxPath,
+    signedExtensionCrx(
+      { manifest_version: 3, name: 'Signed CRX3 Extension', version: '1.0' },
+      signer
+    )
+  )
+
+  const installed = await voyager.chrome.evaluate(
+    (path) => window.voyager.extensions.install(path),
+    crxPath
+  )
+  expect(installed).toEqual([
+    expect.objectContaining({ name: 'Signed CRX3 Extension', loaded: true })
+  ])
+
+  const removed = await voyager.chrome.evaluate(
+    (path) => window.voyager.extensions.uninstall(path),
+    installed[0].path
+  )
+  expect(removed).toEqual([])
+})
+
+test('rejects a CRX whose declared uncompressed size exceeds the budget', async ({
+  voyager,
+  downloadDir
+}) => {
+  const crxPath = join(downloadDir, 'lying-size.crx')
+  writeFileSync(
+    crxPath,
+    crx2(
+      storedZip([
+        {
+          name: 'manifest.json',
+          content: Buffer.from(
+            JSON.stringify({ manifest_version: 2, name: 'Lying Size', version: '1.0' })
+          )
+        },
+        { name: 'huge.bin', content: Buffer.from('small'), declaredSize: 2 * 1024 * 1024 * 1024 }
+      ])
+    )
+  )
+
+  await expect(
+    voyager.chrome.evaluate((path) => window.voyager.extensions.install(path), crxPath)
+  ).rejects.toThrow(/budget/i)
+})
+
+test('rejects a deflated CRX entry that expands past its declared size', async ({
+  voyager,
+  downloadDir
+}) => {
+  const manifest = Buffer.from(
+    JSON.stringify({ manifest_version: 2, name: 'Deflate Bomb', version: '1.0' })
+  )
+  const crxPath = join(downloadDir, 'deflate-bomb.crx')
+  writeFileSync(
+    crxPath,
+    crx2(
+      deflatedZip([
+        {
+          name: 'manifest.json',
+          compressed: deflateRawSync(manifest),
+          uncompressedSize: manifest.length
+        },
+        {
+          name: 'bomb.bin',
+          compressed: deflateRawSync(Buffer.alloc(8 * 1024 * 1024, 0)),
+          uncompressedSize: 16
+        }
+      ])
+    )
+  )
+
+  await expect(
+    voyager.chrome.evaluate((path) => window.voyager.extensions.install(path), crxPath)
+  ).rejects.toThrow(/budget|decompress/i)
+})
+
 test('strips illegal Windows metadata from unpacked CRX extensions', async ({
   voyager,
   downloadDir
@@ -310,8 +401,9 @@ test('opens a Voyager tab when an extension calls chrome.tabs.create', async ({
   })
   const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
   const id = extensions[0]?.id as string
-  await voyager.chrome.evaluate((extensionId) => {
-    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  await voyager.chrome.evaluate(async (extensionId) => {
+    await window.voyager.extensions.setSiteAccess(extensionId, 'all')
+    await window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
   }, id)
 
   await expect
@@ -410,13 +502,9 @@ test('serves permission IPC from an MV3 background service worker', async ({ lau
   })
 
   await expect
-    .poll(
-      async () =>
-        (await voyager.state()).tabs.some(
-          (tab) => tab.url === 'https://example.test/?worker-permission=true'
-        ),
-      { timeout: 15_000 }
-    )
+    .poll(async () => (await voyager.state()).tabs.some((tab) => tab.url.endsWith('/probe.html')), {
+      timeout: 15_000
+    })
     .toBe(true)
 })
 
@@ -710,4 +798,269 @@ test('lists installed extensions in the developer settings section', async ({ la
   await expect(section).toContainText('Voyager E2E Password Filler')
   await expect(section).toContainText('Install .crx...')
   await expect(section.getByLabel('Chrome Web Store URL or extension id')).toBeVisible()
+})
+
+test('extension popups do not receive the browser management bridge', async ({ launchVoyager }) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+  await voyager.chrome.evaluate((extensionId) => {
+    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  }, id)
+
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+  const bridges = await popup!.evaluate(() => ({
+    voyager: typeof (globalThis as any).voyager,
+    chromeRuntime: typeof (globalThis as any).chrome?.runtime
+  }))
+  expect(bridges.voyager).toBe('undefined')
+  expect(bridges.chromeRuntime).toBe('object')
+})
+
+test('does not send webNavigation events without the declared permission', async ({
+  launchVoyager,
+  server
+}) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+  await voyager.chrome.evaluate(async (extensionId) => {
+    await window.voyager.extensions.setSiteAccess(extensionId, 'all')
+    await window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  }, id)
+
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+  await popup!.evaluate(() => {
+    localStorage.setItem('webnav-count', '0')
+    localStorage.removeItem('webnav-url')
+    ;(globalThis as any).chrome.webNavigation.onCommitted.addListener((details: any) => {
+      const count = Number(localStorage.getItem('webnav-count') ?? 0) + 1
+      localStorage.setItem('webnav-count', String(count))
+      localStorage.setItem('webnav-url', details.url)
+    })
+  })
+
+  await voyager.navigate(server.url('/no-webnav'))
+  await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/no-webnav'))
+  await voyager.tab.waitForTimeout(1000)
+  expect(await popup!.evaluate(() => Number(localStorage.getItem('webnav-count') ?? 0))).toBe(0)
+})
+
+test('sends webNavigation events only for sites granted to the extension', async ({
+  launchVoyager,
+  server
+}) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [WEB_NAVIGATION_EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+  expect(id).toBeTruthy()
+  await voyager.chrome.evaluate((extensionId) => {
+    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  }, id)
+
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+  await popup!.evaluate(() => {
+    localStorage.setItem('webnav-count', '0')
+    localStorage.removeItem('webnav-url')
+    ;(globalThis as any).chrome.webNavigation.onCommitted.addListener((details: any) => {
+      const count = Number(localStorage.getItem('webnav-count') ?? 0) + 1
+      localStorage.setItem('webnav-count', String(count))
+      localStorage.setItem('webnav-url', details.url)
+    })
+  })
+
+  const site = new URL(server.url('/home')).hostname
+  await voyager.navigate(server.url('/home'))
+  await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/home'))
+  await voyager.tab.waitForTimeout(1000)
+  expect(await popup!.evaluate(() => Number(localStorage.getItem('webnav-count') ?? 0))).toBe(0)
+
+  const access = await voyager.chrome.evaluate(
+    ({ extensionId, siteKey }) =>
+      window.voyager.extensions.setSiteAccess(extensionId, 'site', siteKey),
+    { extensionId: id, siteKey: site }
+  )
+  expect(access[0]).toEqual(expect.objectContaining({ id, siteAccess: 'site' }))
+  await popup!.evaluate(() => {
+    localStorage.setItem('webnav-count', '0')
+    localStorage.removeItem('webnav-url')
+  })
+  await voyager.navigate(server.url('/home?granted=1'))
+  await expect.poll(async () => (await voyager.activeTab()).url).toBe(server.url('/home?granted=1'))
+  await expect
+    .poll(() => popup!.evaluate(() => localStorage.getItem('webnav-url')))
+    .toBe(server.url('/home?granted=1'))
+  expect(
+    await popup!.evaluate(() => Number(localStorage.getItem('webnav-count') ?? 0))
+  ).toBeGreaterThan(0)
+})
+
+test('re-prompts a blocked optional permission on the next request', async ({ launchVoyager }) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+  await voyager.chrome.evaluate((extensionId) => {
+    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  }, id)
+
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+  const requestPermission = () =>
+    popup!.evaluate(async () =>
+      (globalThis as any).chrome.permissions.request({ permissions: ['privacy'] })
+    )
+
+  const first = requestPermission()
+  const firstPrompt = voyager.chrome.getByRole('dialog')
+  await expect(firstPrompt).toBeVisible()
+  await firstPrompt.getByRole('button', { name: 'Never allow' }).click()
+  expect(await first).toBe(false)
+  await expect(firstPrompt).toHaveCount(0)
+
+  const contains = await popup!.evaluate(() =>
+    (globalThis as any).chrome.permissions.contains({ permissions: ['privacy'] })
+  )
+  expect(contains).toBe(false)
+
+  // A combined request must include the blocked permission again rather than
+  // silently treating it as granted because another key is still pending.
+  const combined = popup!.evaluate(async () =>
+    (globalThis as any).chrome.permissions.request({ permissions: ['privacy', 'tabs'] })
+  )
+  const combinedPrompt = voyager.chrome.getByRole('dialog')
+  await expect(combinedPrompt).toBeVisible()
+  await expect(combinedPrompt).toContainText('Change your privacy-related settings')
+  await expect(combinedPrompt).toContainText('See your browsing tabs and activity')
+  await combinedPrompt.getByRole('button', { name: 'Allow', exact: true }).click()
+  expect(await combined).toBe(true)
+  await expect(combinedPrompt).toHaveCount(0)
+
+  const containsAfter = await popup!.evaluate(() =>
+    (globalThis as any).chrome.permissions.contains({ permissions: ['privacy'] })
+  )
+  expect(containsAfter).toBe(true)
+})
+
+test('requests a host permission declared in an MV3 manifest', async ({ launchVoyager }) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+  await voyager.chrome.evaluate((extensionId) => {
+    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  }, id)
+
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+  const request = popup!.evaluate(async () =>
+    (globalThis as any).chrome.permissions.request({ origins: ['https://example.test/*'] })
+  )
+  const prompt = voyager.chrome.getByRole('dialog')
+  await expect(prompt).toBeVisible()
+  await prompt.getByRole('button', { name: 'Allow', exact: true }).click()
+  expect(await request).toBe(true)
+
+  const contains = await popup!.evaluate(() =>
+    (globalThis as any).chrome.permissions.contains({ origins: ['https://example.test/*'] })
+  )
+  expect(contains).toBe(true)
+})
+
+test('accepts a wildcard native messaging origin', async ({ launchVoyager }) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+  await voyager.chrome.evaluate((hostPath) => {
+    window.voyager.extensions.setNativeHosts([
+      { name: 'com.voyager.e2e', path: hostPath, allowedOrigins: ['*/'] }
+    ])
+  }, NATIVE_HOST_PATH)
+  await voyager.chrome.evaluate((extensionId) => {
+    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  }, id)
+
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+  await popup!.getByRole('button', { name: 'Send native message' }).click()
+  await expect(popup!.locator('#native-result')).toHaveText('one-shot')
+})
+
+test('reopens an action popup after Escape dismisses it', async ({ launchVoyager }) => {
+  const voyager = await launchVoyager({
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+  const open = () =>
+    voyager.chrome.evaluate((extensionId) => {
+      void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+    }, id)
+
+  await open()
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+  await popup!.keyboard.press('Escape')
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(false)
+
+  await open()
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+})
+
+test('service workers only create tabs in their own profile', async ({ launchVoyager }) => {
+  const voyager = await launchVoyager({ args: ['--enable-sandbox'] })
+  const profileB = await voyager.chrome.evaluate(() =>
+    window.voyager.profiles.create({ name: 'Worker profile' })
+  )
+  await voyager.chrome.evaluate((id) => window.voyager.profiles.openWindow(id), profileB.id)
+  await expect.poll(async () => voyager.app.windows().length).toBeGreaterThanOrEqual(2)
+  const profileBChrome = voyager.app
+    .windows()
+    .find((page) => page !== voyager.chrome && /\/renderer\/index\.html(?:[?#]|$)/.test(page.url()))
+  if (!profileBChrome) throw new Error('Second browser window not found')
+  await profileBChrome.bringToFront()
+  await profileBChrome.evaluate(
+    (path) => window.voyager.extensions.install(path),
+    WORKER_EXTENSION_PATH
+  )
+  await voyager.chrome.bringToFront()
+
+  const workerTab = (page: Page) =>
+    page.evaluate(async () => {
+      const state = await window.voyager.tabs.getState()
+      return state.tabs.some((tab) => tab.url.endsWith('/probe.html'))
+    })
+  await expect.poll(() => workerTab(profileBChrome)).toBe(true)
+  expect(await workerTab(voyager.chrome)).toBe(false)
 })

@@ -166,7 +166,21 @@ function unzip(bytes: Uint8Array): ArchiveFile[] {
     if (method === 0) {
       data = compressed
     } else if (method === 8) {
-      data = inflateRawSync(compressed)
+      try {
+        data = inflateRawSync(compressed, {
+          maxOutputLength: Math.min(uncompressedSize, MAX_TOTAL_BYTES - totalBytes)
+        })
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          (error as NodeJS.ErrnoException).code === 'ERR_BUFFER_TOO_LARGE'
+        ) {
+          throw new Error('Invalid archive: file exceeds the decompression budget', {
+            cause: error
+          })
+        }
+        throw error
+      }
     } else {
       continue
     }

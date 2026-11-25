@@ -15,6 +15,10 @@ export interface ExtensionUpdateInfo {
   updateUrl?: string
   /** Version currently installed on disk. */
   version?: string
+  /** SHA-256 of the verified CRX3 developer key (SubjectPublicKeyInfo DER). */
+  publicKeyHash?: string
+  /** Chrome id derived from that key, cross-checked against CRX3 signed data. */
+  signingId?: string
   /** Timestamp of the most recent update check. */
   lastCheckedAt?: number
 }
@@ -33,6 +37,12 @@ function validUpdateInfo(value: unknown): ExtensionUpdateInfo | null {
   }
   if (typeof info.version === 'string' && info.version.trim() !== '') {
     result.version = info.version.trim()
+  }
+  if (typeof info.publicKeyHash === 'string' && /^[0-9a-f]{64}$/i.test(info.publicKeyHash)) {
+    result.publicKeyHash = info.publicKeyHash.toLowerCase()
+  }
+  if (typeof info.signingId === 'string' && /^[a-p]{32}$/i.test(info.signingId)) {
+    result.signingId = info.signingId.toLowerCase()
   }
   if (typeof info.lastCheckedAt === 'number' && Number.isFinite(info.lastCheckedAt)) {
     result.lastCheckedAt = info.lastCheckedAt

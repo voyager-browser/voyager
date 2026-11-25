@@ -340,8 +340,13 @@ export class TabManager {
 
   /** Refresh every open page, e.g. after an explicit theme-mode change. */
   reloadAll(): void {
+    // Start pages derive their colors from the URL, so reloading the old URL
+    // would preserve the previous theme. Rebuild them and reload other pages.
+    this.refreshStartPages()
     for (const entry of this.entries.values()) {
-      if (!entry.view.webContents.isDestroyed()) entry.view.webContents.reload()
+      if (!isNewTab(entry.url) && !entry.view.webContents.isDestroyed()) {
+        entry.view.webContents.reload()
+      }
     }
   }
 

@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
+import { deflateRawSync } from 'node:zlib'
 import { parseCrxTheme, parseThemeFiles } from '../../src/main/theme/chromeTheme'
 import { downloadChromeWebStoreCrx } from '../../src/main/theme/chromeStore'
 import {
@@ -12,6 +13,7 @@ import {
 } from '../../src/shared/theme'
 import { startPageUrl } from '../../src/shared/url'
 import { expect, test } from './fixtures'
+import { createTestCrxSigner, deflatedZip, signedCrx } from './helpers/crx'
 import { openSettings } from './helpers/voyager'
 
 interface ZipEntry {
@@ -90,7 +92,10 @@ const MANIFEST = JSON.stringify({
   }
 })
 
-const STORE_ID = 'lahipjfggmgneaopcckkaipmoandaboo'
+// The store download path now verifies the signed CRX id, so fixtures use a
+// generated key whose derived id is the requested store id.
+const SIGNER = createTestCrxSigner()
+const STORE_ID = SIGNER.extensionId
 const STORE_URL = `https://chromewebstore.google.com/detail/sea-foam/${STORE_ID}`
 const STORE_MANIFEST = JSON.stringify({
   manifest_version: 2,
@@ -173,6 +178,26 @@ test('rejects archives without a Chrome theme manifest', () => {
   expect(() => parseCrxTheme(makeCrx2(zip), false)).toThrow(/manifest\.json/)
 })
 
+test('rejects deflated theme files that expand past their declared size', () => {
+  const manifest = Buffer.from(MANIFEST)
+  const zip = deflatedZip([
+    {
+      name: 'manifest.json',
+      compressed: deflateRawSync(manifest),
+      uncompressedSize: manifest.length
+    },
+    {
+      name: 'images/frame.png',
+      // Small on disk, but inflates far past the declared 16 bytes.
+      compressed: deflateRawSync(Buffer.alloc(8 * 1024 * 1024, 0)),
+      uncompressedSize: 16
+    }
+  ])
+  expect(() => parseCrxTheme(makeCrx2(zip), false)).toThrow(
+    /decompression budget|size mismatch|decompress/i
+  )
+})
+
 test('extracts Chrome Web Store theme ids from URLs and raw ids', () => {
   expect(chromeWebStoreExtensionId(STORE_URL)).toBe(STORE_ID)
   expect(chromeWebStoreExtensionId(`${STORE_URL}?hl=en`)).toBe(STORE_ID)
@@ -182,7 +207,7 @@ test('extracts Chrome Web Store theme ids from URLs and raw ids', () => {
 
 test('parses a color-only Web Store theme such as Sea Foam', () => {
   const zip = makeZip([{ name: 'manifest.json', content: Buffer.from(STORE_MANIFEST) }])
-  const theme = parseCrxTheme(makeCrx3(zip), false)
+  const theme = parseCrxTheme(signedCrx(zip, SIGNER), false)
 
   expect(theme.name).toBe('Sea Foam')
   expect(theme.image).toBeUndefined()
@@ -245,8 +270,11 @@ test('adopts an already installed Chrome theme at startup', async ({
   expect(contrastRatio(badgeColors.foreground, badgeColors.background)).toBeGreaterThanOrEqual(4.5)
 })
 
-test('downloads a CRX from the Web Store update service', async () => {
-  const crx = makeCrx3(makeZip([{ name: 'manifest.json', content: Buffer.from(STORE_MANIFEST) }]))
+test('downloads a signed CRX from the Web Store update service', async () => {
+  const crx = signedCrx(
+    makeZip([{ name: 'manifest.json', content: Buffer.from(STORE_MANIFEST) }]),
+    SIGNER
+  )
   let requestUrl = ''
   const server = createServer((request, response) => {
     requestUrl = request.url ?? ''
@@ -265,6 +293,30 @@ test('downloads a CRX from the Web Store update service', async () => {
     expect(theme.name).toBe('Sea Foam')
     expect(decodeURIComponent(requestUrl)).toContain(`id=${STORE_ID}`)
     expect(requestUrl).toContain('acceptformat=crx2%2Ccrx3')
+  } finally {
+    server.closeAllConnections?.()
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve()))
+    )
+  }
+})
+
+test('rejects a Web Store CRX signed for a different store id', async () => {
+  const wrongIdCrx = signedCrx(
+    makeZip([{ name: 'manifest.json', content: Buffer.from(STORE_MANIFEST) }]),
+    createTestCrxSigner()
+  )
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { 'content-type': 'application/x-chrome-extension' })
+    response.end(wrongIdCrx)
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('No test server address')
+    await expect(
+      downloadChromeWebStoreCrx(STORE_URL, `http://127.0.0.1:${address.port}/crx`)
+    ).rejects.toThrow(/different developer/)
   } finally {
     server.closeAllConnections?.()
     await new Promise<void>((resolve, reject) =>
@@ -351,7 +403,10 @@ test('imported Chrome theme leaves settings unchanged', async ({ voyager }) => {
 test('Chrome Web Store install button downloads and applies the theme', async ({
   launchVoyager
 }) => {
-  const crx = makeCrx3(makeZip([{ name: 'manifest.json', content: Buffer.from(STORE_MANIFEST) }]))
+  const crx = signedCrx(
+    makeZip([{ name: 'manifest.json', content: Buffer.from(STORE_MANIFEST) }]),
+    SIGNER
+  )
   let crxRequests = 0
   const server = createServer((_request, response) => {
     crxRequests += 1

@@ -5,6 +5,7 @@
   "description": "Minimal unpacked extension used to verify extension API support.",
   "permissions": ["tabs", "nativeMessaging"],
   "optional_permissions": ["privacy"],
+  "host_permissions": ["https://example.test/*"],
   "action": {
     "default_title": "Voyager E2E Password Filler",
     "default_popup": "popup.html",

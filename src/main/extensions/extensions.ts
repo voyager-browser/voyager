@@ -9,13 +9,19 @@ import type {
   ExtensionSiteAccess
 } from '../../shared/types'
 import { getSettings, setSettings } from '../store'
-import { downloadWebStoreCrx, unpackCrx, unpackedExtensionsRoot, webStoreId } from './crx'
+import {
+  downloadWebStoreCrx,
+  readCrxSigningIdentity,
+  unpackCrx,
+  unpackedExtensionsRoot,
+  webStoreId
+} from './crx'
 import { removeIllegalExtensionFiles } from './illegalFiles'
+import { siteAccessRules } from './siteAccess'
 import { forgetExtensionUpdateInfo, recordExtensionUpdateInfo } from './updateMetadata'
 
 const SETTINGS_KEY = 'installedExtensions'
 const PINNED_KEY = 'pinnedExtensions'
-const SITE_ACCESS_KEY = 'extensionSiteAccess'
 
 function isSamePath(first: string, second: string): boolean {
   return resolve(first) === resolve(second)
@@ -117,22 +123,9 @@ export function setExtensionPinned(profileId: string, id: string, pinned: boolea
 }
 
 function siteAccessMap(profileId: string): Record<string, ExtensionSiteAccess> {
-  const stored = getSettings<Record<string, ExtensionSiteAccess>>(profileId, SITE_ACCESS_KEY, {})
-  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {}
   const result: Record<string, ExtensionSiteAccess> = {}
-  for (const [id, value] of Object.entries(stored)) {
-    if (value === 'click' || value === 'site' || value === 'all') result[id] = value
-  }
+  for (const [id, rule] of Object.entries(siteAccessRules(profileId))) result[id] = rule.access
   return result
-}
-
-/** Persist a per-extension site-access choice. */
-export function setExtensionSiteAccess(
-  profileId: string,
-  id: string,
-  access: ExtensionSiteAccess
-): void {
-  setSettings(profileId, SITE_ACCESS_KEY, { ...siteAccessMap(profileId), [id]: access })
 }
 
 /** Read and validate an installed extension's manifest. */
@@ -300,6 +293,9 @@ export async function installExtension(
   path: string,
   options: { storeId?: string } = {}
 ): Promise<ExtensionInfo[]> {
+  // A user-selected folder or unsigned CRX is still installable; only signed
+  // packages get an identity that future automatic updates must preserve.
+  const signingIdentity = readCrxSigningIdentity(path)
   const absolute = prepareExtensionPath(path, profileId)
   const manifest = extensionManifest(absolute)
   const paths = installedExtensionPaths(profileId)
@@ -322,6 +318,12 @@ export async function installExtension(
       storeId: options.storeId,
       updateUrl: manifestUpdateUrl,
       version: manifest.version as string,
+      ...(signingIdentity
+        ? {
+            publicKeyHash: signingIdentity.publicKeyHash,
+            signingId: signingIdentity.extensionId
+          }
+        : {}),
       lastCheckedAt: Date.now()
     })
   }

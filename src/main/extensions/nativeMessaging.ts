@@ -41,7 +41,14 @@ interface NativePort {
 const ports = new Map<string, NativePort>()
 
 function normalizeOrigin(value: string): string {
+  if (value === '*' || value === '*/') return '*'
   return value.endsWith('/') ? value : `${value}/`
+}
+
+function isAllowedOrigin(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  const origin = normalizeOrigin(value)
+  return origin === '*' || origin.startsWith('chrome-extension://')
 }
 
 function isValidHost(value: unknown): value is NativeMessagingHost {
@@ -54,10 +61,7 @@ function isValidHost(value: unknown): value is NativeMessagingHost {
     isAbsolute(host.path) &&
     Array.isArray(host.allowedOrigins) &&
     host.allowedOrigins.length > 0 &&
-    host.allowedOrigins.every(
-      (origin) =>
-        typeof origin === 'string' && (origin === '*' || origin.startsWith('chrome-extension://'))
-    ) &&
+    host.allowedOrigins.every(isAllowedOrigin) &&
     (host.description === undefined || typeof host.description === 'string')
   )
 }

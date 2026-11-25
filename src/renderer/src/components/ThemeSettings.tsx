@@ -267,13 +267,23 @@ export function ThemeSettings(): React.JSX.Element {
               type="radio"
               name="start-background"
               checked={startPage.kind === 'image'}
-              onChange={() => {
-                if (!startPage.image) imageInputRef.current?.click()
-              }}
+              onChange={() => imageInputRef.current?.click()}
             />
             Image
           </label>
         </div>
+        <input
+          ref={imageInputRef}
+          id="start-page-image-input"
+          type="file"
+          accept={IMAGE_ACCEPT}
+          className="sr-only"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            event.target.value = ''
+            void chooseStartImage(file)
+          }}
+        />
 
         {startPage.kind === 'color' && (
           <label className="mt-2 flex items-center gap-2 text-[12px] text-fg">
@@ -299,20 +309,12 @@ export function ThemeSettings(): React.JSX.Element {
                 className="h-12 w-20 rounded border border-border object-cover"
               />
             )}
-            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] text-fg hover:bg-hover">
+            <label
+              htmlFor="start-page-image-input"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] text-fg hover:bg-hover"
+            >
               <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />
               Choose image
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept={IMAGE_ACCEPT}
-                className="sr-only"
-                onChange={(event) => {
-                  const file = event.target.files?.[0]
-                  event.target.value = ''
-                  void chooseStartImage(file)
-                }}
-              />
             </label>
           </div>
         )}

@@ -386,3 +386,38 @@ test('deleting the settings profile retargets Settings to the default profile', 
     .poll(async () => (await settings.evaluate(() => window.voyager.settings.get())).verticalTabs)
     .toBe(false)
 })
+
+const START_IMAGE = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==',
+  'base64'
+)
+
+test('Image start-page radio opens the picker when no image is saved', async ({ voyager }) => {
+  const settings = await openSettings(voyager)
+  const theme = settings.locator('[data-settings-section="theme"]')
+
+  const [chooser] = await Promise.all([
+    settings.waitForEvent('filechooser'),
+    theme.getByRole('radio', { name: 'Image' }).check()
+  ])
+  await chooser.setFiles({
+    name: 'start.png',
+    mimeType: 'image/png',
+    buffer: START_IMAGE
+  })
+
+  await expect
+    .poll(() => settings.evaluate(async () => (await window.voyager.theme.get()).startPage.kind))
+    .toBe('image')
+  await expect(settings.getByAltText('New Tab background preview')).toBeVisible()
+})
+
+test('start page URL is rebuilt when theme darkness changes', async ({ voyager }) => {
+  const before = await voyager.tab.url()
+  const current = await voyager.chrome.evaluate(() => window.voyager.theme.get())
+  const next: 'light' | 'dark' = current.dark ? 'light' : 'dark'
+  await voyager.chrome.evaluate((mode: 'light' | 'dark') => window.voyager.theme.set(mode), next)
+
+  await expect.poll(() => voyager.tab.url()).not.toBe(before)
+  expect(await voyager.tab.url()).toContain('base=')
+})

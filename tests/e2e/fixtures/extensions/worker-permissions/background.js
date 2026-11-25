@@ -1,7 +1,9 @@
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
 const reportPermission = async () => {
-  const url = 'https://example.test/?worker-permission=true'
+  // Extension-owned URLs do not need site access, so this probe remains valid
+  // even before a user grants the extension access to web content.
+  const url = chrome.runtime.getURL('probe.html')
 
   // The compatibility preload installs chrome.tabs.create and chrome.permissions
   // after extension bindings appear. Worker startup can beat that injection, so

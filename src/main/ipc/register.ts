@@ -167,9 +167,14 @@ import {
   installExtension,
   installExtensionFromStore,
   setExtensionPinned,
-  setExtensionSiteAccess,
   uninstallExtension
 } from '../extensions/extensions'
+import {
+  extensionCanAccessSite,
+  siteAccessRules,
+  siteKeyForUrl,
+  setExtensionSiteAccess as setExtensionSiteAccessRule
+} from '../extensions/siteAccess'
 import {
   registerExtensionInvokeHandlers,
   serviceWorkerSender,
@@ -178,10 +183,11 @@ import {
 import { checkProfileExtensionUpdates } from '../extensions/updates'
 import {
   autoGrantDeclaredPermissions,
+  declaredManifestKeys,
   extensionOriginKey,
+  requiredManifestKeys,
   extensionPermissionGrants,
   hasAllExtensionPermissions,
-  recordExtensionPermissionDecision,
   removeExtensionPermissions,
   requestExtensionPermissions,
   respondToExtensionPermission,
@@ -242,17 +248,55 @@ function currentThemeState(profileId = DEFAULT_PROFILE_ID, incognito = false): T
   return themeStateFor(profileId, nativeTheme.shouldUseDarkColors, incognito)
 }
 
+let lastThemeDark = nativeTheme.shouldUseDarkColors
+
+/**
+ * Reload windows only when the effective light/dark mode changed. Start pages
+ * rebuild their appearance-bearing URL; other sites reload cached assets.
+ */
+function refreshThemeWindowsIfDarknessChanged(): boolean {
+  const dark = nativeTheme.shouldUseDarkColors
+  if (dark === lastThemeDark) return false
+  lastThemeDark = dark
+  for (const window of allWindows()) window.tabs.reloadAll()
+  return true
+}
+
 function applyThemeMode(mode: ThemeMode): void {
   if (mode !== 'system' && mode !== 'light' && mode !== 'dark') {
     throw new Error(`Unsupported theme mode: ${String(mode)}`)
   }
   setThemeMode(mode)
-  if (nativeTheme.themeSource !== mode) {
-    nativeTheme.themeSource = mode
-    // Sites often cache theme-dependent assets such as favicons and media
-    // queries, so an explicit mode change refreshes every open page.
-    for (const window of allWindows()) window.tabs.reloadAll()
+  if (nativeTheme.themeSource !== mode) nativeTheme.themeSource = mode
+  refreshThemeWindowsIfDarknessChanged()
+}
+
+function matchesHostPattern(pattern: string, origin: string): boolean {
+  if (pattern === '<all_urls>' || pattern === '*://*/*' || pattern === '*://*') return true
+  const match = pattern.match(/^([^:]+):\/\/([^/]*)\/?(.*)$/)
+  if (!match) return false
+  const [, scheme, host, path] = match
+  let target: URL
+  try {
+    target = new URL(origin)
+  } catch {
+    return false
   }
+  if (scheme !== '*' && scheme !== target.protocol.replace(':', '')) return false
+  if (path && path !== '*' && path !== '/*' && path !== '/') return false
+  if (host === '*') return true
+  if (host.startsWith('*.')) {
+    const suffix = host.slice(2)
+    return target.hostname === suffix || target.hostname.endsWith(`.${suffix}`)
+  }
+  return target.hostname === host
+}
+
+/** True when a requested API permission or host origin is declared by a manifest. */
+function isDeclaredPermissionKey(key: string, declared: Set<string>): boolean {
+  if (!key.startsWith('origin:')) return declared.has(key)
+  const origin = key.slice('origin:'.length)
+  return [...declared].some((value) => value === origin || matchesHostPattern(value, origin))
 }
 
 function userPreferences(profileId: string): UserPreferences {
@@ -315,6 +359,7 @@ function userPreferences(profileId: string): UserPreferences {
 export function registerIpcHandlers(context: IpcContext): void {
   // Apply the persisted theme before any renderer starts.
   nativeTheme.themeSource = getThemeMode()
+  lastThemeDark = nativeTheme.shouldUseDarkColors
 
   // Use the sender's browser window first: context.getWindow() falls back to
   // the active window for settings IPC, which would misroute profile actions.
@@ -330,7 +375,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     activeWindow()?.profile ??
     DEFAULT_PROFILE_ID
 
-  const profileForSession = (ses: Session): string => {
+  const profileForSession = (ses: Session): string | null => {
     for (const profile of listProfiles()) {
       try {
         if (sessionForProfile(profile.id) === ses) return profile.id
@@ -338,7 +383,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         /* ignore sessions that failed to initialize */
       }
     }
-    return activeWindow()?.profile ?? DEFAULT_PROFILE_ID
+    return null
   }
 
   const isWorkerEvent = (event: ExtensionInvokeEvent): event is IpcMainServiceWorkerInvokeEvent =>
@@ -366,14 +411,49 @@ export function registerIpcHandlers(context: IpcContext): void {
     return extensionIdFromUrl(event.sender.getURL())
   }
 
-  const profileForExtensionEvent = (event: ExtensionInvokeEvent): string =>
+  const profileForExtensionEvent = (event: ExtensionInvokeEvent): string | null =>
     isWorkerEvent(event) ? profileForSession(event.session) : profileFor(event as any)
 
-  const extensionOwnerFor = (event: ExtensionInvokeEvent, profileId: string) => {
+  const extensionOwnerFor = (event: ExtensionInvokeEvent, profileId: string | null) => {
+    if (!profileId) return null
     const sender = extensionSenderFor(event)
     const owner = 'getURL' in sender ? windowForAnyWebContents(sender) : null
-    return owner ?? allWindows().find((window) => window.profile === profileId) ?? activeWindow()
+    if (owner?.profile === profileId) return owner
+    return (
+      allWindows().find((window) => window.profile === profileId && !window.window.isDestroyed()) ??
+      null
+    )
   }
+
+  const extensionContextFor = (event: ExtensionInvokeEvent) => {
+    const extensionId = extensionIdForEvent(event)
+    const profileId = profileForExtensionEvent(event)
+    if (!extensionId || !profileId) return null
+    const extension = sessionForProfile(profileId)
+      .extensions.getAllExtensions()
+      .find((candidate) => candidate.id === extensionId)
+    if (!extension) return null
+    return {
+      extensionId,
+      profileId,
+      extension,
+      manifest: (extension.manifest ?? {}) as Record<string, unknown>
+    }
+  }
+
+  const extensionHasGrant = (
+    profileId: string,
+    extensionId: string,
+    manifest: Record<string, unknown>,
+    permission: string
+  ): boolean => {
+    autoGrantDeclaredPermissions(profileId, extensionId, manifest)
+    return hasAllExtensionPermissions(profileId, extensionId, [permission])
+  }
+
+  const nativeAllowed = (context: NonNullable<ReturnType<typeof extensionContextFor>>): boolean =>
+    declaredManifestKeys(context.manifest).includes('nativeMessaging') &&
+    extensionHasGrant(context.profileId, context.extensionId, context.manifest, 'nativeMessaging')
 
   const sendToExtensionSender = (
     event: ExtensionInvokeEvent,
@@ -398,10 +478,32 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   }
 
+  /**
+   * Browser-facing handlers are default-denied for extension documents. The
+   * extension bridge registers its own channels through `handleExtension`.
+   */
+  const handleBrowser = (channel: string, listener: Parameters<typeof ipcMain.handle>[1]): void => {
+    ipcMain.handle(channel, (event, ...args) => {
+      if (extensionIdFromUrl(event.sender.getURL())) {
+        throw new Error('Browser management IPC is not available to extension pages.')
+      }
+      return listener(event, ...args)
+    })
+  }
+
   const extensionIpcHandlers = new Map<string, ExtensionInvokeHandler>()
   const handleExtension = (channel: string, handler: ExtensionInvokeHandler): void => {
-    ipcMain.handle(channel, handler as Parameters<typeof ipcMain.handle>[1])
-    extensionIpcHandlers.set(channel, handler)
+    // Worker IPC uses the same handler map, so validate once here rather than
+    // trusting every individual bridge to check its caller.
+    const validated: ExtensionInvokeHandler = (event, ...args) => {
+      const extensionEvent = event as ExtensionInvokeEvent
+      if (!extensionIdForEvent(extensionEvent)) {
+        throw new Error('Extension IPC is only available to extension pages and workers.')
+      }
+      return handler(extensionEvent, ...args)
+    }
+    ipcMain.handle(channel, validated as Parameters<typeof ipcMain.handle>[1])
+    extensionIpcHandlers.set(channel, validated)
   }
 
   const autofillScopeFor = createAutofillScopeResolver(createEphemeralAutofillStore)
@@ -449,7 +551,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   })
 
-  ipcMain.handle(IpcChannels.AppGetInfo, (): AppVersionInfo => ({
+  handleBrowser(IpcChannels.AppGetInfo, (): AppVersionInfo => ({
     app: app.getVersion(),
     electron: process.versions.electron ?? '',
     chrome: process.versions.chrome ?? '',
@@ -457,12 +559,12 @@ export function registerIpcHandlers(context: IpcContext): void {
     dev: !app.isPackaged
   }))
 
-  ipcMain.handle(IpcChannels.CertificateGet, (event, url: string) => {
+  handleBrowser(IpcChannels.CertificateGet, (event, url: string) => {
     void event
     return getCertificate(url)
   })
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.CertificateExport,
     (event, url: string, format: CertificateExportFormat) => {
       void event
@@ -470,14 +572,14 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(IpcChannels.DefaultBrowserGet, (event) => (void event, isDefaultBrowser()))
-  ipcMain.handle(IpcChannels.DefaultBrowserSet, (event) => (void event, setDefaultBrowser()))
+  handleBrowser(IpcChannels.DefaultBrowserGet, (event) => (void event, isDefaultBrowser()))
+  handleBrowser(IpcChannels.DefaultBrowserSet, (event) => (void event, setDefaultBrowser()))
 
-  ipcMain.handle(IpcChannels.SettingsOpen, (event, target?: SettingsTarget) => {
+  handleBrowser(IpcChannels.SettingsOpen, (event, target?: SettingsTarget) => {
     return openSettingsWindow(target, profileFor(event as any))
   })
 
-  ipcMain.handle(IpcChannels.SettingsGet, (event) => userPreferences(profileFor(event as any)))
+  handleBrowser(IpcChannels.SettingsGet, (event) => userPreferences(profileFor(event as any)))
 
   const supportedSettings = new Set<keyof UserPreferences>([
     'clearHistory',
@@ -514,7 +616,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     'saveFormHistory'
   ])
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.SettingsSet,
     async (
       _event,
@@ -674,7 +776,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.ContentBlockingImportFile,
     (event, input: { name?: unknown; content?: unknown }) => {
       const profileId = profileFor(event)
@@ -690,7 +792,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(IpcChannels.ContentBlockingRemoveFile, (event, id: string) => {
+  handleBrowser(IpcChannels.ContentBlockingRemoveFile, (event, id: string) => {
     const profileId = profileFor(event)
     if (typeof id !== 'string') throw new Error('Invalid filter file id')
     removeCustomFilterFile(profileId, id)
@@ -705,7 +807,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return prefs
   })
 
-  ipcMain.handle(IpcChannels.ContentBlockingGetStats, (event) => {
+  handleBrowser(IpcChannels.ContentBlockingGetStats, (event) => {
     const profileId =
       windowForAnyWebContents(event.sender)?.profile ??
       settingsProfileFor(event.sender) ??
@@ -714,7 +816,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return contentBlockingStats(profileId, pageContentsId, blockingStatsKey(event.sender))
   })
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.ContentBlockingSetSiteEnabled,
     (event, site: string, enabled: boolean) => {
       const profileId =
@@ -733,7 +835,7 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   /* ---- theme ----------------------------------------------------------- */
 
-  ipcMain.handle(IpcChannels.ThemeGet, (event): ThemeState => {
+  handleBrowser(IpcChannels.ThemeGet, (event): ThemeState => {
     const window = windowForAnyWebContents(event.sender)
     return currentThemeState(
       window?.profile ?? profileFor(event as any),
@@ -741,7 +843,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     )
   })
 
-  ipcMain.handle(IpcChannels.ThemeSet, (event, mode: ThemeMode): ThemeState => {
+  handleBrowser(IpcChannels.ThemeSet, (event, mode: ThemeMode): ThemeState => {
     applyThemeMode(mode)
     broadcastThemeState()
     const window = windowForAnyWebContents(event.sender)
@@ -751,19 +853,19 @@ export function registerIpcHandlers(context: IpcContext): void {
     )
   })
 
-  ipcMain.handle(IpcChannels.ThemeSetColors, (event, patch: ThemeColorPatch): ThemeState =>
+  handleBrowser(IpcChannels.ThemeSetColors, (event, patch: ThemeColorPatch): ThemeState =>
     setChromeColors(profileFor(event as any), patch, nativeTheme.shouldUseDarkColors)
   )
 
-  ipcMain.handle(IpcChannels.ThemeSetStartPage, (event, input: ThemeStartPageInput): ThemeState =>
+  handleBrowser(IpcChannels.ThemeSetStartPage, (event, input: ThemeStartPageInput): ThemeState =>
     setStartPage(profileFor(event as any), input, nativeTheme.shouldUseDarkColors)
   )
 
-  ipcMain.handle(IpcChannels.ThemeImport, (event, files: ThemeFileInput[]): ThemeState =>
+  handleBrowser(IpcChannels.ThemeImport, (event, files: ThemeFileInput[]): ThemeState =>
     importChromeTheme(profileFor(event as any), files, nativeTheme.shouldUseDarkColors)
   )
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.ThemeImportStore,
     async (event, input: unknown): Promise<ThemeState> => {
       if (typeof input !== 'string' || input.trim() === '') {
@@ -777,23 +879,24 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(IpcChannels.ThemeReset, (event): ThemeState =>
+  handleBrowser(IpcChannels.ThemeReset, (event): ThemeState =>
     resetTheme(profileFor(event as any), nativeTheme.shouldUseDarkColors)
   )
 
   // Push live updates when 'system' changes as the OS theme flips.
   nativeTheme.on('updated', () => {
+    refreshThemeWindowsIfDarknessChanged()
     broadcastThemeState()
   })
 
   /* ---- tabs ------------------------------------------------------------ */
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.TabsGetState,
     (event) => context.getWindow(event as any)?.tabs.snapshot() ?? null
   )
 
-  ipcMain.handle(IpcChannels.TabsCreate, (event, request: NewTabRequest) =>
+  handleBrowser(IpcChannels.TabsCreate, (event, request: NewTabRequest) =>
     context.getWindow(event as any)?.tabs.create(request)
   )
 
@@ -804,6 +907,8 @@ export function registerIpcHandlers(context: IpcContext): void {
       details: { url?: unknown; active?: unknown; index?: unknown } | undefined
     ): number | null => {
       const rawUrl = typeof details?.url === 'string' ? details.url : ''
+      const context = extensionContextFor(event)
+      if (!context) return null
       const sender = extensionSenderFor(event)
       const baseUrl = 'getURL' in sender ? sender.getURL() : sender.scope
       let url: string
@@ -816,13 +921,20 @@ export function registerIpcHandlers(context: IpcContext): void {
         ) {
           return null
         }
+        if (resolved.protocol === 'chrome-extension:') {
+          if (resolved.host !== context.extensionId) return null
+        } else if (
+          !extensionCanAccessSite(context.profileId, context.extensionId, resolved.toString())
+        ) {
+          return null
+        }
         url = resolved.toString()
       } catch {
         return null
       }
       // Extension service workers are not attached to a browser window, so use
       // a window from the same profile when the sender cannot resolve one.
-      const owner = extensionOwnerFor(event, profileForExtensionEvent(event))
+      const owner = extensionOwnerFor(event, context.profileId)
       if (!owner) return null
       const tabId = owner.tabs.create({
         url,
@@ -835,8 +947,8 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   handleExtension(IpcChannels.ExtensionOpenOptionsPage, (event): boolean => {
     const extensionId = extensionIdForEvent(event)
-    if (!extensionId) return false
     const profileId = profileForExtensionEvent(event)
+    if (!extensionId || !profileId) return false
     const extension = sessionForProfile(profileId)
       .extensions.getAllExtensions()
       .find((candidate) => candidate.id === extensionId)
@@ -855,39 +967,39 @@ export function registerIpcHandlers(context: IpcContext): void {
     return true
   })
 
-  ipcMain.handle(IpcChannels.TabsClose, (event, id: string) =>
+  handleBrowser(IpcChannels.TabsClose, (event, id: string) =>
     context.getWindow(event as any)?.tabs.close(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsActivate, (event, id: string) =>
+  handleBrowser(IpcChannels.TabsActivate, (event, id: string) =>
     context.getWindow(event as any)?.tabs.activate(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsReorder, (event, ids: string[]) =>
+  handleBrowser(IpcChannels.TabsReorder, (event, ids: string[]) =>
     context.getWindow(event as any)?.tabs.reorder(ids)
   )
 
-  ipcMain.handle(IpcChannels.TabsPinToggle, (event, id: string) =>
+  handleBrowser(IpcChannels.TabsPinToggle, (event, id: string) =>
     context.getWindow(event as any)?.tabs.pinToggle(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsDuplicate, (event, id: string) =>
+  handleBrowser(IpcChannels.TabsDuplicate, (event, id: string) =>
     context.getWindow(event as any)?.tabs.duplicate(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsMuteToggle, (event, id: string) =>
+  handleBrowser(IpcChannels.TabsMuteToggle, (event, id: string) =>
     context.getWindow(event as any)?.tabs.muteToggle(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsCloseOthers, (event, id: string) =>
+  handleBrowser(IpcChannels.TabsCloseOthers, (event, id: string) =>
     context.getWindow(event as any)?.tabs.closeOthers(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsCloseToRight, (event, id: string) =>
+  handleBrowser(IpcChannels.TabsCloseToRight, (event, id: string) =>
     context.getWindow(event as any)?.tabs.closeToRight(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsCopyUrl, (event, id: string) => {
+  handleBrowser(IpcChannels.TabsCopyUrl, (event, id: string) => {
     const tab = context
       .getWindow(event as any)
       ?.tabs.snapshot()
@@ -896,51 +1008,49 @@ export function registerIpcHandlers(context: IpcContext): void {
     return tab?.url
   })
 
-  ipcMain.handle(IpcChannels.TabsOpenSplit, (event, firstId: string, secondId: string) =>
+  handleBrowser(IpcChannels.TabsOpenSplit, (event, firstId: string, secondId: string) =>
     context.getWindow(event as any)?.tabs.openSplit(firstId, secondId)
   )
 
-  ipcMain.handle(IpcChannels.TabsCloseSplit, (event) =>
+  handleBrowser(IpcChannels.TabsCloseSplit, (event) =>
     context.getWindow(event as any)?.tabs.closeSplit()
   )
 
   /* ---- navigation ------------------------------------------------------ */
 
-  ipcMain.handle(IpcChannels.NavBack, (event) => context.getWindow(event as any)?.tabs.goBack())
-  ipcMain.handle(IpcChannels.NavForward, (event) =>
+  handleBrowser(IpcChannels.NavBack, (event) => context.getWindow(event as any)?.tabs.goBack())
+  handleBrowser(IpcChannels.NavForward, (event) =>
     context.getWindow(event as any)?.tabs.goForward()
   )
-  ipcMain.handle(IpcChannels.NavReload, (event, id?: string) =>
-    context.getWindow(event as any)?.tabs.reload(id)
-  )
-  ipcMain.handle(IpcChannels.NavStop, (event) => context.getWindow(event as any)?.tabs.stop())
-  ipcMain.handle(IpcChannels.NavGo, (event, url: string) =>
+  handleBrowser(IpcChannels.NavReload, (event) => context.getWindow(event as any)?.tabs.reload())
+  handleBrowser(IpcChannels.NavStop, (event) => context.getWindow(event as any)?.tabs.stop())
+  handleBrowser(IpcChannels.NavGo, (event, url: string) =>
     context.getWindow(event as any)?.tabs.navigate(url)
   )
-  ipcMain.handle(IpcChannels.NavForceReload, (event) =>
+  handleBrowser(IpcChannels.NavForceReload, (event) =>
     context.getWindow(event as any)?.tabs.reloadIgnoringCache()
   )
-  ipcMain.handle(IpcChannels.NavFindInPage, (event, query: string, forward?: boolean) =>
+  handleBrowser(IpcChannels.NavFindInPage, (event, query: string, forward?: boolean) =>
     context.getWindow(event as any)?.tabs.findInPage(query, forward ?? true)
   )
-  ipcMain.handle(IpcChannels.NavStopFindInPage, (event) =>
+  handleBrowser(IpcChannels.NavStopFindInPage, (event) =>
     context.getWindow(event as any)?.tabs.stopFindInPage()
   )
-  ipcMain.handle(IpcChannels.NavZoomIn, (event) => context.getWindow(event as any)?.tabs.zoomIn())
-  ipcMain.handle(IpcChannels.NavZoomOut, (event) => context.getWindow(event as any)?.tabs.zoomOut())
-  ipcMain.handle(IpcChannels.NavZoomReset, (event) =>
+  handleBrowser(IpcChannels.NavZoomIn, (event) => context.getWindow(event as any)?.tabs.zoomIn())
+  handleBrowser(IpcChannels.NavZoomOut, (event) => context.getWindow(event as any)?.tabs.zoomOut())
+  handleBrowser(IpcChannels.NavZoomReset, (event) =>
     context.getWindow(event as any)?.tabs.zoomReset()
   )
-  ipcMain.handle(IpcChannels.NavPrint, (event) => context.getWindow(event as any)?.tabs.print())
-  ipcMain.handle(IpcChannels.NavPrintToPdf, async (event) => {
+  handleBrowser(IpcChannels.NavPrint, (event) => context.getWindow(event as any)?.tabs.print())
+  handleBrowser(IpcChannels.NavPrintToPdf, async (event) => {
     const buf = await context.getWindow(event as any)?.tabs.printToPdf()
     return buf ? buf.toString('base64') : null
   })
-  ipcMain.handle(IpcChannels.DevToolsToggle, (event) =>
+  handleBrowser(IpcChannels.DevToolsToggle, (event) =>
     context.getWindow(event as any)?.tabs.toggleDevTools()
   )
 
-  ipcMain.handle(IpcChannels.TabsReopenLastClosed, (event) =>
+  handleBrowser(IpcChannels.TabsReopenLastClosed, (event) =>
     context.getWindow(event as any)?.tabs.reopenLastClosed()
   )
 
@@ -956,30 +1066,30 @@ export function registerIpcHandlers(context: IpcContext): void {
   const broadcastBookmarkClipboard = (): void =>
     broadcastToAll(IpcChannels.BookmarksClipboardChanged, currentBookmarkClipboard())
 
-  ipcMain.handle(IpcChannels.BookmarksGetState, (event) =>
+  handleBrowser(IpcChannels.BookmarksGetState, (event) =>
     currentBookmarksState(profileFor(event as any))
   )
 
-  ipcMain.handle(IpcChannels.BookmarksAdd, (event, input: NewBookmarkInput) => {
+  handleBrowser(IpcChannels.BookmarksAdd, (event, input: NewBookmarkInput) => {
     const profileId = profileFor(event as any)
     return addBookmark(profileId, input, broadcastBookmarks(profileId), (visible) =>
       setBookmarksBarVisibleForProfile(profileId, visible)
     )
   })
 
-  ipcMain.handle(IpcChannels.BookmarksRemove, (event, id: string) => {
+  handleBrowser(IpcChannels.BookmarksRemove, (event, id: string) => {
     const profileId = profileFor(event as any)
     return removeBookmark(profileId, id, broadcastBookmarks(profileId), (visible) =>
       setBookmarksBarVisibleForProfile(profileId, visible)
     )
   })
 
-  ipcMain.handle(IpcChannels.BookmarksUpdate, (event, id: string, patch: BookmarkPatch) => {
+  handleBrowser(IpcChannels.BookmarksUpdate, (event, id: string, patch: BookmarkPatch) => {
     const profileId = profileFor(event as any)
     return updateBookmark(profileId, id, patch, broadcastBookmarks(profileId))
   })
 
-  ipcMain.handle(IpcChannels.BookmarksAddFolder, (event, input: NewBookmarkFolderInput) => {
+  handleBrowser(IpcChannels.BookmarksAddFolder, (event, input: NewBookmarkFolderInput) => {
     const profileId = profileFor(event as any)
     return addFolder(profileId, input, broadcastBookmarks(profileId), (visible) =>
       setBookmarksBarVisibleForProfile(profileId, visible)
@@ -994,18 +1104,18 @@ export function registerIpcHandlers(context: IpcContext): void {
     return state
   }
 
-  ipcMain.handle(IpcChannels.PermissionsGetState, (event) =>
+  handleBrowser(IpcChannels.PermissionsGetState, (event) =>
     currentSitePermissions(profileFor(event as any))
   )
 
-  ipcMain.handle(IpcChannels.PermissionsGetForOrigin, (event, origin: string) => {
+  handleBrowser(IpcChannels.PermissionsGetForOrigin, (event, origin: string) => {
     const profileId = profileFor(event as any)
     return typeof origin === 'string'
       ? sitePermissionsForOrigin(profileId, origin)
       : { decisions: [] }
   })
 
-  ipcMain.handle(IpcChannels.PermissionsRemove, (event, origin: string, kind?: PermissionKind) => {
+  handleBrowser(IpcChannels.PermissionsRemove, (event, origin: string, kind?: PermissionKind) => {
     const profileId = profileFor(event as any)
     if (typeof origin !== 'string') throw new Error('Invalid permission origin')
     if (kind !== undefined && !isPermissionKind(kind)) {
@@ -1015,19 +1125,19 @@ export function registerIpcHandlers(context: IpcContext): void {
     return changed ? publishPermissions(profileId) : currentSitePermissions(profileId)
   })
 
-  ipcMain.handle(IpcChannels.PermissionsClear, (event) => {
+  handleBrowser(IpcChannels.PermissionsClear, (event) => {
     const profileId = profileFor(event as any)
     const changed = clearSitePermissions(profileId)
     return changed ? publishPermissions(profileId) : currentSitePermissions(profileId)
   })
 
-  ipcMain.handle(IpcChannels.PermissionsUndoAutoRemoval, (event) => {
+  handleBrowser(IpcChannels.PermissionsUndoAutoRemoval, (event) => {
     const profileId = profileFor(event as any)
     const changed = undoPermissionAutoRemoval(profileId)
     return changed ? publishPermissions(profileId) : currentSitePermissions(profileId)
   })
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.PermissionsRespond,
     (_event, id: string, choice: PermissionRequestChoice) => {
       if (typeof id !== 'string' || !isPermissionRequestChoice(choice)) {
@@ -1043,7 +1153,7 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   type StorageKind = 'cookies' | 'localstorage' | 'indexdb'
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.BrowsingDataClear,
     async (_event, options: ClearBrowsingDataOptions): Promise<void> => {
       if (!options || typeof options !== 'object') {
@@ -1078,7 +1188,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.BookmarksUpdateFolder,
     (event, id: string, patch: BookmarkFolderPatch) => {
       const profileId = profileFor(event as any)
@@ -1086,7 +1196,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(IpcChannels.BookmarksRemoveFolder, (event, id: string) => {
+  handleBrowser(IpcChannels.BookmarksRemoveFolder, (event, id: string) => {
     const profileId = profileFor(event as any)
     const state = removeFolder(profileId, id, broadcastBookmarks(profileId), (visible) =>
       setBookmarksBarVisibleForProfile(profileId, visible)
@@ -1095,26 +1205,26 @@ export function registerIpcHandlers(context: IpcContext): void {
     return state
   })
 
-  ipcMain.handle(IpcChannels.BookmarksMove, (event, input: BookmarkMoveInput) => {
+  handleBrowser(IpcChannels.BookmarksMove, (event, input: BookmarkMoveInput) => {
     const profileId = profileFor(event as any)
     return moveBookmarkNode(profileId, input, broadcastBookmarks(profileId))
   })
 
-  ipcMain.handle(IpcChannels.BookmarksCopy, (event, kind: BookmarkNodeKind, id: string) => {
+  handleBrowser(IpcChannels.BookmarksCopy, (event, kind: BookmarkNodeKind, id: string) => {
     const profileId = profileFor(event as any)
     const state = copyBookmarkNode(profileId, kind, id, broadcastBookmarks(profileId))
     broadcastBookmarkClipboard()
     return state
   })
 
-  ipcMain.handle(IpcChannels.BookmarksCut, (event, kind: BookmarkNodeKind, id: string) => {
+  handleBrowser(IpcChannels.BookmarksCut, (event, kind: BookmarkNodeKind, id: string) => {
     const profileId = profileFor(event as any)
     const state = cutBookmarkNode(profileId, kind, id, broadcastBookmarks(profileId))
     broadcastBookmarkClipboard()
     return state
   })
 
-  ipcMain.handle(IpcChannels.BookmarksPaste, (event, parentId: string | null) => {
+  handleBrowser(IpcChannels.BookmarksPaste, (event, parentId: string | null) => {
     const profileId = profileFor(event as any)
     const state = pasteBookmarkNode(
       profileId,
@@ -1126,28 +1236,28 @@ export function registerIpcHandlers(context: IpcContext): void {
     return state
   })
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.BookmarksConsumeDragUrl,
     (event) => (void event, consumePendingDragUrl())
   )
 
-  ipcMain.handle(IpcChannels.BookmarksOpenWindow, (event, url: string) => {
+  handleBrowser(IpcChannels.BookmarksOpenWindow, (event, url: string) => {
     context.openWindow?.(url, profileFor(event as any))
   })
 
-  ipcMain.handle(IpcChannels.BookmarksOpenIncognitoWindow, (event, url: string) => {
+  handleBrowser(IpcChannels.BookmarksOpenIncognitoWindow, (event, url: string) => {
     context.openIncognitoWindow?.(url, profileFor(event as any))
   })
 
-  ipcMain.handle(IpcChannels.WindowsOpen, (event, url?: string) => {
+  handleBrowser(IpcChannels.WindowsOpen, (event, url?: string) => {
     context.openWindow?.(url, profileFor(event as any))
   })
 
-  ipcMain.handle(IpcChannels.WindowsOpenIncognito, (event, url?: string) => {
+  handleBrowser(IpcChannels.WindowsOpenIncognito, (event, url?: string) => {
     context.openIncognitoWindow?.(url, profileFor(event as any))
   })
 
-  ipcMain.handle(IpcChannels.WindowsGetState, (event): WindowState => {
+  handleBrowser(IpcChannels.WindowsGetState, (event): WindowState => {
     const window = context.getWindow(event as any)
     return {
       incognito: window?.isIncognito ?? false,
@@ -1163,27 +1273,27 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   })
 
-  ipcMain.handle(IpcChannels.WindowsSetTitle, (event, title: string) => {
+  handleBrowser(IpcChannels.WindowsSetTitle, (event, title: string) => {
     context.getWindow(event as any)?.setWindowTitle(title)
   })
 
   // Resolve the sender's window so a control affects only the window that owns it.
-  ipcMain.handle(IpcChannels.WindowsMinimize, (event) => {
+  handleBrowser(IpcChannels.WindowsMinimize, (event) => {
     context.getWindow(event as any)?.window.minimize()
   })
 
-  ipcMain.handle(IpcChannels.WindowsToggleMaximize, (event) => {
+  handleBrowser(IpcChannels.WindowsToggleMaximize, (event) => {
     const window = context.getWindow(event as any)?.window
     if (!window) return
     if (window.isMaximized()) window.unmaximize()
     else window.maximize()
   })
 
-  ipcMain.handle(IpcChannels.WindowsClose, (event) => {
+  handleBrowser(IpcChannels.WindowsClose, (event) => {
     context.getWindow(event as any)?.window.close()
   })
 
-  ipcMain.handle(IpcChannels.BookmarksClear, (event) => {
+  handleBrowser(IpcChannels.BookmarksClear, (event) => {
     const profileId = profileFor(event as any)
     const state = clearBookmarks(profileId, broadcastBookmarks(profileId), (visible) =>
       setBookmarksBarVisibleForProfile(profileId, visible)
@@ -1192,7 +1302,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return state
   })
 
-  ipcMain.handle(IpcChannels.BookmarksToggleBar, (event) => {
+  handleBrowser(IpcChannels.BookmarksToggleBar, (event) => {
     const profileId = profileFor(event as any)
     return toggleBookmarksBar(profileId, broadcastBookmarks(profileId), (visible) =>
       setBookmarksBarVisibleForProfile(profileId, visible)
@@ -1232,7 +1342,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.PromptRespond,
     (_event, response: { id?: unknown; value?: unknown }) => {
       if (typeof response?.id !== 'string') return
@@ -1241,11 +1351,11 @@ export function registerIpcHandlers(context: IpcContext): void {
   )
   /* ---- history --------------------------------------------------------- */
 
-  ipcMain.handle(IpcChannels.HistoryGetState, (event) =>
+  handleBrowser(IpcChannels.HistoryGetState, (event) =>
     currentHistoryState(profileFor(event as any))
   )
 
-  ipcMain.handle(IpcChannels.HistoryRecordVisit, (event, visit: { url: string; title: string }) => {
+  handleBrowser(IpcChannels.HistoryRecordVisit, (event, visit: { url: string; title: string }) => {
     const profileId = profileFor(event as any)
     recordVisit(profileId, visit)
     return publishHistory(profileId, (state) =>
@@ -1253,7 +1363,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     )
   })
 
-  ipcMain.handle(IpcChannels.HistoryRemove, (event, id: string) => {
+  handleBrowser(IpcChannels.HistoryRemove, (event, id: string) => {
     const profileId = profileFor(event as any)
     removeHistory(profileId, id)
     return publishHistory(profileId, (state) =>
@@ -1261,7 +1371,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     )
   })
 
-  ipcMain.handle(IpcChannels.HistoryClear, (event) => {
+  handleBrowser(IpcChannels.HistoryClear, (event) => {
     const profileId = profileFor(event as any)
     clearHistory(profileId)
     return publishHistory(profileId, (state) =>
@@ -1271,67 +1381,65 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   /* ---- autofill -------------------------------------------------------- */
 
-  ipcMain.handle(IpcChannels.AutofillGetState, (event) => {
-    const scope = scopeForAutofillEvent(event as any)
-    return currentAutofillState(scope.profileId, scope.store)
-  })
+  handleBrowser(IpcChannels.AutofillGetState, (event) =>
+    currentAutofillState(profileFor(event as any))
+  )
 
-  ipcMain.handle(IpcChannels.AutofillSaveAddress, (event, input) => {
+  handleBrowser(IpcChannels.AutofillSaveAddress, (event, input) => {
     if (!input || typeof input !== 'object') throw new Error('Invalid address')
     const scope = scopeForAutofillEvent(event as any)
     saveAddress(scope.profileId, input as any, scope.store)
     return publishAutofill(scope)
   })
 
-  ipcMain.handle(IpcChannels.AutofillDeleteAddress, (event, id: string) => {
+  handleBrowser(IpcChannels.AutofillDeleteAddress, (event, id: string) => {
     if (typeof id !== 'string') throw new Error('Invalid address id')
     const scope = scopeForAutofillEvent(event as any)
     deleteAddress(scope.profileId, id, scope.store)
     return publishAutofill(scope)
   })
 
-  ipcMain.handle(IpcChannels.AutofillSaveContact, (event, input) => {
+  handleBrowser(IpcChannels.AutofillSaveContact, (event, input) => {
     if (!input || typeof input !== 'object') throw new Error('Invalid contact')
     const scope = scopeForAutofillEvent(event as any)
     saveContact(scope.profileId, input as any, scope.store)
     return publishAutofill(scope)
   })
 
-  ipcMain.handle(IpcChannels.AutofillDeleteContact, (event, id: string) => {
+  handleBrowser(IpcChannels.AutofillDeleteContact, (event, id: string) => {
     if (typeof id !== 'string') throw new Error('Invalid contact id')
     const scope = scopeForAutofillEvent(event as any)
     deleteContact(scope.profileId, id, scope.store)
     return publishAutofill(scope)
   })
 
-  ipcMain.handle(IpcChannels.AutofillSavePayment, (event, input) => {
+  handleBrowser(IpcChannels.AutofillSavePayment, (event, input) => {
     if (!input || typeof input !== 'object') throw new Error('Invalid payment method')
     const scope = scopeForAutofillEvent(event as any)
     savePaymentMethod(scope.profileId, input as any, scope.store)
     return publishAutofill(scope)
   })
 
-  ipcMain.handle(IpcChannels.AutofillDeletePayment, (event, id: string) => {
+  handleBrowser(IpcChannels.AutofillDeletePayment, (event, id: string) => {
     if (typeof id !== 'string') throw new Error('Invalid payment method id')
     const scope = scopeForAutofillEvent(event as any)
     deletePaymentMethod(scope.profileId, id, scope.store)
     return publishAutofill(scope)
   })
 
-  ipcMain.handle(IpcChannels.AutofillClearFormHistory, (event) => {
-    const scope = scopeForAutofillEvent(event as any)
-    clearFormHistory(scope.profileId, scope.store)
-    return publishAutofill(scope)
+  handleBrowser(IpcChannels.AutofillClearFormHistory, (event) => {
+    clearFormHistory(profileFor(event as any))
+    return publishAutofill(profileFor(event as any))
   })
 
-  ipcMain.handle(IpcChannels.AutofillDeleteFormHistoryEntry, (event, id: string) => {
+  handleBrowser(IpcChannels.AutofillDeleteFormHistoryEntry, (event, id: string) => {
     if (typeof id !== 'string') throw new Error('Invalid form history id')
     const scope = scopeForAutofillEvent(event as any)
     removeFormHistoryEntry(scope.profileId, id, scope.store)
     return publishAutofill(scope)
   })
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.AutofillGetFormSuggestions,
     (event, payload: { field?: unknown; prefix?: unknown }) => {
       const scope = scopeForAutofillEvent(event as any)
@@ -1345,7 +1453,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.AutofillRecordFormField,
     (event, payload: { field?: unknown; value?: unknown }) => {
       const scope = scopeForAutofillEvent(event as any)
@@ -1354,8 +1462,8 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(IpcChannels.AutofillGetFillData, (event, payload: { kind?: unknown }) => {
-    const scope = scopeForAutofillEvent(event as any)
+  handleBrowser(IpcChannels.AutofillGetFillData, (event, payload: { kind?: unknown }) => {
+    const profileId = profileForSender(event.sender)
     const kind = payload?.kind
     if (kind !== 'address' && kind !== 'contact' && kind !== 'payment') return []
     return getAutofillProfileSuggestions(scope.profileId, kind, scope.store)
@@ -1374,18 +1482,28 @@ export function registerIpcHandlers(context: IpcContext): void {
     { id: string; kind: string; anchor?: { x: number; y: number } }
   >()
 
+  const watchedPanelOwners = new WeakSet<WindowController>()
+  const watchPanelOwner = (owner: WindowController): void => {
+    if (watchedPanelOwners.has(owner)) return
+    watchedPanelOwners.add(owner)
+    // Escape, navigation and tab switches close the view directly; keep toggle
+    // state in sync no matter which path dismissed it.
+    owner.onExtensionPanelClosed((closed) => openExtensionPanels.delete(closed))
+  }
+
   const closePanelForOwner = (owner: WindowController): void => {
+    watchPanelOwner(owner)
     if (!openExtensionPanels.has(owner)) return
     owner.closeExtensionPanel()
     openExtensionPanels.delete(owner)
   }
 
-  ipcMain.handle(IpcChannels.ExtensionsGetState, (event) => {
+  handleBrowser(IpcChannels.ExtensionsGetState, (event) => {
     const profileId = profileFor(event as any)
     return currentExtensionsState(sessionForProfile(profileId), profileId)
   })
 
-  ipcMain.handle(IpcChannels.ExtensionsChooseDirectory, async () => {
+  handleBrowser(IpcChannels.ExtensionsChooseDirectory, async () => {
     const result = await dialog.showOpenDialog({
       title: 'Load unpacked extension',
       properties: ['openDirectory']
@@ -1394,7 +1512,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return result.filePaths[0]
   })
 
-  ipcMain.handle(IpcChannels.ExtensionsChooseCrx, async () => {
+  handleBrowser(IpcChannels.ExtensionsChooseCrx, async () => {
     const result = await dialog.showOpenDialog({
       title: 'Install CRX extension',
       filters: [{ name: 'Chrome extensions', extensions: ['crx'] }],
@@ -1404,7 +1522,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return result.filePaths[0]
   })
 
-  ipcMain.handle(IpcChannels.ExtensionsInstall, async (event, path: unknown) => {
+  handleBrowser(IpcChannels.ExtensionsInstall, async (event, path: unknown) => {
     if (typeof path !== 'string' || path.trim() === '') {
       throw new Error('Choose an extension folder or CRX file first.')
     }
@@ -1413,7 +1531,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return publishExtensions(profileId, state)
   })
 
-  ipcMain.handle(IpcChannels.ExtensionsInstallFromStore, async (event, input: unknown) => {
+  handleBrowser(IpcChannels.ExtensionsInstallFromStore, async (event, input: unknown) => {
     if (typeof input !== 'string' || input.trim() === '') {
       throw new Error('Enter a Chrome Web Store URL or extension id.')
     }
@@ -1422,7 +1540,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return publishExtensions(profileId, state)
   })
 
-  ipcMain.handle(IpcChannels.ExtensionsUninstall, (event, path: unknown) => {
+  handleBrowser(IpcChannels.ExtensionsUninstall, (event, path: unknown) => {
     if (typeof path !== 'string' || path.trim() === '') {
       throw new Error('No extension selected.')
     }
@@ -1440,7 +1558,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return publishExtensions(profileId, state)
   })
 
-  ipcMain.handle(IpcChannels.ExtensionsCheckUpdates, async (event) => {
+  handleBrowser(IpcChannels.ExtensionsCheckUpdates, async (event) => {
     const profileId = profileFor(event as any)
     const results = await checkProfileExtensionUpdates(profileId)
     publishExtensions(profileId, currentExtensionsState(sessionForProfile(profileId), profileId))
@@ -1487,9 +1605,11 @@ export function registerIpcHandlers(context: IpcContext): void {
     const openExternal = (target: string): void => {
       if (/^https?:\/\//i.test(target)) context.openWindow?.(target, profileId)
     }
+    watchPanelOwner(owner)
     owner.showExtensionPanel({
       url,
       session,
+      restricted: true,
       x: Math.round(anchor.x),
       y: Math.round(anchor.y),
       width: 420,
@@ -1501,7 +1621,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return true
   }
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.ExtensionsOpenPopup,
     (
       event,
@@ -1541,8 +1661,8 @@ export function registerIpcHandlers(context: IpcContext): void {
   /** Called by `chrome.action.openPopup()` from an extension page or worker. */
   handleExtension(IpcChannels.ExtensionActionOpenPopup, async (event): Promise<boolean> => {
     const extensionId = extensionIdForEvent(event)
-    if (!extensionId) return false
     const profileId = profileForExtensionEvent(event)
+    if (!extensionId || !profileId) return false
     const ses = sessionForProfile(profileId)
     const extension = ses.extensions
       .getAllExtensions()
@@ -1589,7 +1709,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     })
   })
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.ExtensionsShowActionMenu,
     (event, payload: { x?: unknown; y?: unknown }) => {
       const owner = windowForAnyWebContents(event.sender)
@@ -1607,6 +1727,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         ? `${devServerUrl.replace(/\/$/, '')}/extensionMenu.html`
         : 'voyager://extension-menu'
       closePanelForOwner(owner)
+      watchPanelOwner(owner)
       owner.showExtensionPanel({
         url: menuUrl,
         x,
@@ -1620,12 +1741,12 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(IpcChannels.ExtensionsClosePanel, (event) => {
+  handleBrowser(IpcChannels.ExtensionsClosePanel, (event) => {
     const owner = windowForAnyWebContents(event.sender)
     if (owner) closePanelForOwner(owner)
   })
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.ExtensionsSetPinned,
     (event, payload: { id?: unknown; pinned?: unknown }) => {
       if (typeof payload?.id !== 'string' || typeof payload.pinned !== 'boolean') {
@@ -1640,9 +1761,9 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.ExtensionsSetSiteAccess,
-    (event, payload: { id?: unknown; access?: unknown }) => {
+    (event, payload: { id?: unknown; access?: unknown; site?: unknown }) => {
       if (
         typeof payload?.id !== 'string' ||
         (payload.access !== 'click' && payload.access !== 'site' && payload.access !== 'all')
@@ -1650,7 +1771,8 @@ export function registerIpcHandlers(context: IpcContext): void {
         throw new Error('The site access choice is invalid.')
       }
       const profileId = profileFor(event as any)
-      setExtensionSiteAccess(profileId, payload.id, payload.access)
+      const site = typeof payload.site === 'string' ? payload.site : null
+      setExtensionSiteAccessRule(profileId, payload.id, payload.access, site)
       return publishExtensions(
         profileId,
         currentExtensionsState(sessionForProfile(profileId), profileId)
@@ -1673,46 +1795,45 @@ export function registerIpcHandlers(context: IpcContext): void {
     ): Promise<boolean | { permissions: string[]; origins: string[] }> => {
       const profileId = profileForExtensionEvent(event)
       const extensionId = extensionIdForEvent(event)
-      const extension = extensionId
-        ? sessionForProfile(profileId)
-            .extensions.getAllExtensions()
-            .find((candidate) => candidate.id === extensionId)
-        : null
-      if (!extension || !extensionId) return Promise.resolve(false)
+      if (!profileId || !extensionId) return Promise.resolve(false)
+      const extension = sessionForProfile(profileId)
+        .extensions.getAllExtensions()
+        .find((candidate) => candidate.id === extensionId)
+      if (!extension) return Promise.resolve(false)
 
       const manifest = (extension.manifest ?? {}) as Record<string, unknown>
-      const declared = new Set<string>()
-      for (const key of ['permissions', 'optional_permissions']) {
-        const value = manifest[key]
-        if (!Array.isArray(value)) continue
-        for (const item of value) if (typeof item === 'string') declared.add(item)
-      }
+      const declared = new Set(declaredManifestKeys(manifest))
       // Manifest-declared native messaging is supported directly, so grant it
       // before any prompt logic. Host allow-lists are still enforced separately.
       const autoGranted = new Set(autoGrantDeclaredPermissions(profileId, extensionId, manifest))
       const stringArray = (value: unknown): string[] =>
         Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
-      const requested = [
+      const asked = [
         ...new Set([
           ...stringArray(payload?.permissions),
           ...stringArray(payload?.origins).map(extensionOriginKey)
         ])
-      ].filter((item) => declared.has(item.startsWith('origin:') ? item.slice(7) : item))
+      ]
+      const requested = asked.filter((key) => isDeclaredPermissionKey(key, declared))
       if (payload?.mode === 'getAll') {
         return Promise.resolve(extensionPermissionGrants(profileId, extensionId))
       }
       if (payload?.mode === 'remove') {
-        removeExtensionPermissions(
-          profileId,
-          extensionId,
-          requested.filter((key) => !autoGranted.has(key))
+        const required = new Set(requiredManifestKeys(manifest))
+        const removable = requested.filter(
+          (key) => !autoGranted.has(key) && !isDeclaredPermissionKey(key, required)
         )
+        removeExtensionPermissions(profileId, extensionId, removable)
         return Promise.resolve(true)
       }
+      // An undeclared request must not be reported as already granted.
+      if (asked.length > requested.length) return Promise.resolve(false)
       if (payload?.mode === 'contains' || payload?.checkOnly === true) {
-        return Promise.resolve(hasAllExtensionPermissions(profileId, extensionId, requested))
+        return Promise.resolve(
+          asked.length > 0 && hasAllExtensionPermissions(profileId, extensionId, requested)
+        )
       }
-      if (requested.length === 0) return Promise.resolve(true)
+      if (asked.length === 0) return Promise.resolve(true)
 
       const routeWindow = extensionOwnerFor(event, profileId)
       if (!routeWindow) return Promise.resolve(false)
@@ -1731,7 +1852,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(IpcChannels.ExtensionPermissionRespond, (_event, id: unknown, choice: unknown) => {
+  handleBrowser(IpcChannels.ExtensionPermissionRespond, (_event, id: unknown, choice: unknown) => {
     if (typeof id !== 'string' || !isExtensionPermissionChoice(choice)) {
       throw new Error('Invalid extension permission response')
     }
@@ -1745,11 +1866,11 @@ export function registerIpcHandlers(context: IpcContext): void {
     return result.handled
   })
 
-  ipcMain.handle(IpcChannels.NativeMessagingHostsGet, (event) =>
+  handleBrowser(IpcChannels.NativeMessagingHostsGet, (event) =>
     getNativeHosts(profileFor(event as any))
   )
 
-  ipcMain.handle(IpcChannels.NativeMessagingHostsSet, (event, hosts: unknown) =>
+  handleBrowser(IpcChannels.NativeMessagingHostsSet, (event, hosts: unknown) =>
     setNativeHosts(profileFor(event as any), hosts)
   )
 
@@ -1761,9 +1882,9 @@ export function registerIpcHandlers(context: IpcContext): void {
         typeof requestedPortId === 'string' && /^[a-zA-Z0-9-]{1,64}$/.test(requestedPortId)
           ? requestedPortId
           : undefined
-      const extensionId = extensionIdForEvent(event)
-      if (!extensionId) return null
-      const profileId = profileForExtensionEvent(event)
+      const context = extensionContextFor(event)
+      if (!context || !nativeAllowed(context)) return null
+      const { extensionId, profileId } = context
       const sendToSender = (channel: string, payload: unknown): void =>
         sendToExtensionSender(event, channel, payload)
       try {
@@ -1803,12 +1924,13 @@ export function registerIpcHandlers(context: IpcContext): void {
     IpcChannels.ExtensionNativeSendMessage,
     async (event: ExtensionInvokeEvent, hostName: unknown, message: unknown): Promise<unknown> => {
       if (typeof hostName !== 'string') return null
-      const extensionId = extensionIdForEvent(event)
-      if (!extensionId) return null
+      const context = extensionContextFor(event)
+      if (!context || !nativeAllowed(context)) return null
+      const { extensionId, profileId } = context
       try {
         return await sendNativeMessage(
           {
-            profileId: profileForExtensionEvent(event),
+            profileId,
             hostName,
             extensionId,
             sender: nativeSenderFor(event),
@@ -1830,9 +1952,13 @@ export function registerIpcHandlers(context: IpcContext): void {
     IpcChannels.ExtensionPrivacyGet,
     (event: ExtensionInvokeEvent, key: unknown): boolean => {
       if (key !== PRIVACY_PASSWORD_SAVING_KEY) return true
-      return (
-        getSettings(profileForExtensionEvent(event), PRIVACY_PASSWORD_SAVING_KEY, true) !== false
-      )
+      const context = extensionContextFor(event)
+      if (!context) return true
+      if (!declaredManifestKeys(context.manifest).includes('privacy')) return true
+      if (!hasAllExtensionPermissions(context.profileId, context.extensionId, ['privacy'])) {
+        return true
+      }
+      return getSettings(context.profileId, PRIVACY_PASSWORD_SAVING_KEY, true) !== false
     }
   )
 
@@ -1840,22 +1966,10 @@ export function registerIpcHandlers(context: IpcContext): void {
     IpcChannels.ExtensionPrivacySet,
     async (event: ExtensionInvokeEvent, key: unknown, value: unknown): Promise<boolean> => {
       if (key !== PRIVACY_PASSWORD_SAVING_KEY || typeof value !== 'boolean') return false
-      const extensionId = extensionIdForEvent(event)
-      if (!extensionId) return false
-      const profileId = profileForExtensionEvent(event)
-      const extension = sessionForProfile(profileId)
-        .extensions.getAllExtensions()
-        .find((candidate) => candidate.id === extensionId)
-      if (!extension) return false
-
-      const manifest = (extension.manifest ?? {}) as Record<string, unknown>
-      const declared = new Set<string>()
-      for (const field of ['permissions', 'optional_permissions']) {
-        const values = manifest[field]
-        if (!Array.isArray(values)) continue
-        for (const item of values) if (typeof item === 'string') declared.add(item)
-      }
-      if (!declared.has('privacy')) return false
+      const context = extensionContextFor(event)
+      if (!context) return false
+      const { extensionId, profileId, extension, manifest } = context
+      if (!declaredManifestKeys(manifest).includes('privacy')) return false
 
       if (!hasAllExtensionPermissions(profileId, extensionId, ['privacy'])) {
         const routeWindow = extensionOwnerFor(event, profileId)
@@ -1864,7 +1978,7 @@ export function registerIpcHandlers(context: IpcContext): void {
           profileId,
           extensionId,
           extensionName: extension.name,
-          keys: ['privacy.passwordSavingEnabled'],
+          keys: ['privacy'],
           sender: permissionSenderFor(event),
           sendPrompt: (request) =>
             routeWindow.sendToChrome(IpcChannels.ExtensionPermissionRequest, request),
@@ -1872,7 +1986,6 @@ export function registerIpcHandlers(context: IpcContext): void {
             routeWindow.sendToChrome(IpcChannels.ExtensionPermissionRequestCancelled, { id })
         })
         if (!granted) return false
-        recordExtensionPermissionDecision(profileId, extensionId, ['privacy'], 'allow')
       }
 
       setSettings(profileId, PRIVACY_PASSWORD_SAVING_KEY, value)
@@ -1882,7 +1995,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   )
 
   /** Three-dots menu for a single extension, using native menu items. */
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.ExtensionsShowContextMenu,
     (event, payload: { id?: unknown; x?: unknown; y?: unknown }) => {
       if (typeof payload?.id !== 'string') throw new Error('The extension is invalid.')
@@ -1915,13 +2028,9 @@ export function registerIpcHandlers(context: IpcContext): void {
         const tab = snapshot.tabs.find((item) => item.id === snapshot.activeTabId)
         return tab?.url ?? 'about:blank'
       })()
-      const domain = (() => {
-        try {
-          return new URL(activeUrl).hostname || 'this site'
-        } catch {
-          return 'this site'
-        }
-      })()
+      const siteKey = siteKeyForUrl(activeUrl)
+      const domain = siteKey && siteKey !== 'file://' ? siteKey : 'this site'
+      const selectedSites = siteAccessRules(profileId)[extension.id]?.sites ?? []
 
       const template: Electron.MenuItemConstructorOptions[] = [
         { label: extension.name, enabled: false },
@@ -1951,9 +2060,12 @@ export function registerIpcHandlers(context: IpcContext): void {
           ).map(([label, value]) => ({
             label,
             type: 'radio' as const,
-            checked: siteAccess === value,
+            checked:
+              value === 'site'
+                ? siteAccess === 'site' && selectedSites.includes(siteKey ?? '')
+                : siteAccess === value,
             click: () => {
-              setExtensionSiteAccess(profileId, extension.id, value)
+              setExtensionSiteAccessRule(profileId, extension.id, value, siteKey)
               publishExtensions(profileId, currentExtensionsState(ses, profileId))
             }
           }))
@@ -1999,11 +2111,11 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   /* ---- downloads ------------------------------------------------------ */
 
-  ipcMain.handle(IpcChannels.DownloadsGetState, (event) =>
+  handleBrowser(IpcChannels.DownloadsGetState, (event) =>
     currentDownloadsState(profileFor(event as any))
   )
 
-  ipcMain.handle(IpcChannels.DownloadsClear, (event) => {
+  handleBrowser(IpcChannels.DownloadsClear, (event) => {
     const profileId = profileFor(event as any)
     clearDownloads(profileId)
     return publishDownloads(profileId, (state) =>
@@ -2016,31 +2128,31 @@ export function registerIpcHandlers(context: IpcContext): void {
       sendToProfile(profileId, IpcChannels.DownloadsStateChanged, state)
     )
 
-  ipcMain.handle(IpcChannels.DownloadsPause, (event, id: string) => {
+  handleBrowser(IpcChannels.DownloadsPause, (event, id: string) => {
     const profileId = profileFor(event as any)
     pauseDownload(id)
     return publishDownloadsState(profileId)
   })
 
-  ipcMain.handle(IpcChannels.DownloadsResume, (event, id: string) => {
+  handleBrowser(IpcChannels.DownloadsResume, (event, id: string) => {
     const profileId = profileFor(event as any)
     resumeDownload(id)
     return publishDownloadsState(profileId)
   })
 
-  ipcMain.handle(IpcChannels.DownloadsCancel, (event, id: string) => {
+  handleBrowser(IpcChannels.DownloadsCancel, (event, id: string) => {
     const profileId = profileFor(event as any)
     cancelDownload(id)
     return publishDownloadsState(profileId)
   })
 
-  ipcMain.handle(IpcChannels.DownloadsRemove, (event, id: string) => {
+  handleBrowser(IpcChannels.DownloadsRemove, (event, id: string) => {
     const profileId = profileFor(event as any)
     removeDownload(profileId, id)
     return publishDownloadsState(profileId)
   })
 
-  ipcMain.handle(IpcChannels.DownloadsCopyUrl, (event, id: string) => {
+  handleBrowser(IpcChannels.DownloadsCopyUrl, (event, id: string) => {
     void event
     const profileId = profileFor(event as any)
     const url = downloadUrl(profileId, id)
@@ -2048,7 +2160,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return url
   })
 
-  ipcMain.handle(IpcChannels.DownloadsOpenFolder, (event, id: string) => {
+  handleBrowser(IpcChannels.DownloadsOpenFolder, (event, id: string) => {
     void event
     return openDownloadFolder(profileFor(event as any), id)
   })
@@ -2060,9 +2172,9 @@ export function registerIpcHandlers(context: IpcContext): void {
     activeProfileId
   })
 
-  ipcMain.handle(IpcChannels.ProfilesGetState, (event) => profilesState(profileFor(event as any)))
+  handleBrowser(IpcChannels.ProfilesGetState, (event) => profilesState(profileFor(event as any)))
 
-  ipcMain.handle(IpcChannels.ProfilesCreate, (event, input: CreateProfileInput) => {
+  handleBrowser(IpcChannels.ProfilesCreate, (event, input: CreateProfileInput) => {
     if (!input || typeof input.name !== 'string') throw new Error('Profile name is required')
     const profile = createProfile({
       name: input.name,
@@ -2074,7 +2186,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return profile
   })
 
-  ipcMain.handle(IpcChannels.ProfilesUpdate, (event, input: RenameProfileInput) => {
+  handleBrowser(IpcChannels.ProfilesUpdate, (event, input: RenameProfileInput) => {
     if (!input || typeof input.id !== 'string' || typeof input.name !== 'string') {
       throw new Error('Invalid profile update')
     }
@@ -2088,7 +2200,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return profile
   })
 
-  ipcMain.handle(IpcChannels.ProfilesDelete, async (event, id: string) => {
+  handleBrowser(IpcChannels.ProfilesDelete, async (event, id: string) => {
     if (typeof id !== 'string' || id === DEFAULT_PROFILE_ID) {
       throw new Error('Profile cannot be deleted')
     }
@@ -2109,7 +2221,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return profilesState(DEFAULT_PROFILE_ID)
   })
 
-  ipcMain.handle(IpcChannels.ProfilesOpenWindow, (event, id: string) => {
+  handleBrowser(IpcChannels.ProfilesOpenWindow, (event, id: string) => {
     if (typeof id !== 'string') throw new Error('Invalid profile')
     createWindow({ profileId: id })
     setLastProfileId(id)
@@ -2120,13 +2232,13 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   // The chrome view is normally clipped to its strip height; while a dropdown,
   // palette or menu is open it expands over the page so overlays are not cut off.
-  ipcMain.handle(IpcChannels.UiOpenDownloads, (event) =>
+  handleBrowser(IpcChannels.UiOpenDownloads, (event) =>
     context.getWindow(event as any)?.sendToChrome(IpcChannels.UiOpenDownloads)
   )
-  ipcMain.handle(IpcChannels.UiSetOverlayOpen, (event, open: boolean) =>
+  handleBrowser(IpcChannels.UiSetOverlayOpen, (event, open: boolean) =>
     context.getWindow(event as any)?.setOverlayOpen(open)
   )
-  ipcMain.handle(IpcChannels.UiSetRailExpanded, (event, expanded: boolean) =>
+  handleBrowser(IpcChannels.UiSetRailExpanded, (event, expanded: boolean) =>
     context.getWindow(event as any)?.setRailExpanded(expanded)
   )
 

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { app } from 'electron'
 import { inflateRawSync } from 'node:zlib'
+import { crxSigningIdentity, verifyCrx3Signature, type CrxSigningIdentity } from './crxSignature'
 import { isIllegalExtensionEntry, removeIllegalExtensionFiles } from './illegalFiles'
 
 const EOCD_SIGNATURE = 0x06054b50
@@ -13,6 +14,11 @@ const CENTRAL_SIGNATURE = 0x02014b50
 const LOCAL_SIGNATURE = 0x04034b50
 const ZIP64_EXTRA_ID = 0x0001
 const UINT32_MAX = 0xffffffff
+/** Firm extraction limits, large enough for the >64 MiB CRX used by E2E. */
+const MAX_ARCHIVE_ENTRIES = 10_000
+const MAX_ENTRY_BYTES = 256 * 1024 * 1024
+const MAX_TOTAL_BYTES = 512 * 1024 * 1024
+const MAX_DOWNLOAD_BYTES = MAX_TOTAL_BYTES
 
 /** Strip the CRX2/CRX3 header and return the embedded ZIP archive. */
 function crxArchive(file: Buffer): Buffer {
@@ -89,7 +95,25 @@ function centralDirectory(archive: Buffer): CentralDirectory {
   if (offset < 0 || size < 0 || count < 0 || offset + size > archive.length) {
     throw new Error('The extension archive has an invalid central directory.')
   }
+  if (count > MAX_ARCHIVE_ENTRIES) {
+    throw new Error('The extension archive has too many entries.')
+  }
   return { count, size, offset }
+}
+
+function isBufferTooLarge(error: unknown): boolean {
+  return error instanceof Error && (error as NodeJS.ErrnoException).code === 'ERR_BUFFER_TOO_LARGE'
+}
+
+function inflateWithinBudget(compressed: Buffer, maxOutputLength: number): Buffer {
+  try {
+    return inflateRawSync(compressed, { maxOutputLength })
+  } catch (error) {
+    if (isBufferTooLarge(error)) {
+      throw new Error('The extension archive exceeds the extraction budget.', { cause: error })
+    }
+    throw error
+  }
 }
 
 type Zip64Field = 'uncompressed' | 'compressed' | 'offset'
@@ -139,6 +163,7 @@ function extractArchive(archive: Buffer, destination: string): void {
   const directory = centralDirectory(archive)
   const centralEnd = directory.offset + directory.size
   let cursor = directory.offset
+  let written = 0
 
   for (let index = 0; index < directory.count; index += 1) {
     if (cursor + 46 > centralEnd || archive.readUInt32LE(cursor) !== CENTRAL_SIGNATURE) {
@@ -153,6 +178,9 @@ function extractArchive(archive: Buffer, destination: string): void {
     const extraLength = archive.readUInt16LE(cursor + 30)
     const commentLength = archive.readUInt16LE(cursor + 32)
     let localOffset = archive.readUInt32LE(cursor + 42)
+    if (cursor + 46 + nameLength + extraLength + commentLength > centralEnd) {
+      throw new Error('The extension archive has a corrupt file entry.')
+    }
     const name = archive.subarray(cursor + 46, cursor + 46 + nameLength).toString('utf8')
     const extraStart = cursor + 46 + nameLength
     cursor = extraStart + extraLength + commentLength
@@ -187,7 +215,19 @@ function extractArchive(archive: Buffer, destination: string): void {
       continue
     }
 
-    if (archive.readUInt32LE(localOffset) !== LOCAL_SIGNATURE) {
+    const remaining = MAX_TOTAL_BYTES - written
+    if (
+      compressedSize > MAX_DOWNLOAD_BYTES ||
+      uncompressedSize > MAX_ENTRY_BYTES ||
+      uncompressedSize > remaining
+    ) {
+      throw new Error('The extension archive exceeds the extraction budget.')
+    }
+
+    if (
+      localOffset + 30 > archive.length ||
+      archive.readUInt32LE(localOffset) !== LOCAL_SIGNATURE
+    ) {
       throw new Error('The extension archive has a corrupt file header.')
     }
     const dataStart =
@@ -199,10 +239,19 @@ function extractArchive(archive: Buffer, destination: string): void {
       throw new Error('The extension archive is truncated.')
     }
     const compressed = archive.subarray(dataStart, dataStart + compressedSize)
-    const contents = method === 0 ? compressed : method === 8 ? inflateRawSync(compressed) : null
+    const contents =
+      method === 0
+        ? compressed
+        : method === 8
+          ? inflateWithinBudget(compressed, Math.min(uncompressedSize, remaining))
+          : null
     if (!contents || contents.length !== uncompressedSize) {
       throw new Error('The extension archive could not be decompressed.')
     }
+    if (written + contents.length > MAX_TOTAL_BYTES) {
+      throw new Error('The extension archive exceeds the extraction budget.')
+    }
+    written += contents.length
     mkdirSync(resolve(target, '..'), { recursive: true })
     writeFileSync(target, contents)
   }
@@ -234,6 +283,15 @@ export function unpackCrx(filePath: string, profileId: string): string {
   } catch (error) {
     rmSync(destination, { recursive: true, force: true })
     throw error
+  }
+}
+
+/** Best-effort CRX3 identity for a user-selected package; null if unsigned. */
+export function readCrxSigningIdentity(filePath: string): CrxSigningIdentity | null {
+  try {
+    return crxSigningIdentity(readFileSync(resolve(filePath)))
+  } catch {
+    return null
   }
 }
 
@@ -284,36 +342,71 @@ export async function downloadWebStoreCrx(id: string): Promise<string> {
     throw new Error(`The Chrome Web Store returned HTTP ${response.status} for ${id}.`)
   }
   const file = Buffer.from(await response.arrayBuffer())
-  if (file.length === 0 || file.toString('ascii', 0, 4) !== 'Cr24') {
+  if (file.length === 0 || file.length > MAX_DOWNLOAD_BYTES) {
+    throw new Error('The Chrome Web Store did not return a usable extension package.')
+  }
+  if (file.toString('ascii', 0, 4) !== 'Cr24') {
     throw new Error('The Chrome Web Store did not return an extension package for this id.')
   }
+  // The store redirects to a signed CRX3; a package for a different id must
+  // never be installed under this id.
+  verifyCrx3Signature(file, id)
   crxArchive(file)
   const temporaryPath = join(tmpdir(), `voyager-extension-${randomUUID()}.crx`)
   writeFileSync(temporaryPath, file)
   return temporaryPath
 }
 
+/** Identity an automatic update must prove before its files replace an install. */
+export interface RequiredCrxIdentity {
+  publicKeyHash?: string
+  extensionId?: string
+}
+
 /**
- * Download a CRX referenced by an extension update manifest. The optional
- * SHA-256 check uses the hash advertised by the update service when present.
+ * Download a CRX referenced by an extension update manifest. The SHA-256
+ * advertised by the update service is only an extra integrity check: the
+ * CRX3 signature is what proves the update came from the original developer.
  */
-export async function downloadCrx(url: string, expectedSha256?: string): Promise<string> {
+export async function downloadCrx(
+  url: string,
+  expectedSha256?: string,
+  requiredIdentity?: RequiredCrxIdentity
+): Promise<string> {
   let target: URL
   try {
     target = new URL(url)
   } catch {
     throw new Error('The extension update URL is invalid.')
   }
-  if (target.protocol !== 'https:' && target.protocol !== 'http:') {
-    throw new Error('Only HTTP(S) extension update URLs are supported.')
+  if (target.protocol !== 'https:') {
+    throw new Error('Only HTTPS extension update URLs are supported.')
   }
 
   const response = await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(60_000) })
   if (!response.ok) throw new Error(`The extension update returned HTTP ${response.status}.`)
+  let finalUrl: URL
+  try {
+    finalUrl = new URL(response.url || target.toString())
+  } catch {
+    throw new Error('The extension update returned an invalid URL.')
+  }
+  if (finalUrl.protocol !== 'https:') {
+    throw new Error('The extension update redirected to an insecure URL.')
+  }
   const file = Buffer.from(await response.arrayBuffer())
-  if (file.length === 0) throw new Error('The extension update package is invalid.')
+  if (file.length === 0 || file.length > MAX_DOWNLOAD_BYTES) {
+    throw new Error('The extension update package is invalid or too large.')
+  }
   if (file.toString('ascii', 0, 4) !== 'Cr24') {
     throw new Error('The extension update is not a CRX package.')
+  }
+  const identity = verifyCrx3Signature(file, requiredIdentity?.extensionId)
+  if (
+    requiredIdentity?.publicKeyHash &&
+    identity.publicKeyHash.toLowerCase() !== requiredIdentity.publicKeyHash.toLowerCase()
+  ) {
+    throw new Error('The extension update was signed by a different developer.')
   }
   crxArchive(file)
   if (expectedSha256) {

@@ -63,6 +63,7 @@ export class WindowController {
   private layoutSettleTimer: NodeJS.Timeout | null = null
   private extensionPanel: WebContentsView | null = null
   private extensionPanelBounds = { x: 0, y: 0, width: 0, height: 0 }
+  private readonly extensionPanelClosedListeners = new Set<(owner: WindowController) => void>()
   private disposed = false
   private incognito: boolean
   private incognitoPartition: string | null
@@ -320,6 +321,8 @@ export class WindowController {
     width: number
     height: number
     menuPayload?: unknown
+    /** Extension documents must not receive the browser-management bridge. */
+    restricted?: boolean
     /** Allow same-origin navigation within an extension popup. */
     allowedOrigin?: string
     onNavigateAway?: (url: string) => void
@@ -329,7 +332,10 @@ export class WindowController {
 
     const view = new WebContentsView({
       webPreferences: {
-        preload: join(__dirname, '../preload/index.js'),
+        preload: join(
+          __dirname,
+          options.restricted ? '../preload/extensionPanel.js' : '../preload/index.js'
+        ),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
@@ -393,6 +399,12 @@ export class WindowController {
     return { x: bounds.x, y: bounds.y }
   }
 
+  /** Observe every close path, including Escape, navigation and tab switches. */
+  onExtensionPanelClosed(listener: (owner: WindowController) => void): () => void {
+    this.extensionPanelClosedListeners.add(listener)
+    return () => this.extensionPanelClosedListeners.delete(listener)
+  }
+
   /** Dismiss the current extension menu or popup, if one is open. */
   closeExtensionPanel(): void {
     const view = this.extensionPanel
@@ -400,6 +412,7 @@ export class WindowController {
     this.extensionPanel = null
     this.window.contentView.removeChildView(view)
     view.webContents.close()
+    for (const listener of [...this.extensionPanelClosedListeners]) listener(this)
   }
 
   private applyExtensionPanelBounds(): void {

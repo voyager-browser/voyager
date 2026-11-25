@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Voyager E2E Web Navigation",
+  "version": "1.0.0",
+  "description": "Minimal extension fixture used to verify webNavigation event filtering.",
+  "permissions": ["webNavigation"],
+  "action": {
+    "default_title": "Voyager E2E Web Navigation",
+    "default_popup": "popup.html"
+  }
+}

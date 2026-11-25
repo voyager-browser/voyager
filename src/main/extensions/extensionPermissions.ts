@@ -25,14 +25,48 @@ function allDecisions(profileId: string): Decisions {
   return result
 }
 
-/** Filter out permissions that already have a persistent user decision. */
+/** Permissions and hosts a manifest requires at install time. */
+export function requiredManifestKeys(manifest: Record<string, unknown>): string[] {
+  const keys = new Set<string>()
+  for (const field of ['permissions', 'host_permissions']) {
+    const values = manifest[field]
+    if (!Array.isArray(values)) continue
+    for (const value of values) if (typeof value === 'string' && value.length > 0) keys.add(value)
+  }
+  return [...keys]
+}
+
+/**
+ * Every permission or host pattern declared by a manifest. MV2 puts hosts in
+ * `permissions`; MV3 adds the two `host_permissions` fields.
+ */
+export function declaredManifestKeys(manifest: Record<string, unknown>): string[] {
+  const keys = new Set<string>()
+  for (const field of [
+    'permissions',
+    'optional_permissions',
+    'host_permissions',
+    'optional_host_permissions'
+  ]) {
+    const values = manifest[field]
+    if (!Array.isArray(values)) continue
+    for (const value of values) if (typeof value === 'string' && value.length > 0) keys.add(value)
+  }
+  return [...keys]
+}
+
+/**
+ * Permissions still needing a decision. A blocked permission has a decision,
+ * but only `allow` satisfies a request; blocked keys must be re-prompted so a
+ * combined request cannot report partial success as full success.
+ */
 export function missingExtensionPermissions(
   profileId: string,
   extensionId: string,
   keys: string[]
 ): string[] {
   const decided = allDecisions(profileId)[extensionId] ?? {}
-  return [...new Set(keys)].filter((key) => key.length > 0 && !decided[key])
+  return [...new Set(keys)].filter((key) => key.length > 0 && decided[key] !== 'allow')
 }
 
 /** True when every requested permission has an explicit allow decision. */
@@ -67,18 +101,14 @@ export function autoGrantDeclaredPermissions(
   extensionId: string,
   manifest: Record<string, unknown>
 ): string[] {
-  const declared = new Set<string>()
-  for (const field of ['permissions', 'optional_permissions']) {
-    const values = manifest[field]
-    if (!Array.isArray(values)) continue
-    for (const value of values) {
-      if (typeof value === 'string') declared.add(value)
-    }
-  }
+  const declared = new Set(declaredManifestKeys(manifest))
   const granted = [...declared].filter((permission) => AUTO_GRANTED_PERMISSIONS.has(permission))
   if (granted.length === 0) return []
-  if (!hasAllExtensionPermissions(profileId, extensionId, granted)) {
-    recordExtensionPermissionDecision(profileId, extensionId, granted, 'allow')
+  const undecided = granted.filter(
+    (key) => allDecisions(profileId)[extensionId]?.[key] === undefined
+  )
+  if (undecided.length > 0) {
+    recordExtensionPermissionDecision(profileId, extensionId, undecided, 'allow')
   }
   return granted
 }
@@ -156,7 +186,13 @@ export function requestExtensionPermissions(
       sender: input.sender,
       onDestroyed: () => cancelExtensionPermission(id),
       onCancelled: input.onCancelled,
-      resolve
+      // A request can mix a newly granted permission with one the user blocked
+      // earlier. Report success only when every originally requested key is
+      // allowed, so callers never see a partial grant as full approval.
+      resolve: (granted) =>
+        resolve(
+          granted && hasAllExtensionPermissions(input.profileId, input.extensionId, input.keys)
+        )
     }
     pending.set(id, entry)
     input.sender.onDestroyed(entry.onDestroyed)

@@ -22,5 +22,5 @@ export function attachExtensionCompatibility(ses: Session, profileId: string): v
     filePath
   })
   attachExtensionServiceWorkerIpc(ses)
-  attachExtensionWebNavigation(ses)
+  attachExtensionWebNavigation(ses, profileId)
 }

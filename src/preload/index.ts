@@ -132,8 +132,12 @@ const api = {
     closePanel: (): Promise<void> => ipcRenderer.invoke(IpcChannels.ExtensionsClosePanel),
     setPinned: (id: string, pinned: boolean): Promise<ExtensionInfo[]> =>
       ipcRenderer.invoke(IpcChannels.ExtensionsSetPinned, { id, pinned }),
-    setSiteAccess: (id: string, access: 'click' | 'site' | 'all'): Promise<ExtensionInfo[]> =>
-      ipcRenderer.invoke(IpcChannels.ExtensionsSetSiteAccess, { id, access }),
+    setSiteAccess: (
+      id: string,
+      access: 'click' | 'site' | 'all',
+      site?: string | null
+    ): Promise<ExtensionInfo[]> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsSetSiteAccess, { id, access, site }),
     onMenuOpen: (
       listener: (payload: { site: string | null; profileId: string }) => void
     ): Unsubscribe =>

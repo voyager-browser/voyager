@@ -27,7 +27,8 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/preload/index.ts'),
           tab: resolve(__dirname, 'src/preload/tab.ts'),
-          extensionCompat: resolve(__dirname, 'src/preload/extensionCompat.ts')
+          extensionCompat: resolve(__dirname, 'src/preload/extensionCompat.ts'),
+          extensionPanel: resolve(__dirname, 'src/preload/extensionPanel.ts')
         }
       }
     }

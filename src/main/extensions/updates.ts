@@ -45,10 +45,19 @@ function updateUrlFor(info: ExtensionUpdateInfo): string | null {
   if (!info.updateUrl) return null
   try {
     const url = new URL(info.updateUrl)
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null
+    return url.protocol === 'https:' ? url.toString() : null
   } catch {
     return null
   }
+}
+
+/** Automatic updates must prove the same CRX3 developer identity as install. */
+function requiredIdentity(
+  info: ExtensionUpdateInfo
+): { publicKeyHash: string; extensionId: string } | null {
+  if (!info.publicKeyHash || !info.signingId) return null
+  if (info.storeId && info.storeId !== info.signingId) return null
+  return { publicKeyHash: info.publicKeyHash, extensionId: info.signingId }
 }
 
 function installedVersion(path: string): string {
@@ -86,9 +95,25 @@ async function runProfileExtensionUpdateCheck(profileId: string): Promise<Extens
     }
     const updateUrl = updateUrlFor(info)
     if (!updateUrl) {
-      results.push({ name, fromVersion, status: 'failed', message: 'The update URL is invalid.' })
+      results.push({
+        name,
+        fromVersion,
+        status: 'failed',
+        message: 'The update URL is invalid or does not use HTTPS.'
+      })
       continue
     }
+    const identity = requiredIdentity(info)
+    if (!identity) {
+      results.push({
+        name,
+        fromVersion,
+        status: 'failed',
+        message: 'This extension has no verified signing identity for automatic updates.'
+      })
+      continue
+    }
+    const updateAppId = identity.extensionId
 
     recordExtensionUpdateInfo(profileId, path, { version: fromVersion, lastCheckedAt: Date.now() })
     try {
@@ -98,7 +123,13 @@ async function runProfileExtensionUpdateCheck(profileId: string): Promise<Extens
       })
       if (!response.ok)
         throw new Error(`The extension update service returned HTTP ${response.status}.`)
-      const update = parseExtensionUpdateManifest(await response.text(), updateUrl)
+      const finalUrl = response.url || updateUrl
+      if (new URL(finalUrl).protocol !== 'https:') {
+        throw new Error('The extension update service redirected to an insecure URL.')
+      }
+      // Use the verified signing id, not Electron's path-derived extension id,
+      // so multi-app update feeds select this extension's own block.
+      const update = parseExtensionUpdateManifest(await response.text(), finalUrl, updateAppId)
       if (update.noUpdate) {
         results.push({ name, fromVersion, status: 'up-to-date' })
         continue
@@ -108,7 +139,7 @@ async function runProfileExtensionUpdateCheck(profileId: string): Promise<Extens
         continue
       }
 
-      const crxPath = await downloadCrx(update.crxUrl, update.hashSha256)
+      const crxPath = await downloadCrx(update.crxUrl, update.hashSha256, identity)
       let unpackedPath: string | null = null
       try {
         unpackedPath = unpackCrx(crxPath, profileId)

@@ -4,6 +4,7 @@
  */
 
 import { chromeWebStoreExtensionId } from '../../shared/theme'
+import { verifyCrx3Signature } from '../extensions/crxSignature'
 
 const DEFAULT_ENDPOINT = 'https://clients2.google.com/service/update2/crx'
 const MAX_DOWNLOAD_BYTES = 32 * 1024 * 1024
@@ -33,8 +34,10 @@ export async function downloadChromeWebStoreCrx(
     throw new Error('Chrome Web Store returned an invalid theme archive.')
   }
   const magic = String.fromCharCode(...bytes.subarray(0, 4))
-  if (magic !== 'Cr24' && !magic.startsWith('PK')) {
+  if (magic !== 'Cr24') {
     throw new Error('Chrome Web Store did not return a Chrome extension package.')
   }
+  // A store download must be a signed CRX3 for exactly this item id.
+  verifyCrx3Signature(Buffer.from(bytes), id)
   return bytes
 }
