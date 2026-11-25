@@ -131,6 +131,14 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       get: { fallback: [] }
     }
   },
+  proxy: {
+    methods: {
+      set: {},
+      clear: {},
+      get: { fallback: { value: { mode: 'direct' }, levelOfControl: 'not_controllable' } }
+    },
+    events: ['onProxyError']
+  },
   system: {
     properties: {
       cpu: {
