@@ -948,8 +948,13 @@ const install = function install(): void {
 const installExtensionApi = function installExtensionApi(
   schema: Record<string, ExtensionApiNode>
 ): void {
+  const self = installExtensionApi as any
+  self.attempts = (self.attempts ?? 0) + 1
   const chrome = (globalThis as any).chrome
-  if (!chrome || typeof chrome !== 'object') return
+  if (!chrome || typeof chrome !== 'object') {
+    if (self.attempts < 500) setTimeout(() => installExtensionApi(schema), 10)
+    return
+  }
 
   const define = (target: any, key: string, value: any): void => {
     try {
@@ -991,6 +996,9 @@ const installExtensionApi = function installExtensionApi(
       },
       hasListener(listener: (...args: any[]) => void): boolean {
         return registered.has(listener)
+      },
+      hasListeners(): boolean {
+        return registered.size > 0
       }
     }
     events.set(key, event)

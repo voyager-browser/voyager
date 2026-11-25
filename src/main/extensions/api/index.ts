@@ -3,6 +3,7 @@ import { registerAlarms, restoreAlarms } from './alarms'
 import { registerBookmarks } from './bookmarks'
 import { registerBrowsingData } from './browsingData'
 import { registerCookies } from './cookies'
+import { registerI18n } from './i18n'
 
 let registered = false
 
@@ -16,6 +17,7 @@ export function registerExtensionApis(): void {
   registerBookmarks()
   registerBrowsingData()
   registerCookies()
+  registerI18n()
 }
 
 export { invokeExtensionApi } from './registry'

@@ -63,6 +63,14 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       remove: {}
     },
     events: ['onChanged']
+  },
+  i18n: {
+    methods: {
+      getMessage: { fallback: '' },
+      getLanguage: { fallback: 'en' },
+      getUILanguage: { fallback: 'en' },
+      getAcceptLanguages: { fallback: ['en'] }
+    }
   }
 }
 
