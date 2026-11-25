@@ -113,3 +113,76 @@ test('opens an incognito window from the File menu', async ({ voyager }) => {
   })
   await expect.poll(async () => windowCount(voyager.app), { timeout: 10_000 }).toBe(before + 1)
 })
+
+test('incognito sessions inherit the owner proxy, spellcheck and content blocking', async ({
+  voyager,
+  server
+}) => {
+  await voyager.chrome.evaluate(() => window.voyager.settings.set('spellcheck', false))
+  await voyager.chrome.evaluate(() => window.voyager.settings.set('contentBlocking', true))
+  await voyager.chrome.evaluate(() => window.voyager.settings.set('proxyMode', 'fixed_servers'))
+  await voyager.chrome.evaluate(() => window.voyager.settings.set('proxyHost', '127.0.0.1'))
+  await voyager.chrome.evaluate(() => window.voyager.settings.set('proxyPort', 18888))
+  // Keep the local test server reachable while external URLs use the proxy.
+  await voyager.chrome.evaluate(() => window.voyager.settings.set('proxyBypassRules', '127.0.0.1'))
+
+  const owner = await voyager.chrome.evaluate(() => window.voyager.windows.getState())
+  const targetUrl = server.url('/second')
+  await voyager.chrome.evaluate((url) => window.voyager.windows.openIncognito(url), targetUrl)
+  const incognitoChrome = await chromePageForProfile(voyager.app, owner.profile.id, true)
+
+  await expect
+    .poll(async () =>
+      voyager.app.evaluate(
+        ({ webContents }, url) =>
+          webContents
+            .getAllWebContents()
+            .some((candidate) => !candidate.isDestroyed() && candidate.getURL() === url),
+        targetUrl
+      )
+    )
+    .toBe(true)
+
+  const policies = await voyager.app.evaluate(async ({ webContents }, url) => {
+    const tab = webContents
+      .getAllWebContents()
+      .find((candidate) => !candidate.isDestroyed() && candidate.getURL() === url)
+    if (!tab) throw new Error('Incognito tab WebContents not found')
+    return {
+      storagePath: tab.session.storagePath,
+      proxy: await tab.session.resolveProxy('http://example.com'),
+      spellcheck: tab.session.isSpellCheckerEnabled()
+    }
+  }, targetUrl)
+  expect(policies.storagePath).toBeFalsy()
+  expect(policies.proxy).toContain('127.0.0.1:18888')
+  expect(policies.spellcheck).toBe(false)
+
+  // A tracker in the incognito tab is cancelled by the inherited blocker.
+  await voyager.app.evaluate(
+    async ({ webContents }, input) => {
+      const tab = webContents
+        .getAllWebContents()
+        .find((candidate) => !candidate.isDestroyed() && candidate.getURL() === input.url)
+      if (!tab) throw new Error('Incognito tab WebContents not found')
+      await tab.executeJavaScript(`
+        new Promise((resolve) => {
+          const image = new Image()
+          image.onload = () => resolve(true)
+          image.onerror = () => resolve(true)
+          image.src = ${JSON.stringify(input.pixel)}
+          setTimeout(() => resolve(false), 3000)
+        })
+      `)
+    },
+    { url: targetUrl, pixel: 'https://www.google-analytics.com/collect' }
+  )
+
+  await expect
+    .poll(
+      async () =>
+        (await incognitoChrome.evaluate(() => window.voyager.contentBlocking.getStats()))
+          .pageBlocked
+    )
+    .toBeGreaterThan(0)
+})

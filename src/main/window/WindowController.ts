@@ -8,11 +8,11 @@ import { DEFAULT_NEW_TAB_URL, INCOGNITO_PARTITION_PREFIX } from '../../shared/co
 import { DEFAULT_SEARCH_ENGINE, isSearchEngineId, type SearchEngineId } from '../../shared/search'
 import { isNewTab } from '../../shared/url'
 import { getSettings, storesFor } from '../store'
-import { applyUserAgentForProfile } from '../userAgent/userAgent'
-import { attachDownloadsTracking } from '../downloads/downloads'
-import { attachPermissionHandlers } from '../permissions/permissions'
-import { registerVoyagerProtocol } from '../protocol/voyagerProtocol'
-import { broadcastToProfile, ensureProfileSession } from '../profiles/session'
+import {
+  broadcastToProfile,
+  configureIncognitoSession,
+  ensureProfileSession
+} from '../profiles/session'
 import { profileById, profilePartition } from '../profiles/profiles'
 
 import {
@@ -175,31 +175,23 @@ export class WindowController {
       // default persistent session for new tabs.
       this.incognitoPartition = `${INCOGNITO_PARTITION_PREFIX}${randomUUID()}`
     }
-    this.attachIncognitoSession()
+    if (this.incognito) this.attachIncognitoSession()
+    else ensureProfileSession(this.profileId)
     this.tabs.refreshStartPages()
   }
 
   /**
-   * Attach session-scoped integrations to the incognito partition: downloads
-   * (never persisted to history) and permission handlers whose site-wide
-   * decisions stay in memory instead of the normal profile's store.
+   * Apply the owner's session policies to the incognito partition. Storage and
+   * permission decisions remain ephemeral; proxy, spellcheck, UA and content
+   * blocking match the normal profile session.
    */
   private attachIncognitoSession(): void {
     if (!this.incognitoPartition) return
-    const ses = session.fromPartition(this.incognitoPartition)
-    // Incognito uses a separate in-memory session, so it needs the owner's UA
-    // applied explicitly for network requests as well as the preload patch.
-    applyUserAgentForProfile(ses, this.profileId)
-    // Internal pages (voyager://start, settings assets) must resolve in the
-    // incognito session's partition as well as the default session.
-    registerVoyagerProtocol(ses.protocol)
-    attachDownloadsTracking(
-      ses,
+    configureIncognitoSession(
+      session.fromPartition(this.incognitoPartition),
       this.profileId,
-      (state) => this.sendToChrome(IpcChannels.DownloadsStateChanged, state),
-      { persist: false }
+      (state) => this.sendToChrome(IpcChannels.DownloadsStateChanged, state)
     )
-    attachPermissionHandlers(ses, this.profileId, { persist: false })
   }
 
   /** Grow or shrink the chrome region for the bookmarks bar. */
