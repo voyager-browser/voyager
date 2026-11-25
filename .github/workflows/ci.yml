@@ -26,6 +26,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Validate workflows
+        run: npm run validate:workflows
+
       - name: Lint
         run: npm run lint
 
