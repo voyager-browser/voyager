@@ -24,6 +24,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:e2e": "playwright test",
+    "test:unit": "node --experimental-strip-types --test tests/unit/*.test.mjs",
     "dist": "npm run build && electron-builder",
     "dist:linux": "npm run build && electron-builder --linux --publish never",
     "dist:mac": "npm run build && node --env-file-if-exists=.env.signing ./node_modules/.bin/electron-builder --mac --publish never",
