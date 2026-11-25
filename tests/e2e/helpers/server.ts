@@ -178,6 +178,22 @@ async function handle(req: URL, res: ServerResponse, counts: Map<string, number>
     sendJson(res, [['alpha suggestion', 'beta suggestion']])
     return
   }
+  if (path === '/suggest-stages') {
+    const query = req.searchParams.get('q') ?? ''
+    if (query === 'zz') {
+      // Hold the response long enough to observe that old rows are already gone.
+      await delay(1_200)
+      sendJson(res, [['zeta suggestion']])
+      return
+    }
+    if (query === 'qq') {
+      // A dropped connection exercises the failed-fetch path in the omnibox.
+      res.destroy()
+      return
+    }
+    sendJson(res, [['alpha suggestion', 'beta suggestion']])
+    return
+  }
   if (path === '/count') {
     const hits = counts.get('/count') ?? 0
     sendHtml(res, document('Count Page', `<h1 id="hits">${hits}</h1>`))
