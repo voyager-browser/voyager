@@ -3,6 +3,7 @@ import type { Session } from 'electron'
 import { refreshCommandShortcuts } from './api'
 import { attachContextMenus } from './api/contextMenus'
 import { attachCookieEvents } from './api/cookies'
+import { attachDownloadEvents } from './api/downloads'
 import { attachExtensions } from './extensions'
 import { attachExtensionServiceWorkerIpc } from './serviceWorkerIpc'
 import { attachExtensionWebNavigation } from './webNavigation'
@@ -29,5 +30,6 @@ export function attachExtensionCompatibility(ses: Session, profileId: string): v
   attachExtensionWebNavigation(ses, profileId)
   attachCookieEvents(ses, profileId)
   attachContextMenus(ses, profileId)
+  attachDownloadEvents(ses, profileId)
   void attachExtensions(ses, profileId).then(() => refreshCommandShortcuts(ses, profileId))
 }

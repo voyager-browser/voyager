@@ -88,6 +88,23 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     },
     events: ['onClicked', 'onRemoved']
   },
+  downloads: {
+    methods: {
+      download: {},
+      search: { fallback: [] },
+      getFileIcon: { fallback: '' },
+      open: { fallback: false },
+      show: { fallback: false },
+      pause: { fallback: false },
+      resume: { fallback: false },
+      canPause: { fallback: false },
+      canResume: { fallback: false },
+      cancel: { fallback: false },
+      removeFile: {},
+      erase: {}
+    },
+    events: ['onCreated', 'onChanged', 'onErased']
+  },
   storage: {
     events: ['onChanged'],
     properties: {
