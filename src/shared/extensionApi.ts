@@ -11,6 +11,19 @@ export interface ExtensionApiNode {
   properties?: Record<string, ExtensionApiNode>
 }
 
+const contentSettingNode = (
+  extra: Record<string, ExtensionApiMethodDefinition> = {}
+): ExtensionApiNode => ({
+  methods: {
+    get: { fallback: {} },
+    set: {},
+    clear: {},
+    getAll: { fallback: [] },
+    ...extra
+  },
+  events: ['onSettingChanged']
+})
+
 export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
   accessibilityFeatures: {
     properties: {
@@ -63,6 +76,20 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       remove: {}
     },
     events: ['onChanged']
+  },
+  contentSettings: {
+    events: ['onSettingChanged'],
+    properties: {
+      cookies: contentSettingNode(),
+      images: contentSettingNode(),
+      javascript: contentSettingNode(),
+      plugins: contentSettingNode({ getResourceIdentifiers: { fallback: [] } }),
+      popups: contentSettingNode(),
+      notifications: contentSettingNode(),
+      geolocation: contentSettingNode(),
+      microphone: contentSettingNode(),
+      camera: contentSettingNode()
+    }
   },
   i18n: {
     methods: {

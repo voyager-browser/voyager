@@ -3,6 +3,7 @@ import { registerAlarms, restoreAlarms } from './alarms'
 import { registerBookmarks } from './bookmarks'
 import { registerBrowsingData } from './browsingData'
 import { registerCommands } from './commands'
+import { registerContentSettings } from './contentSettings'
 import { registerContextMenus } from './contextMenus'
 import { registerCookies } from './cookies'
 import { registerDownloads } from './downloads'
@@ -32,6 +33,7 @@ export function registerExtensionApis(): void {
   registerCookies()
   registerI18n()
   registerCommands()
+  registerContentSettings()
   registerContextMenus()
   registerStorageApi()
   registerDownloads()

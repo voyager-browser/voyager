@@ -1094,6 +1094,29 @@ const installExtensionApi = function installExtensionApi(
   }
 
   // Native Electron APIs still need to be reachable through `browser`.
+  // Chromium bindings are not always enumerable, so copy the known native
+  // namespaces explicitly before falling back to structural mirroring.
+  const nativeNamespaces = [
+    'action',
+    'browserAction',
+    'pageAction',
+    'permissions',
+    'privacy',
+    'runtime',
+    'scripting',
+    'tabs',
+    'webNavigation'
+  ]
+  for (const name of nativeNamespaces) {
+    try {
+      const value = chrome[name]
+      if (value && typeof value === 'object' && browser[name] === undefined) {
+        define(browser, name, value)
+      }
+    } catch {
+      // A native binding may not be readable in every extension context.
+    }
+  }
   const seen = new WeakSet<object>()
   const mirror = (target: any, source: any): void => {
     if (!source || typeof source !== 'object' || seen.has(source)) return
