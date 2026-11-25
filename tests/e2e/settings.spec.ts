@@ -1,7 +1,7 @@
 import type { ElectronApplication, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
-import { openSettings, windowCount } from './helpers/voyager'
-import { primaryKey } from './helpers/voyager'
+import { openSettings, primaryKey, waitForSettingsWindow, windowCount } from './helpers/voyager'
+import { DEFAULT_PROFILE_ID } from '../../src/shared/profiles'
 
 async function chromePages(app: ElectronApplication): Promise<Page[]> {
   return app
@@ -348,4 +348,38 @@ test('settings changes target the settings profile, not the active browser windo
   expect((await profileBChrome.evaluate(() => window.voyager.settings.get())).verticalTabs).toBe(
     false
   )
+})
+
+test('deleting the settings profile retargets Settings to the default profile', async ({
+  voyager
+}) => {
+  const profile = await voyager.chrome.evaluate(() =>
+    window.voyager.profiles.create({ name: 'Delete Settings Scope' })
+  )
+  await voyager.chrome.evaluate((id) => window.voyager.profiles.openWindow(id), profile.id)
+  await expect.poll(async () => (await chromePages(voyager.app)).length).toBe(2)
+  const profileChrome = (await chromePages(voyager.app)).find((page) => page !== voyager.chrome)
+  if (!profileChrome) throw new Error('Second browser window not found')
+  await profileChrome.bringToFront()
+
+  await profileChrome.evaluate(() => window.voyager.settings.open())
+  const settings = await waitForSettingsWindow(voyager.app)
+
+  // Give the temporary profile a distinguishable preference before deleting it.
+  await settings.evaluate(() => window.voyager.settings.set('verticalTabs', true))
+  expect((await settings.evaluate(() => window.voyager.profiles.getState())).activeProfileId).toBe(
+    profile.id
+  )
+
+  await voyager.chrome.evaluate((id) => window.voyager.profiles.delete(id), profile.id)
+
+  await expect
+    .poll(
+      async () =>
+        (await settings.evaluate(() => window.voyager.profiles.getState())).activeProfileId
+    )
+    .toBe(DEFAULT_PROFILE_ID)
+  await expect
+    .poll(async () => (await settings.evaluate(() => window.voyager.settings.get())).verticalTabs)
+    .toBe(false)
 })
