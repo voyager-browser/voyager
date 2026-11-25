@@ -19,7 +19,7 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "validate:workflows": "node .github/scripts/validate-workflows.js",
+    "validate:workflows": "node --test .github/scripts/validate-workflows.test.js && node .github/scripts/validate-workflows.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
