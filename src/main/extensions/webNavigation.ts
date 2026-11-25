@@ -4,6 +4,7 @@ import type {
   ExtensionWebNavigationDetails,
   ExtensionWebNavigationEventName
 } from '../../shared/extensionNavigation'
+import { isExtensionApiShuttingDown } from './api/events'
 import { hasAllExtensionPermissions } from './extensionPermissions'
 import { extensionCanAccessSite } from './siteAccess'
 
@@ -59,22 +60,36 @@ function canReceiveNavigation(
 
 /** Deliver navigation events to eligible extension pages and workers. */
 function broadcast(ses: Session, profileId: string, details: ExtensionWebNavigationDetails): void {
-  for (const target of webContents.getAllWebContents()) {
-    if (target.isDestroyed() || target.session !== ses) continue
-    const url = target.getURL()
-    if (!isExtensionUrl(url)) continue
-    if (!canReceiveNavigation(ses, profileId, extensionIdFromUrl(url), details.url)) continue
-    target.send(IpcChannels.ExtensionWebNavigationEvent, details)
-  }
+  if (isExtensionApiShuttingDown()) return
 
-  const running = ses.serviceWorkers.getAllRunning()
-  for (const versionId of Object.keys(running)) {
-    const scope = running[Number(versionId)].scope
-    if (!isExtensionUrl(scope)) continue
-    const worker = ses.serviceWorkers.getWorkerFromVersionID(Number(versionId))
-    if (!worker || worker.isDestroyed()) continue
-    if (!canReceiveNavigation(ses, profileId, extensionIdFromUrl(scope), details.url)) continue
-    worker.send(IpcChannels.ExtensionWebNavigationEvent, details)
+  try {
+    for (const target of webContents.getAllWebContents()) {
+      if (target.isDestroyed() || target.session !== ses) continue
+      const url = target.getURL()
+      if (!isExtensionUrl(url)) continue
+      if (!canReceiveNavigation(ses, profileId, extensionIdFromUrl(url), details.url)) continue
+      try {
+        target.send(IpcChannels.ExtensionWebNavigationEvent, details)
+      } catch {
+        // The extension page can disappear during teardown.
+      }
+    }
+
+    const running = ses.serviceWorkers.getAllRunning()
+    for (const versionId of Object.keys(running)) {
+      const scope = running[Number(versionId)].scope
+      if (!isExtensionUrl(scope)) continue
+      const worker = ses.serviceWorkers.getWorkerFromVersionID(Number(versionId))
+      if (!worker || worker.isDestroyed()) continue
+      if (!canReceiveNavigation(ses, profileId, extensionIdFromUrl(scope), details.url)) continue
+      try {
+        worker.send(IpcChannels.ExtensionWebNavigationEvent, details)
+      } catch {
+        // The service worker can stop while the event is being delivered.
+      }
+    }
+  } catch {
+    // Session inspection can fail while Electron is tearing extensions down.
   }
 }
 

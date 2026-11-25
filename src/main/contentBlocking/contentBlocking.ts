@@ -13,6 +13,7 @@ import type {
   ContentBlockingStats,
   CustomFilterFile
 } from '../../shared/types'
+import { isExtensionApiShuttingDown, onceCallback } from '../extensions/api/events'
 import { getSettings, profileDataDir, setSettings } from '../store'
 import { readJsonFile, writeJsonFile } from '../store/jsonFile'
 
@@ -679,32 +680,42 @@ export function attachContentBlocking(
   sessionStatsKeys.set(ses, statsKey)
 
   ses.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
-    if ((getSettings(profileId, 'contentBlocking', false) as boolean) !== true) {
-      callback({ cancel: false })
+    const done = onceCallback(callback)
+    const passthrough = (): void => done({ cancel: false })
+    if (isExtensionApiShuttingDown()) {
+      passthrough()
       return
     }
-    if (details.resourceType === 'mainFrame') {
-      callback({ cancel: false })
-      return
-    }
-    const webContentsId = details.webContentsId
-    const page = webContentsId === undefined ? undefined : pageCounters.get(webContentsId)
-    // A site exception disables blocking for every request the page makes.
-    if (page?.site && isContentBlockingExempt(profileId, page.site)) {
-      callback({ cancel: false })
-      return
-    }
-    let hostname: string | null
     try {
-      hostname = new URL(details.url).hostname
+      if ((getSettings(profileId, 'contentBlocking', false) as boolean) !== true) {
+        passthrough()
+        return
+      }
+      if (details.resourceType === 'mainFrame') {
+        passthrough()
+        return
+      }
+      const webContentsId = details.webContentsId
+      const page = webContentsId === undefined ? undefined : pageCounters.get(webContentsId)
+      // A site exception disables blocking for every request the page makes.
+      if (page?.site && isContentBlockingExempt(profileId, page.site)) {
+        passthrough()
+        return
+      }
+      let hostname: string | null
+      try {
+        hostname = new URL(details.url).hostname
+      } catch {
+        hostname = null
+      }
+      if (hostname === null || !isBlockedHost(profileId, hostname)) {
+        passthrough()
+        return
+      }
+      recordBlockedRequest(statsKey, webContentsId, hostname)
+      done({ cancel: true })
     } catch {
-      hostname = null
+      passthrough()
     }
-    if (hostname === null || !isBlockedHost(profileId, hostname)) {
-      callback({ cancel: false })
-      return
-    }
-    recordBlockedRequest(statsKey, webContentsId, hostname)
-    callback({ cancel: true })
   })
 }

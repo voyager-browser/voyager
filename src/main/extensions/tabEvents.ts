@@ -17,6 +17,7 @@ import type {
 } from '../../shared/extensionTabEvents'
 import { IpcChannels } from '../../shared/ipc-channels'
 import { sessionForProfile } from '../profiles/session'
+import { isExtensionApiShuttingDown } from './api/events'
 import type { WindowController } from '../window/WindowController'
 import { extensionCanAccessSite } from './siteAccess'
 import { asExtensionTab, entriesForWindow, type ExtensionTabEntry } from './tabProjection'
@@ -92,32 +93,42 @@ export function emitTabsEvent(
   args: unknown[],
   options: BroadcastOptions = {}
 ): void {
+  if (isExtensionApiShuttingDown()) return
+
   const send = (target: WebContents | ServiceWorkerMain, extensionId: string): void => {
     if (target.isDestroyed()) return
-    target.send(IpcChannels.ExtensionTabsEvent, {
-      event,
-      args: sanitizeArgs(args, profileId, extensionId, options)
-    })
+    try {
+      target.send(IpcChannels.ExtensionTabsEvent, {
+        event,
+        args: sanitizeArgs(args, profileId, extensionId, options)
+      })
+    } catch {
+      // The extension context can disappear mid-shutdown.
+    }
   }
 
-  for (const target of electronWebContents.getAllWebContents()) {
-    if (target.isDestroyed() || target.session !== sessionForProfile(profileId)) continue
-    const url = target.getURL()
-    if (!isExtensionUrl(url)) continue
-    const extensionId = extensionIdFromUrl(url)
-    if (!knownExtension(profileId, extensionId)) continue
-    send(target, extensionId as string)
-  }
+  try {
+    for (const target of electronWebContents.getAllWebContents()) {
+      if (target.isDestroyed() || target.session !== sessionForProfile(profileId)) continue
+      const url = target.getURL()
+      if (!isExtensionUrl(url)) continue
+      const extensionId = extensionIdFromUrl(url)
+      if (!knownExtension(profileId, extensionId)) continue
+      send(target, extensionId as string)
+    }
 
-  const session = sessionForProfile(profileId)
-  const running = session.serviceWorkers.getAllRunning()
-  for (const versionId of Object.keys(running)) {
-    const scope = running[Number(versionId)].scope
-    if (!isExtensionUrl(scope)) continue
-    const worker = session.serviceWorkers.getWorkerFromVersionID(Number(versionId))
-    const extensionId = extensionIdFromUrl(scope)
-    if (!worker || !knownExtension(profileId, extensionId)) continue
-    send(worker, extensionId as string)
+    const session = sessionForProfile(profileId)
+    const running = session.serviceWorkers.getAllRunning()
+    for (const versionId of Object.keys(running)) {
+      const scope = running[Number(versionId)].scope
+      if (!isExtensionUrl(scope)) continue
+      const worker = session.serviceWorkers.getWorkerFromVersionID(Number(versionId))
+      const extensionId = extensionIdFromUrl(scope)
+      if (!worker || !knownExtension(profileId, extensionId)) continue
+      send(worker, extensionId as string)
+    }
+  } catch {
+    // Session inspection can fail while Electron is tearing extensions down.
   }
 }
 

@@ -16,6 +16,7 @@ import { queuePendingUrls, takePendingUrls } from './launch/pendingUrls'
 import { DEFAULT_PROFILE_ID } from '../shared/profiles'
 import { lastProfileId } from './profiles/profiles'
 import { ensureProfileSession, sessionForProfile } from './profiles/session'
+import { cancelAllExtensionPermissions } from './extensions/extensionPermissions'
 import { attachExtensions } from './extensions/extensions'
 import { startExtensionUpdateScheduler, stopExtensionUpdateScheduler } from './extensions/updates'
 
@@ -95,6 +96,7 @@ registerIpcHandlers({
 // Persist any debounced store writes before the process goes away.
 app.on('will-quit', () => {
   stopExtensionUpdateScheduler()
+  cancelAllExtensionPermissions()
   flushAllStores()
 })
 

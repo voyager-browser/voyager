@@ -11,6 +11,20 @@ app.once('before-quit', () => {
   shuttingDown = true
 })
 
+export function isExtensionApiShuttingDown(): boolean {
+  return shuttingDown
+}
+
+/** Make sure a Chromium request callback is settled exactly once. */
+export function onceCallback<T>(callback: (value: T) => void): (value: T) => void {
+  let settled = false
+  return (value) => {
+    if (settled) return
+    settled = true
+    callback(value)
+  }
+}
+
 function extensionIdFromUrl(value: string): string | null {
   try {
     const url = new URL(value)

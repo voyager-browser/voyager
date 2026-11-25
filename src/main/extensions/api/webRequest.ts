@@ -8,7 +8,7 @@ import {
 } from 'electron'
 import { listProfiles } from '../../profiles/profiles'
 import { sessionForProfile } from '../../profiles/session'
-import { broadcastExtensionApiEvent } from './events'
+import { broadcastExtensionApiEvent, isExtensionApiShuttingDown, onceCallback } from './events'
 import { hasApiPermission } from './permissions'
 import { registerExtensionApiHandler } from './registry'
 import { getApiSetting, listApiSettingKeys, setApiSetting } from './storage'
@@ -501,38 +501,58 @@ export function attachWebRequest(ses: Session, profileId: string): void {
   ses.webRequest.onBeforeRequest(
     REQUEST_FILTER,
     (details, callback: (response: CallbackResponse) => void) => {
-      const info = requestInfo(details)
-      emit(profileId, 'onBeforeRequest', {
-        ...commonDetails(info),
-        uploadData: details.uploadData
-      })
-      const owners = blockingOwners(ses, profileId, 'onBeforeRequest', info)
-      if (owners.size === 0) {
-        callback({ cancel: false })
+      const done = onceCallback(callback)
+      if (isExtensionApiShuttingDown()) {
+        done({ cancel: false })
         return
       }
-      void requestDecision(profileId, String(details.id), 'onBeforeRequest', owners).then(
-        (response) => beforeRequestDecision(response, callback)
-      )
+      try {
+        const info = requestInfo(details)
+        emit(profileId, 'onBeforeRequest', {
+          ...commonDetails(info),
+          uploadData: details.uploadData
+        })
+        const owners = blockingOwners(ses, profileId, 'onBeforeRequest', info)
+        if (owners.size === 0) {
+          done({ cancel: false })
+          return
+        }
+        void requestDecision(profileId, String(details.id), 'onBeforeRequest', owners).then(
+          (response) => beforeRequestDecision(response, done),
+          () => done({ cancel: false })
+        )
+      } catch {
+        done({ cancel: false })
+      }
     }
   )
 
   ses.webRequest.onBeforeSendHeaders(
     REQUEST_FILTER,
     (details, callback: (response: BeforeSendResponse) => void) => {
-      const info = requestInfo(details)
-      emit(profileId, 'onBeforeSendHeaders', {
-        ...commonDetails(info),
-        requestHeaders: { ...details.requestHeaders }
-      })
-      const owners = blockingOwners(ses, profileId, 'onBeforeSendHeaders', info)
-      if (owners.size === 0) {
-        callback({})
+      const done = onceCallback(callback)
+      if (isExtensionApiShuttingDown()) {
+        done({})
         return
       }
-      void requestDecision(profileId, String(details.id), 'onBeforeSendHeaders', owners).then(
-        (response) => beforeSendHeadersDecision(response, callback)
-      )
+      try {
+        const info = requestInfo(details)
+        emit(profileId, 'onBeforeSendHeaders', {
+          ...commonDetails(info),
+          requestHeaders: { ...details.requestHeaders }
+        })
+        const owners = blockingOwners(ses, profileId, 'onBeforeSendHeaders', info)
+        if (owners.size === 0) {
+          done({})
+          return
+        }
+        void requestDecision(profileId, String(details.id), 'onBeforeSendHeaders', owners).then(
+          (response) => beforeSendHeadersDecision(response, done),
+          () => done({})
+        )
+      } catch {
+        done({})
+      }
     }
   )
 
@@ -547,25 +567,38 @@ export function attachWebRequest(ses: Session, profileId: string): void {
   ses.webRequest.onHeadersReceived(
     REQUEST_FILTER,
     (details, callback: (response: HeadersReceivedResponse) => void) => {
-      const info = requestInfo(details)
-      emit(profileId, 'onHeadersReceived', {
-        ...commonDetails(info),
-        statusCode: details.statusCode,
-        statusLine: details.statusLine,
-        responseHeaders: { ...(details.responseHeaders ?? {}) }
-      })
-      const owners = blockingOwners(ses, profileId, 'onHeadersReceived', info)
-      if (owners.size === 0) {
-        callback({
+      const done = onceCallback(callback)
+      const passthrough = (): void => {
+        done({
           responseHeaders: { ...(details.responseHeaders ?? {}) },
           statusLine: details.statusLine
         })
+      }
+      if (isExtensionApiShuttingDown()) {
+        passthrough()
         return
       }
-      void requestDecision(profileId, String(details.id), 'onHeadersReceived', owners).then(
-        (response) =>
-          headersReceivedDecision(response, details.responseHeaders, details.statusLine, callback)
-      )
+      try {
+        const info = requestInfo(details)
+        emit(profileId, 'onHeadersReceived', {
+          ...commonDetails(info),
+          statusCode: details.statusCode,
+          statusLine: details.statusLine,
+          responseHeaders: { ...(details.responseHeaders ?? {}) }
+        })
+        const owners = blockingOwners(ses, profileId, 'onHeadersReceived', info)
+        if (owners.size === 0) {
+          passthrough()
+          return
+        }
+        void requestDecision(profileId, String(details.id), 'onHeadersReceived', owners).then(
+          (response) =>
+            headersReceivedDecision(response, details.responseHeaders, details.statusLine, done),
+          passthrough
+        )
+      } catch {
+        passthrough()
+      }
     }
   )
 

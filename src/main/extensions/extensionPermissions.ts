@@ -209,6 +209,11 @@ export function cancelExtensionPermission(id: string): void {
   entry.resolve(false)
 }
 
+/** Resolve every outstanding permission prompt before the app exits. */
+export function cancelAllExtensionPermissions(): void {
+  for (const id of [...pending.keys()]) cancelExtensionPermission(id)
+}
+
 export function respondToExtensionPermission(
   id: string,
   choice: ExtensionPermissionChoice

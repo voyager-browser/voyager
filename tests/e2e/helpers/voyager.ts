@@ -69,18 +69,6 @@ const closedApps = new WeakSet<ElectronApplication>()
 export async function closeElectronApp(app: ElectronApplication): Promise<void> {
   if (closedApps.has(app)) return
   closedApps.add(app)
-  // Playwright's close() asks the main process to quit and then waits for a
-  // clean exit. On a busy Linux WM that can stall while Chromium waits for
-  // window-close acknowledgements. Destroy only the test windows first so the
-  // quit handshake has nothing left to negotiate; app.quit() still emits
-  // before-quit/will-quit and flushes stores before the process exits.
-  await app
-    .evaluate(({ BrowserWindow }) => {
-      for (const window of BrowserWindow.getAllWindows()) {
-        if (!window.isDestroyed()) window.destroy()
-      }
-    })
-    .catch(() => undefined)
   await app.close().catch(() => undefined)
 }
 

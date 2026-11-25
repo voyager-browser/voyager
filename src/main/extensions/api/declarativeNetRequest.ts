@@ -1,7 +1,7 @@
 import { app, type BeforeSendResponse, type HeadersReceivedResponse, type Session } from 'electron'
 import { listProfiles } from '../../profiles/profiles'
 import { sessionForProfile } from '../../profiles/session'
-import { broadcastExtensionApiEvent } from './events'
+import { broadcastExtensionApiEvent, isExtensionApiShuttingDown, onceCallback } from './events'
 import { hasApiPermission } from './permissions'
 import { registerExtensionApiHandler } from './registry'
 import { getApiSetting, listApiSettingKeys, setApiSetting } from './storage'
@@ -468,42 +468,75 @@ export function attachDeclarativeNetRequest(ses: Session, profileId: string): vo
   attached.add(ses)
 
   ses.webRequest.onBeforeRequest(REQUEST_FILTER, (details, callback) => {
-    const info = requestInfo(details)
-    const matches = matchedRules(ses, profileId, info)
-    recordMatches(profileId, matches, info)
-    const selected = selectRule(matches)
-    const action = selected?.rule.action
-    if (action?.type === 'block') {
-      callback({ cancel: true })
+    const done = onceCallback(callback)
+    if (isExtensionApiShuttingDown()) {
+      done({ cancel: false })
       return
     }
-    const redirect = action?.type === 'redirect' ? safeRedirectUrl(action.redirectUrl) : null
-    callback(redirect ? { redirectURL: redirect } : { cancel: false })
+    try {
+      const info = requestInfo(details)
+      const matches = matchedRules(ses, profileId, info)
+      recordMatches(profileId, matches, info)
+      const selected = selectRule(matches)
+      const action = selected?.rule.action
+      if (action?.type === 'block') {
+        done({ cancel: true })
+        return
+      }
+      const redirect = action?.type === 'redirect' ? safeRedirectUrl(action.redirectUrl) : null
+      done(redirect ? { redirectURL: redirect } : { cancel: false })
+    } catch {
+      done({ cancel: false })
+    }
   })
 
   ses.webRequest.onBeforeSendHeaders(
     REQUEST_FILTER,
     (details, callback: (response: BeforeSendResponse) => void) => {
-      const info = requestInfo(details)
-      const headers: Record<string, string | string[]> = { ...details.requestHeaders }
-      applyHeaderOperations(
-        headers,
-        headerOperations(matchedRules(ses, profileId, info), 'requestHeaders')
-      )
-      callback(Object.keys(headers).length > 0 ? { requestHeaders: headers } : {})
+      const done = onceCallback(callback)
+      if (isExtensionApiShuttingDown()) {
+        done({})
+        return
+      }
+      try {
+        const info = requestInfo(details)
+        const headers: Record<string, string | string[]> = { ...details.requestHeaders }
+        applyHeaderOperations(
+          headers,
+          headerOperations(matchedRules(ses, profileId, info), 'requestHeaders')
+        )
+        done(Object.keys(headers).length > 0 ? { requestHeaders: headers } : {})
+      } catch {
+        done({})
+      }
     }
   )
 
   ses.webRequest.onHeadersReceived(
     REQUEST_FILTER,
     (details, callback: (response: HeadersReceivedResponse) => void) => {
-      const info = requestInfo(details)
-      const headers: Record<string, string | string[]> = { ...(details.responseHeaders ?? {}) }
-      applyHeaderOperations(
-        headers,
-        headerOperations(matchedRules(ses, profileId, info), 'responseHeaders')
-      )
-      callback({ responseHeaders: headers, statusLine: details.statusLine })
+      const done = onceCallback(callback)
+      const passthrough = (): void => {
+        done({
+          responseHeaders: { ...(details.responseHeaders ?? {}) },
+          statusLine: details.statusLine
+        })
+      }
+      if (isExtensionApiShuttingDown()) {
+        passthrough()
+        return
+      }
+      try {
+        const info = requestInfo(details)
+        const headers: Record<string, string | string[]> = { ...(details.responseHeaders ?? {}) }
+        applyHeaderOperations(
+          headers,
+          headerOperations(matchedRules(ses, profileId, info), 'responseHeaders')
+        )
+        done({ responseHeaders: headers, statusLine: details.statusLine })
+      } catch {
+        passthrough()
+      }
     }
   )
 
