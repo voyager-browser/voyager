@@ -163,9 +163,9 @@ export function BookmarksBar(): React.JSX.Element | null {
     return [
       {
         label: 'Open All in New Tabs',
-        disabled:
-          items.every((item) => (item.folderId ?? null) !== folder.id) &&
-          folders.every((child) => child.parentId !== folder.id),
+        // Only direct bookmarks are opened, so child folders alone must not
+        // leave an enabled command that opens nothing.
+        disabled: items.every((item) => (item.folderId ?? null) !== folder.id),
         onSelect: () => {
           const direct = items.filter((item) => (item.folderId ?? null) === folder.id)
           for (const item of direct) {

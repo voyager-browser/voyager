@@ -451,6 +451,49 @@ test('modified click on a folder opens only the folder context menu', async ({
   await expect(menu.getByRole('menuitem', { name: 'Research Site' })).toHaveCount(0)
 })
 
+test('Open All in New Tabs requires a direct bookmark in the folder', async ({
+  voyager,
+  server
+}) => {
+  const childUrl = server.url('/home')
+  await voyager.chrome.evaluate(async (url: string) => {
+    const parentState = await window.voyager.bookmarks.addFolder({ title: 'Parent' })
+    const parent = parentState.folders.find((folder) => folder.title === 'Parent')
+    if (!parent) throw new Error('Parent folder not created')
+    const childState = await window.voyager.bookmarks.addFolder({
+      title: 'Child',
+      parentId: parent.id
+    })
+    const child = childState.folders.find((folder) => folder.title === 'Child')
+    if (!child) throw new Error('Child folder not created')
+    await window.voyager.bookmarks.add({ title: 'Child page', url, folderId: child.id })
+  }, childUrl)
+
+  const parentButton = voyager.chrome.getByRole('button', { name: 'Folder Parent' })
+  await expect(parentButton).toBeVisible()
+  await parentButton.click({ modifiers: [primaryKey()] })
+  const openAll = voyager.chrome
+    .getByRole('menu')
+    .getByRole('menuitem', { name: 'Open All in New Tabs' })
+  // A subfolder holding a bookmark is not enough: the handler only opens
+  // bookmarks directly in this folder.
+  await expect(openAll).toBeDisabled()
+  expect((await voyager.state()).tabs).toHaveLength(1)
+  await voyager.chrome.keyboard.press('Escape')
+
+  await voyager.chrome.evaluate(async (url: string) => {
+    const state = await window.voyager.bookmarks.getState()
+    const parent = state.folders.find((folder) => folder.title === 'Parent')
+    if (!parent) throw new Error('Parent folder not found')
+    await window.voyager.bookmarks.add({ title: 'Parent page', url, folderId: parent.id })
+  }, server.url('/second'))
+
+  await parentButton.click({ modifiers: [primaryKey()] })
+  await expect(openAll).toBeEnabled()
+  await openAll.click()
+  await expect.poll(async () => (await voyager.state()).tabs).toHaveLength(2)
+})
+
 test.skip('bookmark context menu opens, edits, copies and deletes a bookmark (pending context-menu trigger fix)', async ({
   voyager,
   server
