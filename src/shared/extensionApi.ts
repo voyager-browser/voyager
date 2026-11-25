@@ -126,6 +126,16 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     },
     events: ['onStart', 'onEnd', 'onWordBoundary', 'onError']
   },
+  system: {
+    properties: {
+      cpu: {
+        methods: {
+          getInfo: { fallback: { processors: 0, model: '', speed: 0 } }
+        },
+        events: ['onUpdated']
+      }
+    }
+  },
   storage: {
     events: ['onChanged'],
     properties: {
