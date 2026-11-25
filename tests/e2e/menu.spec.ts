@@ -87,11 +87,18 @@ test('app menu state follows the focused window profile', async ({ voyager }) =>
   await expect.poll(async () => (await menuState()).developerMode).toBe(false)
   expect((await menuState()).forDevelopers).toBe(false)
 
-  // Flip A's state, then focus B again: neither profile's old state may linger.
+  // Flip A's state, then give B the opposite saved state while A remains
+  // focused. The menu must stay on A's state until focus moves to B.
   await voyager.chrome.evaluate(async () => {
     await window.voyager.settings.set('developerMode', true)
   })
   await expect.poll(async () => (await menuState()).developerMode).toBe(true)
+  await secondChrome.evaluate(async () => {
+    await window.voyager.settings.set('developerMode', false)
+  })
+  await expect.poll(async () => (await menuState()).developerMode).toBe(true)
+  expect((await menuState()).forDevelopers).toBe(true)
+
   await secondChrome.bringToFront()
   await expect.poll(async () => (await menuState()).developerMode).toBe(false)
   expect((await menuState()).forDevelopers).toBe(false)
