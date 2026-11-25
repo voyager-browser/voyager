@@ -1,6 +1,7 @@
 import { session, type Session } from 'electron'
 import { IpcChannels } from '../../shared/ipc-channels'
 import type { ProfilesState } from '../../shared/profiles'
+import type { DownloadsState } from '../../shared/types'
 import { attachContentBlocking, primeContentBlocking } from '../contentBlocking/contentBlocking'
 import { attachDownloadsTracking } from '../downloads/downloads'
 import {
@@ -59,19 +60,30 @@ export function broadcastProfiles(): void {
   }
 }
 
+interface SessionSetupOptions {
+  /** Incognito sessions keep decisions and downloads in memory instead. */
+  persist?: boolean
+  /** Incognito downloads report only to the window that started them. */
+  onDownloadsState?: (state: DownloadsState) => void
+}
+
 /**
- * Attach protocol, permission, download and content-blocking integrations to a
- * profile's session exactly once. Named profiles get a persistent partition;
- * the default profile uses Electron's default session.
+ * Apply the owning profile's session policies exactly once. Normal sessions
+ * use persisted stores; incognito sessions share the same integrations but
+ * keep their state in memory for the lifetime of the partition.
  */
-export function ensureProfileSession(profileId: string): Session {
-  const ses = sessionForProfile(profileId)
-  if (attachedSessions.has(ses)) return ses
+function attachSessionPolicies(
+  ses: Session,
+  profileId: string,
+  options: SessionSetupOptions = {}
+): void {
+  if (attachedSessions.has(ses)) return
   attachedSessions.add(ses)
+  const persist = options.persist !== false
 
   registerVoyagerProtocol(ses.protocol)
-  attachPermissionHandlers(ses, profileId)
-  if (autoRemoveStalePermissions(profileId)) {
+  attachPermissionHandlers(ses, profileId, { persist })
+  if (persist && autoRemoveStalePermissions(profileId)) {
     broadcastToProfile(
       profileId,
       IpcChannels.PermissionsStateChanged,
@@ -85,9 +97,37 @@ export function ensureProfileSession(profileId: string): Session {
     primeContentBlocking(profileId)
   }
   attachContentBlocking(ses, profileId)
-  attachDownloadsTracking(ses, profileId, (state) =>
-    broadcastToProfile(profileId, IpcChannels.DownloadsStateChanged, state)
+  attachDownloadsTracking(
+    ses,
+    profileId,
+    options.onDownloadsState ??
+      ((state) => broadcastToProfile(profileId, IpcChannels.DownloadsStateChanged, state)),
+    { persist }
   )
   void runTopSitesPreload(ses, profileId)
+}
+
+/**
+ * Attach protocol, permission, download and content-blocking integrations to a
+ * profile's session exactly once. Named profiles get a persistent partition;
+ * the default profile uses Electron's default session.
+ */
+export function ensureProfileSession(profileId: string): Session {
+  const ses = sessionForProfile(profileId)
+  attachSessionPolicies(ses, profileId)
+  return ses
+}
+
+/**
+ * Give an incognito partition its owner's network and content policies. The
+ * session itself is in-memory (no `persist:` prefix), and the setup guard makes
+ * repeated toggles safe instead of registering handlers twice.
+ */
+export function configureIncognitoSession(
+  ses: Session,
+  profileId: string,
+  onDownloadsState?: (state: DownloadsState) => void
+): Session {
+  attachSessionPolicies(ses, profileId, { persist: false, onDownloadsState })
   return ses
 }
