@@ -204,6 +204,7 @@ async function handle(req: URL, res: ServerResponse, counts: Map<string, number>
     }
     if (query === 'qq') {
       // A dropped connection exercises the failed-fetch path in the omnibox.
+      counts.set('/suggest-stages-failed', (counts.get('/suggest-stages-failed') ?? 0) + 1)
       res.destroy()
       return
     }

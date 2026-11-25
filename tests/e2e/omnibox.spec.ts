@@ -157,9 +157,14 @@ test('clears stale suggestion rows while a new query is pending or fails', async
   await expect(zetaRow).toHaveCount(0)
   await expect(zetaRow).toBeVisible()
 
-  // A dropped request must clear the current rows as well.
+  // A dropped request must clear the current rows as well. Wait until the
+  // server has dropped the qq connection so the assertions exercise the
+  // failed-fetch path rather than the immediate input change.
+  const droppedBefore = server.hits('/suggest-stages-failed')
   await input.fill('qq')
-  await expect(zetaRow).toHaveCount(0, { timeout: 500 })
+  await expect.poll(() => server.hits('/suggest-stages-failed')).toBeGreaterThan(droppedBefore)
+  await voyager.chrome.waitForTimeout(100)
+  await expect(zetaRow).toHaveCount(0)
   await expect(voyager.chrome.getByText('Search DuckDuckGo')).toBeVisible()
 })
 
