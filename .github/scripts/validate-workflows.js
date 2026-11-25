@@ -35,7 +35,16 @@ function keyIndent(line) {
   return dash ? indent + dash[0].length : indent
 }
 
-function blockContentIndent(lines, start, parentIndent) {
+function blockIndentIndicator(value) {
+  const match = value.match(/[1-9]/)
+  return match ? Number(match[0]) : null
+}
+
+function blockContentIndent(lines, start, parentIndent, explicitIndent) {
+  // An explicit indicator is relative to the parent key, even when the first
+  // command has extra leading spaces that are part of its shell text.
+  if (explicitIndent !== null) return parentIndent + explicitIndent
+
   for (let index = start; index < lines.length; index += 1) {
     const line = lines[index]
     if (isBlank(line)) continue
@@ -64,7 +73,12 @@ function commandLines(content) {
     const value = match[1].trim()
 
     if (BLOCK_SCALAR.test(value)) {
-      const contentIndent = blockContentIndent(lines, index + 1, indent)
+      const contentIndent = blockContentIndent(
+        lines,
+        index + 1,
+        indent,
+        blockIndentIndicator(value)
+      )
       if (contentIndent === null) continue
 
       let cursor = index + 1
