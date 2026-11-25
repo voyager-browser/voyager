@@ -126,6 +126,11 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     },
     events: ['onStart', 'onEnd', 'onWordBoundary', 'onError']
   },
+  topSites: {
+    methods: {
+      get: { fallback: [] }
+    }
+  },
   system: {
     properties: {
       cpu: {

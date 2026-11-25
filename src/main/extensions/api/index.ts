@@ -11,6 +11,7 @@ import { registerStorageApi } from './storageApi'
 import { registerSystemCpu } from './systemCpu'
 import { registerSystemDisplay } from './systemDisplay'
 import { registerSystemMemory } from './systemMemory'
+import { registerTopSites } from './topSites'
 import { registerTts } from './tts'
 import { registerI18n } from './i18n'
 
@@ -36,6 +37,7 @@ export function registerExtensionApis(): void {
   registerSystemCpu()
   registerSystemDisplay()
   registerSystemMemory()
+  registerTopSites()
 }
 
 export { refreshCommandShortcuts } from './commands'
