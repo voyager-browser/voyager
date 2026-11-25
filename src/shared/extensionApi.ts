@@ -143,6 +143,11 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
           enableUnifiedDesktop: { fallback: false }
         },
         events: ['onDisplayChanged']
+      },
+      memory: {
+        methods: {
+          getInfo: { fallback: { capacity: 0, availableCapacity: 0 } }
+        }
       }
     }
   },
