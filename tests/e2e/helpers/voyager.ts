@@ -61,39 +61,15 @@ export async function pollUntil<T>(
 }
 
 const closedApps = new WeakSet<ElectronApplication>()
-const CLOSE_TIMEOUT_MS = 10_000
 
 /**
  * Close an Electron app at most once. A failed setup and fixture teardown can
  * both try to close the same raw app, so the cleanup path stays idempotent.
- *
- * Playwright's close() waits for the main process to exit after app.quit().
- * Busy CI runners can leave that quit incomplete, so cap the wait and force
- * the process down rather than letting fixture teardown exceed the test timeout.
  */
 export async function closeElectronApp(app: ElectronApplication): Promise<void> {
   if (closedApps.has(app)) return
   closedApps.add(app)
-  const closing = app.close().catch(() => undefined)
-  let timer: NodeJS.Timeout | undefined
-  try {
-    await Promise.race([
-      closing,
-      new Promise<void>((resolve) => {
-        timer = setTimeout(() => {
-          try {
-            app.process().kill('SIGKILL')
-          } catch {
-            // The process may already have exited between the race and kill.
-          }
-          resolve()
-        }, CLOSE_TIMEOUT_MS)
-        timer.unref()
-      })
-    ])
-  } finally {
-    if (timer) clearTimeout(timer)
-  }
+  await app.close().catch(() => undefined)
 }
 
 export interface AppRegistry {
