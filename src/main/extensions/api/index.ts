@@ -24,6 +24,7 @@ import { registerTabGroups } from './tabGroups'
 import { registerTopSites } from './topSites'
 import { registerTts } from './tts'
 import { registerWebRequest } from './webRequest'
+import { registerWindows } from './windows'
 import { registerI18n } from './i18n'
 
 let registered = false
@@ -60,6 +61,7 @@ export function registerExtensionApis(): void {
   registerTabGroups()
   registerTopSites()
   registerWebRequest()
+  registerWindows()
 }
 
 export { refreshCommandShortcuts } from './commands'

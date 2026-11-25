@@ -243,6 +243,19 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       restore: { fallback: {} }
     }
   },
+  windows: {
+    constants: { WINDOW_ID_NONE: -1, WINDOW_ID_CURRENT: -2 },
+    methods: {
+      get: { fallback: null },
+      getAll: { fallback: [] },
+      getCurrent: { fallback: null },
+      getLastFocused: { fallback: null },
+      create: { fallback: null },
+      update: { fallback: null },
+      remove: {}
+    },
+    events: ['onCreated', 'onRemoved', 'onFocusChanged']
+  },
   webRequest: {
     methods: {
       handlerBehaviorChanged: {},
