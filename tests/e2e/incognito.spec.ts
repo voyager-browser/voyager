@@ -127,6 +127,7 @@ test('incognito sessions inherit the owner proxy, spellcheck and content blockin
   await voyager.chrome.evaluate(() => window.voyager.settings.set('proxyBypassRules', '127.0.0.1'))
 
   const owner = await voyager.chrome.evaluate(() => window.voyager.windows.getState())
+  const before = await windowCount(voyager.app)
   const targetUrl = server.url('/second')
   await voyager.chrome.evaluate((url) => window.voyager.windows.openIncognito(url), targetUrl)
   const incognitoChrome = await chromePageForProfile(voyager.app, owner.profile.id, true)
@@ -185,4 +186,24 @@ test('incognito sessions inherit the owner proxy, spellcheck and content blockin
           .pageBlocked
     )
     .toBeGreaterThan(0)
+
+  const privateStats = await incognitoChrome.evaluate(() =>
+    window.voyager.contentBlocking.getStats()
+  )
+  expect(privateStats.sessionBlocked).toBeGreaterThan(0)
+  expect(privateStats.topHosts.map((host) => host.host)).toContain('www.google-analytics.com')
+
+  // The owner's privacy dashboard must not inherit private counters.
+  const normalStats = await voyager.chrome.evaluate(() => window.voyager.contentBlocking.getStats())
+  expect(normalStats.sessionBlocked).toBe(0)
+  expect(normalStats.topHosts).toEqual([])
+
+  await incognitoChrome.evaluate(() => window.voyager.windows.close()).catch(() => undefined)
+  await expect.poll(async () => windowCount(voyager.app), { timeout: 10_000 }).toBe(before)
+
+  const statsAfterClose = await voyager.chrome.evaluate(() =>
+    window.voyager.contentBlocking.getStats()
+  )
+  expect(statsAfterClose.sessionBlocked).toBe(0)
+  expect(statsAfterClose.topHosts).toEqual([])
 })
