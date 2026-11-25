@@ -49,7 +49,13 @@ export function serviceWorkerSender(
 }
 
 const handlers = new Map<string, ExtensionInvokeHandler>()
-const attachedSessions = new WeakMap<Session, WeakSet<ServiceWorkerMain>>()
+
+interface SessionState {
+  channels: WeakMap<ServiceWorkerMain, Set<string>>
+  registerRunning: () => void
+}
+
+const attachedSessions = new Map<Session, SessionState>()
 
 /** Save the compatibility handlers once the main IPC registry is built. */
 export function registerExtensionInvokeHandlers(
@@ -57,6 +63,9 @@ export function registerExtensionInvokeHandlers(
 ): void {
   handlers.clear()
   for (const [channel, handler] of entries) handlers.set(channel, handler)
+  // Workers can start before the registry is built. Revisit the ones already
+  // attached so late registration does not leave them without bridges.
+  for (const state of attachedSessions.values()) state.registerRunning()
 }
 
 /**
@@ -66,35 +75,53 @@ export function registerExtensionInvokeHandlers(
  * scripts without producing "No handler registered" errors in the main log.
  */
 export function attachExtensionServiceWorkerIpc(ses: Session): void {
-  let registered = attachedSessions.get(ses)
-  if (!registered) {
-    registered = new WeakSet<Electron.ServiceWorkerMain>()
-    attachedSessions.set(ses, registered)
+  const existing = attachedSessions.get(ses)
+  if (existing) {
+    existing.registerRunning()
+    return
   }
 
+  const state: SessionState = {
+    channels: new WeakMap<ServiceWorkerMain, Set<string>>(),
+    registerRunning: () => {}
+  }
+  attachedSessions.set(ses, state)
+  ;(ses as NodeJS.EventEmitter).once('destroyed', () => attachedSessions.delete(ses))
+
   const register = (worker: ServiceWorkerMain | undefined): void => {
-    if (!worker || worker.isDestroyed() || registered.has(worker)) return
-    registered.add(worker)
-    for (const [channel, handler] of handlers) {
+    if (!worker || worker.isDestroyed()) return
+    let channels = state.channels.get(worker)
+    if (!channels) {
+      channels = new Set<string>()
+      state.channels.set(worker, channels)
+    }
+    for (const channel of handlers.keys()) {
+      if (channels.has(channel)) continue
       try {
-        worker.ipc.handle(channel, (event, ...args) => handler(event, ...args))
+        worker.ipc.handle(channel, (event, ...args) => handlers.get(channel)?.(event, ...args))
+        channels.add(channel)
       } catch {
         // The worker may have stopped between the status event and registration.
       }
     }
   }
 
+  state.registerRunning = () => {
+    try {
+      const running = ses.serviceWorkers.getAllRunning()
+      for (const versionId of Object.keys(running)) {
+        register(ses.serviceWorkers.getWorkerFromVersionID(Number(versionId)))
+      }
+    } catch {
+      // Service worker inspection can fail while a session is still initializing.
+    }
+  }
+
   ses.serviceWorkers.on('running-status-changed', (details) => {
+    if (details.runningStatus === 'stopped') return
     if (details.runningStatus !== 'starting' && details.runningStatus !== 'running') return
     register(ses.serviceWorkers.getWorkerFromVersionID(details.versionId))
   })
 
-  try {
-    const running = ses.serviceWorkers.getAllRunning()
-    for (const versionId of Object.keys(running)) {
-      register(ses.serviceWorkers.getWorkerFromVersionID(Number(versionId)))
-    }
-  } catch {
-    // Service worker inspection can fail while a session is still initializing.
-  }
+  state.registerRunning()
 }
