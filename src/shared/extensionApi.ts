@@ -105,6 +105,16 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     },
     events: ['onCreated', 'onChanged', 'onErased']
   },
+  notifications: {
+    methods: {
+      create: { fallback: '' },
+      update: { fallback: false },
+      clear: { fallback: false },
+      getAll: { fallback: [] },
+      getPermissionLevel: { fallback: 'denied' }
+    },
+    events: ['onClicked', 'onClosed', 'onButtonClicked', 'onPermissionLevelChanged']
+  },
   storage: {
     events: ['onChanged'],
     properties: {
