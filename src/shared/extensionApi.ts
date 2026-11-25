@@ -23,6 +23,16 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
         events: ['onChange']
       }
     }
+  },
+  alarms: {
+    methods: {
+      create: {},
+      get: {},
+      getAll: {},
+      clear: {},
+      clearAll: {}
+    },
+    events: ['onAlarm']
   }
 }
 

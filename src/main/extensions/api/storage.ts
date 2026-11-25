@@ -24,3 +24,8 @@ export function deleteApiSetting(profileId: string, key: string): void {
   delete next[key]
   setSettings(profileId, STORAGE_KEY, next)
 }
+
+/** List persisted API keys belonging to one extension. */
+export function listApiSettingKeys(profileId: string, prefix: string): string[] {
+  return Object.keys(all(profileId)).filter((key) => key.startsWith(prefix))
+}
