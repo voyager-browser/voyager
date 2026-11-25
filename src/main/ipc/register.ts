@@ -248,9 +248,12 @@ export function registerIpcHandlers(context: IpcContext): void {
     DEFAULT_PROFILE_ID
 
   // Settings windows have no browser WindowController, so only browser senders
-  // may resolve to an incognito counter scope.
-  const blockingStatsSession = (sender: WebContents) =>
-    windowForAnyWebContents(sender) ? sender.session : undefined
+  // may resolve to an incognito counter scope. The chrome view uses the default
+  // Electron session, so derive the scope from its owning window instead.
+  const blockingStatsKey = (sender: WebContents): string | undefined => {
+    const owner = windowForAnyWebContents(sender)
+    return owner?.isIncognito ? (owner.partition ?? undefined) : undefined
+  }
 
   const publishAutofill = (profileId: string): ReturnType<typeof currentAutofillState> => {
     const state = currentAutofillState(profileId)
@@ -532,7 +535,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       settingsProfileFor(event.sender) ??
       profileFor(event)
     const pageContentsId = windowForAnyWebContents(event.sender)?.tabs.activeWebContentsId() ?? null
-    return contentBlockingStats(profileId, pageContentsId, blockingStatsSession(event.sender))
+    return contentBlockingStats(profileId, pageContentsId, blockingStatsKey(event.sender))
   })
 
   ipcMain.handle(
@@ -548,7 +551,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       sendToProfile(profileId, IpcChannels.SettingsChanged, userPreferences(profileId))
       const pageContentsId =
         windowForAnyWebContents(event.sender)?.tabs.activeWebContentsId() ?? null
-      return contentBlockingStats(profileId, pageContentsId, blockingStatsSession(event.sender))
+      return contentBlockingStats(profileId, pageContentsId, blockingStatsKey(event.sender))
     }
   )
 

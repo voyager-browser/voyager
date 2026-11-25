@@ -193,7 +193,8 @@ export class WindowController {
     configureIncognitoSession(
       session.fromPartition(this.incognitoPartition),
       this.profileId,
-      (state) => this.sendToChrome(IpcChannels.DownloadsStateChanged, state)
+      (state) => this.sendToChrome(IpcChannels.DownloadsStateChanged, state),
+      this.incognitoPartition
     )
   }
 

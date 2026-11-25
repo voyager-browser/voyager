@@ -535,9 +535,9 @@ export function clearContentBlockingPage(webContentsId: number): void {
 export function contentBlockingStats(
   profileId: string,
   webContentsId?: number | null,
-  ses?: Session
+  statsKeyOverride?: string
 ): ContentBlockingStats {
-  const statsKey = statsKeyFor(ses, profileId)
+  const statsKey = statsKeyOverride ?? profileId
   const snapshot = sessionCounters.get(statsKey) ?? newCounters()
   const page =
     webContentsId === undefined || webContentsId === null
@@ -585,12 +585,12 @@ const attachedSessions = new WeakSet<Session>()
 export function attachContentBlocking(
   ses: Session,
   profileId: string,
-  options: { ephemeral?: boolean } = {}
+  options: { statsKey?: string } = {}
 ): void {
   if (attachedSessions.has(ses)) return
   attachedSessions.add(ses)
   // Rules and exceptions stay profile-scoped; only the counters are isolated.
-  const statsKey = options.ephemeral ? `incognito:${randomUUID()}` : profileId
+  const statsKey = options.statsKey ?? profileId
   sessionStatsKeys.set(ses, statsKey)
 
   ses.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {

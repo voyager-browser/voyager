@@ -65,6 +65,8 @@ interface SessionSetupOptions {
   persist?: boolean
   /** Incognito downloads report only to the window that started them. */
   onDownloadsState?: (state: DownloadsState) => void
+  /** Isolated blocking-counter key; incognito windows use their partition. */
+  statsKey?: string
 }
 
 /**
@@ -96,7 +98,7 @@ function attachSessionPolicies(
   if (getSettings(profileId, 'contentBlocking', false) === true) {
     primeContentBlocking(profileId)
   }
-  attachContentBlocking(ses, profileId, { ephemeral: !persist })
+  attachContentBlocking(ses, profileId, { statsKey: options.statsKey })
   attachDownloadsTracking(
     ses,
     profileId,
@@ -126,8 +128,9 @@ export function ensureProfileSession(profileId: string): Session {
 export function configureIncognitoSession(
   ses: Session,
   profileId: string,
-  onDownloadsState?: (state: DownloadsState) => void
+  onDownloadsState?: (state: DownloadsState) => void,
+  statsKey?: string
 ): Session {
-  attachSessionPolicies(ses, profileId, { persist: false, onDownloadsState })
+  attachSessionPolicies(ses, profileId, { persist: false, onDownloadsState, statsKey })
   return ses
 }
