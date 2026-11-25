@@ -706,10 +706,7 @@ test('dropping a bookmark or folder onto itself leaves its position unchanged', 
   )
 })
 
-test('copies and cuts bookmarks across profiles without losing the clipboard', async ({
-  voyager,
-  server
-}) => {
+test('copies and cuts bookmarks and folders across profiles', async ({ voyager, server }) => {
   const defaultProfileId = (await voyager.chrome.evaluate(() => window.voyager.windows.getState()))
     .profile.id
   const secondProfile = await voyager.chrome.evaluate(() =>
@@ -767,6 +764,19 @@ test('copies and cuts bookmarks across profiles without losing the clipboard', a
     (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).items
   ).toHaveLength(1)
 
+  // Copy must leave the clipboard reusable; a second paste needs no new copy.
+  const copiedAgain = await targetChrome.evaluate(async () => window.voyager.bookmarks.paste(null))
+  expect(copiedAgain.items).toHaveLength(2)
+  expect(copiedAgain.items.map((item) => item.id)).toContain(copied.items[0]?.id)
+  expect(copiedAgain.items.find((item) => item.id !== copied.items[0]?.id)).toMatchObject({
+    title: 'Shared page',
+    url
+  })
+  expect(copiedAgain.clipboard).toEqual(copyClipboard)
+  expect(
+    (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).items
+  ).toHaveLength(1)
+
   // Cutting in A and pasting in B moves the original node and consumes the
   // clipboard, while both profiles' UIs receive the updated state.
   await voyager.chrome.evaluate(
@@ -781,6 +791,7 @@ test('copies and cuts bookmarks across profiles without losing the clipboard', a
     .toBe('cut')
 
   const moved = await targetChrome.evaluate(async () => window.voyager.bookmarks.paste(null))
+  expect(moved.items).toHaveLength(3)
   expect(moved.items.map((item) => item.id)).toContain(sourceItem.id)
   expect(moved.clipboard).toBeNull()
   await expect
@@ -788,4 +799,109 @@ test('copies and cuts bookmarks across profiles without losing the clipboard', a
       async () => (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).items
     )
     .toEqual([])
+
+  // Build a nested tree in A to exercise folder copy and cut across profiles.
+  const tree = await voyager.chrome.evaluate(async (targetUrl: string) => {
+    const parentState = await window.voyager.bookmarks.addFolder({ title: 'Transfer Parent' })
+    const parent = parentState.folders.find((candidate) => candidate.title === 'Transfer Parent')
+    if (!parent) throw new Error('Parent folder not created')
+    const childState = await window.voyager.bookmarks.addFolder({
+      title: 'Transfer Child',
+      parentId: parent.id
+    })
+    const child = childState.folders.find((candidate) => candidate.title === 'Transfer Child')
+    if (!child) throw new Error('Child folder not created')
+    const parentPageState = await window.voyager.bookmarks.add({
+      title: 'Parent page',
+      url: targetUrl,
+      folderId: parent.id
+    })
+    const childPageState = await window.voyager.bookmarks.add({
+      title: 'Child page',
+      url: targetUrl,
+      folderId: child.id
+    })
+    const parentPage = parentPageState.items.find(
+      (candidate) => candidate.title === 'Parent page' && candidate.folderId === parent.id
+    )
+    const childPage = childPageState.items.find(
+      (candidate) => candidate.title === 'Child page' && candidate.folderId === child.id
+    )
+    if (!parentPage || !childPage) throw new Error('Nested bookmarks not created')
+    return { parent, child, parentPage, childPage }
+  }, url)
+
+  const folderClipboard = {
+    mode: 'copy',
+    kind: 'folder',
+    id: tree.parent.id,
+    sourceProfileId: defaultProfileId
+  }
+  await voyager.chrome.evaluate((id) => window.voyager.bookmarks.copy('folder', id), tree.parent.id)
+  await expect
+    .poll(
+      async () => (await targetChrome.evaluate(() => window.voyager.bookmarks.getState())).clipboard
+    )
+    .toEqual(folderClipboard)
+
+  const folderCopied = await targetChrome.evaluate(async () => window.voyager.bookmarks.paste(null))
+  const copiedParent = folderCopied.folders.find(
+    (folder) => folder.title === 'Transfer Parent' && folder.id !== tree.parent.id
+  )
+  const copiedChild = folderCopied.folders.find(
+    (folder) => folder.title === 'Transfer Child' && folder.id !== tree.child.id
+  )
+  expect(copiedParent).toBeDefined()
+  expect(copiedChild?.parentId).toBe(copiedParent?.id)
+  expect(
+    folderCopied.items.find(
+      (item) => item.title === 'Parent page' && item.folderId === copiedParent?.id
+    )?.id
+  ).not.toBe(tree.parentPage.id)
+  expect(
+    folderCopied.items.find(
+      (item) => item.title === 'Child page' && item.folderId === copiedChild?.id
+    )?.id
+  ).not.toBe(tree.childPage.id)
+  expect(folderCopied.clipboard).toEqual(folderClipboard)
+
+  const sourceAfterCopy = await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())
+  expect(sourceAfterCopy.folders.map((folder) => folder.id).sort()).toEqual(
+    [tree.parent.id, tree.child.id].sort()
+  )
+  expect(sourceAfterCopy.items.map((item) => item.id).sort()).toEqual(
+    [tree.parentPage.id, tree.childPage.id].sort()
+  )
+
+  // Cutting the same tree in A and pasting in B must keep the original ids and
+  // the whole subtree, then clear both the source profile and the clipboard.
+  await voyager.chrome.evaluate((id) => window.voyager.bookmarks.cut('folder', id), tree.parent.id)
+  await expect
+    .poll(
+      async () =>
+        (await targetChrome.evaluate(() => window.voyager.bookmarks.getState())).clipboard?.mode
+    )
+    .toBe('cut')
+
+  const folderMoved = await targetChrome.evaluate(async () => window.voyager.bookmarks.paste(null))
+  expect(folderMoved.folders.map((folder) => folder.id)).toContain(tree.parent.id)
+  expect(folderMoved.folders.map((folder) => folder.id)).toContain(tree.child.id)
+  expect(folderMoved.folders.find((folder) => folder.id === tree.child.id)?.parentId).toBe(
+    tree.parent.id
+  )
+  expect(folderMoved.items.map((item) => item.id)).toContain(tree.parentPage.id)
+  expect(folderMoved.items.map((item) => item.id)).toContain(tree.childPage.id)
+  expect(folderMoved.items.find((item) => item.id === tree.parentPage.id)?.folderId).toBe(
+    tree.parent.id
+  )
+  expect(folderMoved.items.find((item) => item.id === tree.childPage.id)?.folderId).toBe(
+    tree.child.id
+  )
+  expect(folderMoved.clipboard).toBeNull()
+  await expect
+    .poll(async () => {
+      const state = await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())
+      return { folders: state.folders.length, items: state.items.length }
+    })
+    .toEqual({ folders: 0, items: 0 })
 })
