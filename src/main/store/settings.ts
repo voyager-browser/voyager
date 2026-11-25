@@ -20,6 +20,7 @@ export interface SettingsShape {
   builtinFilterList?: boolean
   filterLists?: string[]
   customFilterLists?: string[]
+  customFilterListErrors?: Record<string, string>
   customFilterFiles?: { id: string; name: string; addedAt: number }[]
   contentBlockingExceptions?: string[]
   proxyMode?: 'system' | 'direct' | 'fixed_servers'
