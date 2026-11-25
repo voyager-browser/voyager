@@ -1,4 +1,4 @@
-import { session, webContents, type ServiceWorkerMain, type WebContents } from 'electron'
+import { app, session, webContents, type ServiceWorkerMain, type WebContents } from 'electron'
 import type { ExtensionApiEventPayload } from '../../../shared/extensionApi'
 import { IpcChannels } from '../../../shared/ipc-channels'
 import { profilePartition } from '../../profiles/profiles'
@@ -24,6 +24,10 @@ export function broadcastExtensionApiEvent(
   payload: ExtensionApiEventPayload,
   permission?: string
 ): void {
+  // API namespaces register before app.whenReady(). Electron's session and
+  // service-worker APIs are unavailable until then, and no extension context
+  // can receive an event before the first window is ready anyway.
+  if (!app.isReady()) return
   const partition = profilePartition(profileId)
   const ses = partition ? session.fromPartition(partition) : session.defaultSession
   const allowed = (target: ExtensionTarget): boolean => {

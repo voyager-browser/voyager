@@ -1,4 +1,4 @@
-import { screen, type Display } from 'electron'
+import { app, screen, type Display } from 'electron'
 import { listProfiles } from '../../profiles/profiles'
 import { broadcastExtensionApiEvent } from './events'
 import { registerExtensionApiHandler } from './registry'
@@ -91,7 +91,12 @@ export function attachSystemDisplayEvents(): void {
 }
 
 export function registerSystemDisplay(): void {
-  attachSystemDisplayEvents()
+  // Electron's screen module cannot be used before app.whenReady(). API
+  // registration is earlier in startup, so attach display listeners later.
+  app
+    .whenReady()
+    .then(attachSystemDisplayEvents)
+    .catch(() => undefined)
   registerExtensionApiHandler(PATH, {
     permissions: [PATH],
     invoke(_context, method, _args): unknown {

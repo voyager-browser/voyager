@@ -1,4 +1,5 @@
 import { cpus, loadavg, totalmem } from 'node:os'
+import { app } from 'electron'
 import { listProfiles } from '../../profiles/profiles'
 import { broadcastExtensionApiEvent } from './events'
 import { registerExtensionApiHandler } from './registry'
@@ -49,5 +50,10 @@ export function registerSystemCpu(): void {
       throw new Error(`chrome.${PATH}.${method} is not supported.`)
     }
   })
-  emitSystemCpuUpdate()
+  // Registration happens before app.whenReady(); sending the baseline event
+  // must wait until Electron's session APIs are usable.
+  app
+    .whenReady()
+    .then(emitSystemCpuUpdate)
+    .catch(() => undefined)
 }
