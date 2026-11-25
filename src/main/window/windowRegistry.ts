@@ -2,23 +2,41 @@ import type { WebContents } from 'electron'
 import type { WindowController } from './WindowController'
 
 const controllers = new Set<WindowController>()
+const activeWindowListeners = new Set<() => void>()
 let active: WindowController | null = null
+
+/**
+ * Observe focus changes so shared UI (currently the application menu) can
+ * rebuild from the window whose commands it will actually serve.
+ */
+export function onActiveWindowChange(listener: () => void): () => void {
+  activeWindowListeners.add(listener)
+  return () => {
+    activeWindowListeners.delete(listener)
+  }
+}
+
+function setActive(next: WindowController | null): void {
+  if (active === next) return
+  active = next
+  for (const listener of activeWindowListeners) listener()
+}
 
 /** Track a browser window and make it active when focused. */
 export function registerWindow(controller: WindowController): void {
   controllers.add(controller)
-  active = controller
+  setActive(controller)
   controller.window.on('focus', () => {
-    active = controller
+    setActive(controller)
   })
   controller.chrome.webContents.on('focus', () => {
-    active = controller
+    setActive(controller)
   })
   controller.window.on('closed', () => {
     controllers.delete(controller)
     if (active === controller) {
       const remaining = [...controllers]
-      active = remaining[remaining.length - 1] ?? null
+      setActive(remaining[remaining.length - 1] ?? null)
     }
   })
 }

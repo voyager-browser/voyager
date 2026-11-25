@@ -8,11 +8,19 @@ import { applyUserAgentForProfile } from '../userAgent/userAgent'
 import { sessionForProfile } from '../profiles/session'
 import { openSettingsWindow } from '../window/settingsWindow'
 import { createWindow, createIncognitoWindow } from '../window/createWindow'
-import { activeWindow } from '../window/windowRegistry'
+import { activeWindow, onActiveWindowChange } from '../window/windowRegistry'
 
 export function refreshAppMenu(): void {
   createAppMenu()
 }
+
+// The application menu is shared by every window. Its labels and checked
+// state are snapshots, so rebuild it whenever focus moves to another window
+// instead of leaving the last window that rebuilt it on display. Startup
+// installs the menu explicitly after the first window is registered.
+onActiveWindowChange(() => {
+  if (app.isReady()) refreshAppMenu()
+})
 
 export function createAppMenu(): void {
   const isMac = process.platform === 'darwin'
