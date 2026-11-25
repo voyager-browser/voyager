@@ -247,6 +247,11 @@ export function registerIpcHandlers(context: IpcContext): void {
     activeWindow()?.profile ??
     DEFAULT_PROFILE_ID
 
+  // Settings windows have no browser WindowController, so only browser senders
+  // may resolve to an incognito counter scope.
+  const blockingStatsSession = (sender: WebContents) =>
+    windowForAnyWebContents(sender) ? sender.session : undefined
+
   const publishAutofill = (profileId: string): ReturnType<typeof currentAutofillState> => {
     const state = currentAutofillState(profileId)
     sendToProfile(profileId, IpcChannels.AutofillStateChanged, state)
@@ -527,7 +532,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       settingsProfileFor(event.sender) ??
       profileFor(event)
     const pageContentsId = windowForAnyWebContents(event.sender)?.tabs.activeWebContentsId() ?? null
-    return contentBlockingStats(profileId, pageContentsId)
+    return contentBlockingStats(profileId, pageContentsId, blockingStatsSession(event.sender))
   })
 
   ipcMain.handle(
@@ -543,7 +548,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       sendToProfile(profileId, IpcChannels.SettingsChanged, userPreferences(profileId))
       const pageContentsId =
         windowForAnyWebContents(event.sender)?.tabs.activeWebContentsId() ?? null
-      return contentBlockingStats(profileId, pageContentsId)
+      return contentBlockingStats(profileId, pageContentsId, blockingStatsSession(event.sender))
     }
   )
 

@@ -8,6 +8,7 @@ import { DEFAULT_NEW_TAB_URL, INCOGNITO_PARTITION_PREFIX } from '../../shared/co
 import { DEFAULT_SEARCH_ENGINE, isSearchEngineId, type SearchEngineId } from '../../shared/search'
 import { isNewTab } from '../../shared/url'
 import { getSettings, storesFor } from '../store'
+import { clearContentBlockingSession } from '../contentBlocking/contentBlocking'
 import {
   broadcastToProfile,
   configureIncognitoSession,
@@ -123,6 +124,7 @@ export class WindowController {
     this.window.on('closed', () => {
       this.disposed = true
       this.cancelLayoutSettle()
+      this.clearPrivateBlockingCounters()
     })
     this.setBookmarksBarVisible(currentBookmarksState(this.profileId).barVisible)
     this.applyLayout()
@@ -168,6 +170,7 @@ export class WindowController {
 
   /** Switch the window between normal and incognito browsing profiles. */
   setIncognito(incognito: boolean): void {
+    if (!incognito && this.incognitoPartition) this.clearPrivateBlockingCounters()
     this.incognito = incognito
     if (incognito && !this.incognitoPartition) {
       // Windows that started in normal mode get a fresh in-memory profile
@@ -192,6 +195,12 @@ export class WindowController {
       this.profileId,
       (state) => this.sendToChrome(IpcChannels.DownloadsStateChanged, state)
     )
+  }
+
+  /** Private blocking counters live only as long as the incognito session. */
+  private clearPrivateBlockingCounters(): void {
+    if (!this.incognitoPartition) return
+    clearContentBlockingSession(session.fromPartition(this.incognitoPartition))
   }
 
   /** Grow or shrink the chrome region for the bookmarks bar. */

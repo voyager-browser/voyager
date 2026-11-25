@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Session } from 'electron'
+import { webContents, type Session } from 'electron'
 import { join } from 'node:path'
 import { BUILTIN_BLOCKED_DOMAINS } from '../../shared/content-blocking'
 import {
@@ -435,6 +435,7 @@ interface BlockingCounters {
 
 interface PageBlockingCounters extends BlockingCounters {
   profileId: string
+  statsKey: string
   site: string | null
 }
 
@@ -443,18 +444,38 @@ const TOP_HOSTS_LIMIT = 5
 
 const pageCounters = new Map<number, PageBlockingCounters>()
 const sessionCounters = new Map<string, BlockingCounters>()
+/** Incognito sessions get a unique key so their hosts never reach the profile dashboard. */
+const sessionStatsKeys = new WeakMap<Session, string>()
 
 function newCounters(): BlockingCounters {
   return { blocked: 0, hosts: new Map() }
 }
 
-function sessionCountersFor(profileId: string): BlockingCounters {
-  let counters = sessionCounters.get(profileId)
+function sessionCountersFor(statsKey: string): BlockingCounters {
+  let counters = sessionCounters.get(statsKey)
   if (!counters) {
     counters = newCounters()
-    sessionCounters.set(profileId, counters)
+    sessionCounters.set(statsKey, counters)
   }
   return counters
+}
+
+function statsKeyFor(ses: Session | undefined, profileId: string): string {
+  return (ses && sessionStatsKeys.get(ses)) || profileId
+}
+
+function sessionForPage(id: number): Session | undefined {
+  return webContents.fromId(id)?.session
+}
+
+/** Discard every counter collected by a private session. */
+export function clearContentBlockingSession(ses: Session): void {
+  const statsKey = sessionStatsKeys.get(ses)
+  if (!statsKey) return
+  sessionCounters.delete(statsKey)
+  for (const [webContentsId, page] of pageCounters) {
+    if (page.statsKey === statsKey) pageCounters.delete(webContentsId)
+  }
 }
 
 /** Keep per-host maps bounded so long sessions cannot grow without limit. */
@@ -482,6 +503,7 @@ export function resetContentBlockingPage(
 ): void {
   pageCounters.set(webContentsId, {
     profileId,
+    statsKey: statsKeyFor(sessionForPage(webContentsId), profileId),
     site: normalizeBlockingHost(url),
     blocked: 0,
     hosts: new Map()
@@ -500,6 +522,7 @@ export function trackContentBlockingPage(
     return
   }
   page.profileId = profileId
+  page.statsKey = statsKeyFor(sessionForPage(webContentsId), profileId)
   page.site = normalizeBlockingHost(url)
 }
 
@@ -508,24 +531,27 @@ export function clearContentBlockingPage(webContentsId: number): void {
   pageCounters.delete(webContentsId)
 }
 
-/** Snapshot of tracker-blocking activity for a profile and, optionally, a page. */
+/** Snapshot of tracker-blocking activity for a profile/session and, optionally, a page. */
 export function contentBlockingStats(
   profileId: string,
-  webContentsId?: number | null
+  webContentsId?: number | null,
+  ses?: Session
 ): ContentBlockingStats {
-  const session = sessionCounters.get(profileId) ?? newCounters()
+  const statsKey = statsKeyFor(ses, profileId)
+  const snapshot = sessionCounters.get(statsKey) ?? newCounters()
   const page =
     webContentsId === undefined || webContentsId === null
       ? undefined
       : pageCounters.get(webContentsId)
+  const scopedPage = page?.statsKey === statsKey ? page : undefined
   const exceptions = contentBlockingExceptions(profileId)
-  const site = page?.site ?? null
+  const site = scopedPage?.site ?? null
   return {
     enabled: (getSettings(profileId, 'contentBlocking', false) as boolean) === true,
-    sessionBlocked: session.blocked,
-    topHosts: topHosts(session.hosts),
-    pageBlocked: page?.blocked ?? 0,
-    pageHosts: topHosts(page?.hosts ?? new Map()),
+    sessionBlocked: snapshot.blocked,
+    topHosts: topHosts(snapshot.hosts),
+    pageBlocked: scopedPage?.blocked ?? 0,
+    pageHosts: topHosts(scopedPage?.hosts ?? new Map()),
     site,
     siteEnabled: site === null || !exceptions.includes(site),
     exceptions
@@ -533,13 +559,13 @@ export function contentBlockingStats(
 }
 
 function recordBlockedRequest(
-  profileId: string,
+  statsKey: string,
   webContentsId: number | undefined,
   hostname: string
 ): void {
-  const session = sessionCountersFor(profileId)
-  session.blocked += 1
-  incrementHost(session.hosts, hostname)
+  const snapshot = sessionCountersFor(statsKey)
+  snapshot.blocked += 1
+  incrementHost(snapshot.hosts, hostname)
   if (webContentsId === undefined) return
   const page = pageCounters.get(webContentsId)
   if (!page) return
@@ -556,9 +582,16 @@ const attachedSessions = new WeakSet<Session>()
  * `contentBlocking` preference is consulted per request, so toggling it in
  * Settings applies immediately without restarting.
  */
-export function attachContentBlocking(ses: Session, profileId: string): void {
+export function attachContentBlocking(
+  ses: Session,
+  profileId: string,
+  options: { ephemeral?: boolean } = {}
+): void {
   if (attachedSessions.has(ses)) return
   attachedSessions.add(ses)
+  // Rules and exceptions stay profile-scoped; only the counters are isolated.
+  const statsKey = options.ephemeral ? `incognito:${randomUUID()}` : profileId
+  sessionStatsKeys.set(ses, statsKey)
 
   ses.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
     if ((getSettings(profileId, 'contentBlocking', false) as boolean) !== true) {
@@ -586,7 +619,7 @@ export function attachContentBlocking(ses: Session, profileId: string): void {
       callback({ cancel: false })
       return
     }
-    recordBlockedRequest(profileId, webContentsId, hostname)
+    recordBlockedRequest(statsKey, webContentsId, hostname)
     callback({ cancel: true })
   })
 }
