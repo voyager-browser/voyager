@@ -8,6 +8,7 @@ import { registerCookies } from './cookies'
 import { registerDownloads } from './downloads'
 import { registerNotifications } from './notifications'
 import { registerStorageApi } from './storageApi'
+import { registerTts } from './tts'
 import { registerI18n } from './i18n'
 
 let registered = false
@@ -28,6 +29,7 @@ export function registerExtensionApis(): void {
   registerStorageApi()
   registerDownloads()
   registerNotifications()
+  registerTts()
 }
 
 export { refreshCommandShortcuts } from './commands'

@@ -115,6 +115,17 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     },
     events: ['onClicked', 'onClosed', 'onButtonClicked', 'onPermissionLevelChanged']
   },
+  tts: {
+    methods: {
+      speak: { fallback: false },
+      stop: {},
+      pause: {},
+      resume: {},
+      isSpeaking: { fallback: false },
+      getVoices: { fallback: [] }
+    },
+    events: ['onStart', 'onEnd', 'onWordBoundary', 'onError']
+  },
   storage: {
     events: ['onChanged'],
     properties: {
