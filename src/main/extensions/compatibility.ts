@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import type { Session } from 'electron'
 import { refreshCommandShortcuts } from './api'
 import { attachContextMenus } from './api/contextMenus'
+import { attachDeclarativeNetRequest } from './api/declarativeNetRequest'
 import { attachCookieEvents } from './api/cookies'
 import { attachDownloadEvents } from './api/downloads'
 import { attachIdleTracking } from './api/idle'
@@ -32,6 +33,7 @@ export function attachExtensionCompatibility(ses: Session, profileId: string): v
   attachExtensionWebNavigation(ses, profileId)
   attachCookieEvents(ses, profileId)
   attachContextMenus(ses, profileId)
+  attachDeclarativeNetRequest(ses, profileId)
   attachDownloadEvents(ses, profileId)
   attachIdleTracking(ses, profileId)
   attachProxyEvents(ses, profileId)

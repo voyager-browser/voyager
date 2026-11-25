@@ -77,6 +77,21 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     },
     events: ['onChanged']
   },
+  declarativeNetRequest: {
+    methods: {
+      updateDynamicRules: {},
+      getDynamicRules: { fallback: [] },
+      updateSessionRules: {},
+      getSessionRules: { fallback: [] },
+      getEnabledRulesets: { fallback: [] },
+      getAvailableStaticRulesets: { fallback: [] },
+      updateStaticRules: {},
+      getMatchedRules: { fallback: { matchedRules: [] } },
+      isRegexSupported: { fallback: { isSupported: false } },
+      getRuleConfiguration: { fallback: {} }
+    },
+    events: ['onRuleMatchedDebug']
+  },
   contentSettings: {
     events: ['onSettingChanged'],
     properties: {

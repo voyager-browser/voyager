@@ -6,6 +6,7 @@ import { registerCommands } from './commands'
 import { registerContentSettings } from './contentSettings'
 import { registerContextMenus } from './contextMenus'
 import { registerCookies } from './cookies'
+import { registerDeclarativeNetRequest } from './declarativeNetRequest'
 import { registerDownloads } from './downloads'
 import { registerHistory } from './history'
 import { registerIdle } from './idle'
@@ -33,6 +34,7 @@ export function registerExtensionApis(): void {
   registerBookmarks()
   registerBrowsingData()
   registerCookies()
+  registerDeclarativeNetRequest()
   registerI18n()
   registerCommands()
   registerContentSettings()
