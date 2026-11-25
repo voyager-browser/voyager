@@ -199,17 +199,23 @@ export function setFilterListStatusListener(listener: FilterListStatusListener |
 }
 
 function setCustomFilterListError(profileId: string, url: string, message: string): void {
+  const normalized = normalizeCustomFilterUrl(url)
+  // The list can be removed while its request is in flight. Do not resurrect
+  // an error for a URL the profile no longer has selected.
+  if (!normalized || !enabledCustomFilterLists(profileId).includes(normalized)) return
   const errors = customFilterListErrors(profileId)
-  if (errors[url] === message) return
-  errors[url] = message
+  if (errors[normalized] === message) return
+  errors[normalized] = message
   setSettings(profileId, 'customFilterListErrors', errors)
   filterListStatusListener?.(profileId)
 }
 
 function clearCustomFilterListError(profileId: string, url: string): void {
+  const normalized = normalizeCustomFilterUrl(url)
+  if (!normalized) return
   const errors = customFilterListErrors(profileId)
-  if (!(url in errors)) return
-  delete errors[url]
+  if (!(normalized in errors)) return
+  delete errors[normalized]
   setSettings(profileId, 'customFilterListErrors', errors)
   filterListStatusListener?.(profileId)
 }
