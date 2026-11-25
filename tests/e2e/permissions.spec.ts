@@ -184,16 +184,25 @@ test('undo restores every batch of auto-removed permissions', async ({ launchVoy
   const staleDecision = (
     origin: string,
     updatedAt: number,
+    kind: SitePermissionDecision['kind'] = 'camera',
     decision: SitePermissionDecision['decision'] = 'allow'
-  ): SitePermissionDecision => ({ origin, kind: 'camera', decision, updatedAt })
-  const siteA = staleDecision('https://a.example', 1)
-  const siteB = staleDecision('https://b.example', 2)
-  const siteC = staleDecision('https://c.example', 3)
+  ): SitePermissionDecision => ({ origin, kind, decision, updatedAt })
+  const key = (item: SitePermissionDecision): string => `${item.origin}|${item.kind}`
+  const keys = (items: SitePermissionDecision[] | undefined): string[] =>
+    (items ?? []).map(key).sort()
+
+  const siteACamera = staleDecision('https://a.example', 1)
+  const siteAMicrophone = staleDecision(siteACamera.origin, 2, 'microphone')
+  const siteB = staleDecision('https://b.example', 3)
+  const siteC = staleDecision('https://c.example', 4)
 
   const first = await launchVoyager({
     seed: {
       history: { entries: [] },
-      permissions: { decisions: [siteA, siteB], autoRemovedDecisions: [] }
+      permissions: {
+        decisions: [siteACamera, siteAMicrophone, siteB],
+        autoRemovedDecisions: []
+      }
     }
   })
   await expect
@@ -202,15 +211,14 @@ test('undo restores every batch of auto-removed permissions', async ({ launchVoy
         (await first.chrome.evaluate(() => window.voyager.permissions.getState()))
           .autoRemovedDecisions
     )
-    .toHaveLength(2)
+    .toHaveLength(3)
   await first.close()
 
   const afterFirstPass = readPermissions(first.userDataDir)
   expect(afterFirstPass.decisions).toEqual([])
-  expect(afterFirstPass.autoRemovedDecisions?.map((item) => item.origin)).toEqual([
-    siteA.origin,
-    siteB.origin
-  ])
+  expect(keys(afterFirstPass.autoRemovedDecisions)).toEqual(
+    keys([siteACamera, siteAMicrophone, siteB])
+  )
 
   // A later stale grant is removed on the next launch without dropping A or B.
   writePermissions(first.userDataDir, {
@@ -224,38 +232,52 @@ test('undo restores every batch of auto-removed permissions', async ({ launchVoy
         (await second.chrome.evaluate(() => window.voyager.permissions.getState()))
           .autoRemovedDecisions
     )
-    .toHaveLength(3)
+    .toHaveLength(4)
   await second.close()
 
   const afterSecondPass = readPermissions(first.userDataDir)
-  expect(afterSecondPass.autoRemovedDecisions?.map((item) => item.origin)).toEqual([
-    siteA.origin,
-    siteB.origin,
-    siteC.origin
-  ])
+  expect(keys(afterSecondPass.autoRemovedDecisions)).toEqual(
+    keys([siteACamera, siteAMicrophone, siteB, siteC])
+  )
 
-  // Removing C again de-duplicates by origin/category and keeps the newest
-  // decision rather than restoring an older copy on Undo.
-  const newerC = staleDecision(siteC.origin, siteC.updatedAt + 1_000, 'block')
+  // Re-removing one kind for A must supersede only that kind, not A's camera
+  // decision. An origin-only key would drop the camera entry on Undo.
+  const newerMicrophone = staleDecision(
+    siteAMicrophone.origin,
+    siteAMicrophone.updatedAt + 1_000,
+    'microphone',
+    'block'
+  )
   writePermissions(first.userDataDir, {
-    decisions: [newerC],
+    decisions: [newerMicrophone],
     autoRemovedDecisions: afterSecondPass.autoRemovedDecisions
   })
   const third = await launchVoyager({ userDataDir: first.userDataDir })
   const beforeUndo = await third.chrome.evaluate(() => window.voyager.permissions.getState())
   expect(beforeUndo.decisions).toEqual([])
-  expect(beforeUndo.autoRemovedDecisions).toHaveLength(3)
+  expect(beforeUndo.autoRemovedDecisions).toHaveLength(4)
   expect(
-    beforeUndo.autoRemovedDecisions?.find((item) => item.origin === siteC.origin)?.decision
+    beforeUndo.autoRemovedDecisions?.find(
+      (item) => item.origin === siteACamera.origin && item.kind === 'camera'
+    )?.decision
+  ).toBe('allow')
+  expect(
+    beforeUndo.autoRemovedDecisions?.find(
+      (item) => item.origin === siteAMicrophone.origin && item.kind === 'microphone'
+    )?.decision
   ).toBe('block')
 
   const afterUndo = await third.chrome.evaluate(() => window.voyager.permissions.undoAutoRemoval())
-  expect(afterUndo.decisions.map((item) => item.origin)).toEqual([
-    siteA.origin,
-    siteB.origin,
-    siteC.origin
-  ])
-  expect(afterUndo.decisions.find((item) => item.origin === siteC.origin)?.decision).toBe('block')
+  expect(keys(afterUndo.decisions)).toEqual(keys([siteACamera, siteAMicrophone, siteB, siteC]))
+  expect(
+    afterUndo.decisions.find((item) => item.origin === siteACamera.origin && item.kind === 'camera')
+      ?.decision
+  ).toBe('allow')
+  expect(
+    afterUndo.decisions.find(
+      (item) => item.origin === siteAMicrophone.origin && item.kind === 'microphone'
+    )?.decision
+  ).toBe('block')
   expect(afterUndo.autoRemovedDecisions).toEqual([])
   await third.close()
 })
