@@ -2200,9 +2200,10 @@ export function SettingsPage(): React.JSX.Element {
                   Extensions run in this profile only and are loaded again on startup. CRX packages
                   are unpacked into Voyager's profile storage. Web Store downloads depend on Google
                   continuing to serve the extension package. Electron does not implement every
-                  Chrome extension API. Voyager supplies `chrome.webNavigation`, the full
-                  `chrome.tabs` surface, plus `permissions` and native messaging. Emulated APIs are
-                  also available through `browser`, including
+                  Chrome extension API. Voyager supplies native APIs including `action`,
+                  `permissions`, `privacy`, `runtime`, `scripting`, `tabs`, and `webNavigation`,
+                  plus native messaging. Native and emulated APIs are available through both
+                  `chrome` and `browser`; emulated APIs include
                   `accessibilityFeatures.animationPolicy` (the only non-ChromeOS accessibility
                   setting), `alarms`, `bookmarks`, `browsingData`, `cookies`, `i18n`, `commands`,
                   `contextMenus`, `storage`, `downloads`, `notifications`, `tts`, `system.cpu`,
