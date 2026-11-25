@@ -230,7 +230,11 @@ import {
   ungroupTabs,
   unsplitView
 } from '../extensions/tabMetadata'
-import { invokeExtensionApi, registerExtensionApis } from '../extensions/api'
+import {
+  invokeExtensionApi,
+  refreshCommandShortcuts,
+  registerExtensionApis
+} from '../extensions/api'
 import type { ExtensionApiCall } from '../extensions/api/types'
 
 import { isDefaultBrowser, setDefaultBrowser } from '../defaultBrowser'
@@ -1984,7 +1988,9 @@ export function registerIpcHandlers(context: IpcContext): void {
       throw new Error('Choose an extension folder or CRX file first.')
     }
     const profileId = profileFor(event as any)
-    const state = await installExtension(sessionForProfile(profileId), profileId, path)
+    const ses = sessionForProfile(profileId)
+    const state = await installExtension(ses, profileId, path)
+    refreshCommandShortcuts(ses, profileId)
     return publishExtensions(profileId, state)
   })
 
@@ -1993,7 +1999,9 @@ export function registerIpcHandlers(context: IpcContext): void {
       throw new Error('Enter a Chrome Web Store URL or extension id.')
     }
     const profileId = profileFor(event as any)
-    const state = await installExtensionFromStore(sessionForProfile(profileId), profileId, input)
+    const ses = sessionForProfile(profileId)
+    const state = await installExtensionFromStore(ses, profileId, input)
+    refreshCommandShortcuts(ses, profileId)
     return publishExtensions(profileId, state)
   })
 
@@ -2012,6 +2020,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
     }
     const state = uninstallExtension(ses, profileId, path)
+    refreshCommandShortcuts(ses, profileId)
     return publishExtensions(profileId, state)
   })
 

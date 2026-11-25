@@ -1,6 +1,8 @@
 import { join } from 'node:path'
 import type { Session } from 'electron'
+import { refreshCommandShortcuts } from './api'
 import { attachCookieEvents } from './api/cookies'
+import { attachExtensions } from './extensions'
 import { attachExtensionServiceWorkerIpc } from './serviceWorkerIpc'
 import { attachExtensionWebNavigation } from './webNavigation'
 
@@ -25,4 +27,5 @@ export function attachExtensionCompatibility(ses: Session, profileId: string): v
   attachExtensionServiceWorkerIpc(ses)
   attachExtensionWebNavigation(ses, profileId)
   attachCookieEvents(ses, profileId)
+  void attachExtensions(ses, profileId).then(() => refreshCommandShortcuts(ses, profileId))
 }

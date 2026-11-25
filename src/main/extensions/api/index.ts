@@ -2,6 +2,7 @@ import { registerAccessibilityFeatures } from './accessibilityFeatures'
 import { registerAlarms, restoreAlarms } from './alarms'
 import { registerBookmarks } from './bookmarks'
 import { registerBrowsingData } from './browsingData'
+import { registerCommands } from './commands'
 import { registerCookies } from './cookies'
 import { registerI18n } from './i18n'
 
@@ -18,6 +19,9 @@ export function registerExtensionApis(): void {
   registerBrowsingData()
   registerCookies()
   registerI18n()
+  registerCommands()
 }
+
+export { refreshCommandShortcuts } from './commands'
 
 export { invokeExtensionApi } from './registry'

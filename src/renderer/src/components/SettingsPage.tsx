@@ -2204,12 +2204,12 @@ export function SettingsPage(): React.JSX.Element {
                   `chrome.tabs` surface, plus `permissions` and native messaging. Emulated APIs are
                   also available through `browser`, including
                   `accessibilityFeatures.animationPolicy` (the only non-ChromeOS accessibility
-                  setting), `alarms`, `bookmarks`, `browsingData`, `cookies`, and `i18n`. Tab
-                  details are limited to sites the extension can access. Cross-window `tabs.move`
-                  recreates the tab with a new id, and `tabs.connect` is unavailable because
-                  Electron cannot bridge long-lived connections to content scripts.
-                  `tabs.sendMessage` and `tabs.executeScript` use Electron's native support where
-                  available.
+                  setting), `alarms`, `bookmarks`, `browsingData`, `cookies`, `i18n`, and
+                  `commands`. Tab details are limited to sites the extension can access.
+                  Cross-window `tabs.move` recreates the tab with a new id, and `tabs.connect` is
+                  unavailable because Electron cannot bridge long-lived connections to content
+                  scripts. `tabs.sendMessage` and `tabs.executeScript` use Electron's native support
+                  where available.
                 </p>
               </section>
             )}

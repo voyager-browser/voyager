@@ -71,6 +71,12 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       getUILanguage: { fallback: 'en' },
       getAcceptLanguages: { fallback: ['en'] }
     }
+  },
+  commands: {
+    methods: {
+      getAll: { fallback: [] }
+    },
+    events: ['onCommand']
   }
 }
 
