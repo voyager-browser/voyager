@@ -42,3 +42,23 @@ test('stops a block run value before a sibling env section', () => {
 
   assert.deepEqual(summarize(commands), [{ line: 5, text: 'echo safe' }])
 })
+
+test('honors an explicit block indentation indicator', () => {
+  const commands = commandLines(
+    [
+      'jobs:',
+      '  release:',
+      '    steps:',
+      '      - run: |2',
+      '            echo first',
+      '          echo "${{ github.ref_name }}"',
+      '        env:',
+      '          TAG: ${{ github.ref_name }}'
+    ].join('\n')
+  )
+
+  assert.deepEqual(summarize(commands), [
+    { line: 5, text: 'echo first' },
+    { line: 6, text: 'echo "${{ github.ref_name }}"' }
+  ])
+})
