@@ -37,6 +37,10 @@ export function broadcastExtensionApiEvent(
   try {
     const partition = profilePartition(profileId)
     const ses = partition ? session.fromPartition(partition) : session.defaultSession
+    // Most sessions have no extensions at all. Skip the webContents and
+    // service-worker enumeration entirely when nobody can receive the event;
+    // this also keeps shutdown from touching Electron objects being torn down.
+    if (ses.extensions.getAllExtensions().length === 0) return
     const allowed = (target: ExtensionTarget): boolean => {
       const id = extensionIdFromUrl(
         'getURL' in target ? target.getURL() : (target as ServiceWorkerMain).scope
