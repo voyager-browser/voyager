@@ -77,6 +77,16 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       getAll: { fallback: [] }
     },
     events: ['onCommand']
+  },
+  contextMenus: {
+    methods: {
+      create: {},
+      update: {},
+      remove: {},
+      removeAll: {},
+      getAll: { fallback: [] }
+    },
+    events: ['onClicked', 'onRemoved']
   }
 }
 
@@ -92,4 +102,6 @@ export interface ExtensionApiEventPayload {
   path: string[]
   event: string
   args: unknown[]
+  /** Deliver only to the owning extension when an event is extension-specific. */
+  extensionId?: string
 }

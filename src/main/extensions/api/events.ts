@@ -31,6 +31,7 @@ export function broadcastExtensionApiEvent(
       'getURL' in target ? target.getURL() : (target as ServiceWorkerMain).scope
     )
     if (!id) return false
+    if (payload.extensionId && id !== payload.extensionId) return false
     const extension = ses.extensions.getAllExtensions().find((item) => item.id === id)
     if (!extension) return false
     const manifest = (extension.manifest ?? {}) as Record<string, unknown>
