@@ -8,6 +8,7 @@ import { registerContextMenus } from './contextMenus'
 import { registerCookies } from './cookies'
 import { registerDeclarativeNetRequest } from './declarativeNetRequest'
 import { registerDownloads } from './downloads'
+import { registerExtension } from './extension'
 import { registerHistory } from './history'
 import { registerIdle } from './idle'
 import { registerNotifications } from './notifications'
@@ -42,6 +43,7 @@ export function registerExtensionApis(): void {
   registerContextMenus()
   registerStorageApi()
   registerDownloads()
+  registerExtension()
   registerHistory()
   registerIdle()
   registerNotifications()

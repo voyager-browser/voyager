@@ -79,6 +79,18 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     },
     events: ['onChanged']
   },
+  extension: {
+    methods: {
+      getURL: { fallback: '' },
+      getManifest: { fallback: {} },
+      getId: { fallback: '' },
+      getExtension: { fallback: null },
+      sendMessage: { fallback: false },
+      isAllowedIncognitoAccess: { fallback: false },
+      isAllowedFileSchemeAccess: { fallback: false }
+    },
+    events: ['onInstalled', 'onUpdateAvailable', 'onSuspend']
+  },
   declarativeNetRequest: {
     methods: {
       updateDynamicRules: {},
