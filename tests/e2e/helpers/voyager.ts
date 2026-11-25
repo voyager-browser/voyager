@@ -19,6 +19,8 @@ export interface LaunchOptions {
   downloadDir: string
   seed?: Record<string, unknown>
   args?: string[]
+  /** Notified right after Electron spawns, before setup steps can fail. */
+  onApp?: (app: ElectronApplication) => void
 }
 
 export interface VoyagerApp {
@@ -57,6 +59,38 @@ export async function pollUntil<T>(
     await delay(interval)
   }
   throw new Error(`Timed out after ${timeout}ms waiting for condition`)
+}
+
+const closedApps = new WeakSet<ElectronApplication>()
+
+/**
+ * Close an Electron app at most once. A failed setup and fixture teardown can
+ * both try to close the same raw app, so the cleanup path stays idempotent.
+ */
+export async function closeElectronApp(app: ElectronApplication): Promise<void> {
+  if (closedApps.has(app)) return
+  closedApps.add(app)
+  await app.close().catch(() => undefined)
+}
+
+export interface AppRegistry {
+  register(app: ElectronApplication): void
+  closeAll(): Promise<void>
+}
+
+/** Track apps as soon as they spawn so teardown can clean up failed setups. */
+export function createAppRegistry(): AppRegistry {
+  const apps = new Set<ElectronApplication>()
+  return {
+    register: (app) => {
+      apps.add(app)
+    },
+    closeAll: async () => {
+      const pending = [...apps]
+      apps.clear()
+      for (const app of pending) await closeElectronApp(app)
+    }
+  }
 }
 
 function isChromePage(page: Page): boolean {
@@ -177,73 +211,79 @@ export async function launchVoyager(options: LaunchOptions): Promise<VoyagerApp>
     env
   })
 
-  await installClipboardStub(app)
-  const chrome = await waitForChrome(app)
-  await installDownloadHandler(app, options.downloadDir)
-  const tab = await waitForTab(app)
+  try {
+    options.onApp?.(app)
 
-  let closed = false
-  const close = async (): Promise<void> => {
-    if (closed) return
-    closed = true
-    await app.close().catch(() => undefined)
-  }
+    await installClipboardStub(app)
+    const chrome = await waitForChrome(app)
+    await installDownloadHandler(app, options.downloadDir)
+    const tab = await waitForTab(app)
 
-  const voyager: VoyagerApp = {
-    app,
-    chrome,
-    tab,
-    userDataDir: options.userDataDir,
-    downloadDir: options.downloadDir,
-    close,
-    pages: () => app.windows().filter((page) => !page.isClosed()),
-    tabPages: () => app.windows().filter((page) => !page.isClosed() && isTabPage(page)),
-    tabPage: (urlPart) =>
-      pollUntil(() =>
-        app
-          .windows()
-          .filter((page) => !page.isClosed())
-          .find((page) => page.url().includes(urlPart))
-      ),
-    state: () => chrome.evaluate(() => window.voyager.tabs.getState()),
-    activeTab: async () => {
-      const state = await voyageState(chrome)
-      const tab = state.tabs.find((candidate) => candidate.id === state.activeTabId)
-      if (!tab) throw new Error('No active tab')
-      return tab
-    },
-    waitForTab: (predicate, timeout) =>
-      pollUntil(async () => {
-        try {
-          const tab = await voyager.activeTab()
-          return predicate(tab) ? tab : undefined
-        } catch {
-          return undefined
-        }
-      }, timeout),
-    navigate: async (url, expectedUrl = url) => {
-      let issued = false
-      return pollUntil(
-        async () => {
+    const close = async (): Promise<void> => {
+      await closeElectronApp(app)
+    }
+
+    const voyager: VoyagerApp = {
+      app,
+      chrome,
+      tab,
+      userDataDir: options.userDataDir,
+      downloadDir: options.downloadDir,
+      close,
+      pages: () => app.windows().filter((page) => !page.isClosed()),
+      tabPages: () => app.windows().filter((page) => !page.isClosed() && isTabPage(page)),
+      tabPage: (urlPart) =>
+        pollUntil(() =>
+          app
+            .windows()
+            .filter((page) => !page.isClosed())
+            .find((page) => page.url().includes(urlPart))
+        ),
+      state: () => chrome.evaluate(() => window.voyager.tabs.getState()),
+      activeTab: async () => {
+        const state = await voyageState(chrome)
+        const tab = state.tabs.find((candidate) => candidate.id === state.activeTabId)
+        if (!tab) throw new Error('No active tab')
+        return tab
+      },
+      waitForTab: (predicate, timeout) =>
+        pollUntil(async () => {
           try {
-            const before = await voyager.activeTab()
-            if (!issued || (before.url !== expectedUrl && !before.loading)) {
-              issued = true
-              await chrome.evaluate((target) => window.voyager.navigation.go(target), url)
-            }
             const tab = await voyager.activeTab()
-            return tab.url === expectedUrl && !tab.loading ? tab : undefined
+            return predicate(tab) ? tab : undefined
           } catch {
             return undefined
           }
-        },
-        20_000,
-        250
-      )
+        }, timeout),
+      navigate: async (url, expectedUrl = url) => {
+        let issued = false
+        return pollUntil(
+          async () => {
+            try {
+              const before = await voyager.activeTab()
+              if (!issued || (before.url !== expectedUrl && !before.loading)) {
+                issued = true
+                await chrome.evaluate((target) => window.voyager.navigation.go(target), url)
+              }
+              const tab = await voyager.activeTab()
+              return tab.url === expectedUrl && !tab.loading ? tab : undefined
+            } catch {
+              return undefined
+            }
+          },
+          20_000,
+          250
+        )
+      }
     }
-  }
 
-  return voyager
+    return voyager
+  } catch (error) {
+    // Setup failed after Electron spawned: close the raw app before surfacing
+    // the error so fixtures never leave an orphaned process behind.
+    await closeElectronApp(app)
+    throw error
+  }
 }
 
 async function voyageState(chrome: Page): Promise<BrowserState> {

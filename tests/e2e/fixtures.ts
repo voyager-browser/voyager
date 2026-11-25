@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startTestServer, type TestServer } from './helpers/server'
-import { launchVoyager, type VoyagerApp } from './helpers/voyager'
+import { createAppRegistry, launchVoyager, type VoyagerApp } from './helpers/voyager'
 
 const capturedApps = new WeakSet<VoyagerApp>()
 
@@ -69,12 +69,15 @@ export const test = base.extend<Fixtures>({
 
   launchVoyager: async ({ userDataDir, downloadDir }, provide, testInfo) => {
     const launched: VoyagerApp[] = []
+    const apps = createAppRegistry()
     const launch = async (overrides: LaunchOverrides = {}): Promise<VoyagerApp> => {
       const voyager = await launchVoyager({
         userDataDir: overrides.userDataDir ?? userDataDir,
         downloadDir,
         seed: overrides.seed,
-        args: overrides.args
+        args: overrides.args,
+        // Register the raw app before setup can fail so teardown still sees it.
+        onApp: (app) => apps.register(app)
       })
       const close = voyager.close
       voyager.close = async () => {
@@ -86,6 +89,8 @@ export const test = base.extend<Fixtures>({
     }
     await provide(launch)
     for (const voyager of launched) await voyager.close()
+    // Apps registered before a failed setup never became VoyagerApps.
+    await apps.closeAll()
   },
 
   voyager: async ({ launchVoyager }, provide) => {
