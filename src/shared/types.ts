@@ -219,6 +219,8 @@ export interface BookmarkClipboard {
   mode: 'copy' | 'cut'
   kind: BookmarkNodeKind
   id: string
+  /** Profile that owns the node referenced by `id`. */
+  sourceProfileId: string
 }
 
 export interface BookmarksState {

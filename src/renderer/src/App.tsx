@@ -49,9 +49,13 @@ export default function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    const { applyState } = useBookmarksStore.getState()
+    const { applyState, applyClipboard } = useBookmarksStore.getState()
     void window.voyager.bookmarks.getState().then(applyState)
-    return window.voyager.bookmarks.onStateChanged(applyState)
+    const unsubscribes = [
+      window.voyager.bookmarks.onStateChanged(applyState),
+      window.voyager.bookmarks.onClipboardChanged(applyClipboard)
+    ]
+    return () => unsubscribes.forEach((unsubscribe) => unsubscribe())
   }, [])
 
   useEffect(() => {

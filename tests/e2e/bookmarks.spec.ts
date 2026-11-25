@@ -3,12 +3,32 @@ import type { ElectronApplication, Page } from '@playwright/test'
 import type { BookmarkMoveInput } from '../../src/shared/types'
 import { isNewTab } from '../../src/shared/url'
 import { BOOKMARKS_BAR_HEIGHT, DEFAULT_CHROME_HEIGHT } from '../../src/main/window/ChromeLayout'
-import { pressPageShortcut, primaryKey, primaryModifier, windowCount } from './helpers/voyager'
+import {
+  pollUntil,
+  pressPageShortcut,
+  primaryKey,
+  primaryModifier,
+  windowCount
+} from './helpers/voyager'
 
 async function chromePages(app: ElectronApplication): Promise<Page[]> {
   return app
     .windows()
     .filter((page) => !page.isClosed() && /\/renderer\/index\.html(?:[?#]|$)/.test(page.url()))
+}
+
+async function chromePageForProfile(app: ElectronApplication, profileId: string): Promise<Page> {
+  return pollUntil(async () => {
+    for (const page of await chromePages(app)) {
+      try {
+        const state = await page.evaluate(() => window.voyager?.windows?.getState())
+        if (state?.profile.id === profileId && !state.incognito) return page
+      } catch {
+        // The renderer may not have exposed the bridge yet.
+      }
+    }
+    return undefined
+  })
 }
 
 /** Chrome view height of every browser window, in main-process window order. */
@@ -684,4 +704,88 @@ test('dropping a bookmark or folder onto itself leaves its position unchanged', 
   expect(after.folders.map((folder) => folder.id)).toEqual(
     before.folders.map((folder) => folder.id)
   )
+})
+
+test('copies and cuts bookmarks across profiles without losing the clipboard', async ({
+  voyager,
+  server
+}) => {
+  const defaultProfileId = (await voyager.chrome.evaluate(() => window.voyager.windows.getState()))
+    .profile.id
+  const secondProfile = await voyager.chrome.evaluate(() =>
+    window.voyager.profiles.create({ name: 'Clipboard Target' })
+  )
+  await voyager.chrome.evaluate((id) => window.voyager.profiles.openWindow(id), secondProfile.id)
+  await expect.poll(async () => (await chromePages(voyager.app)).length).toBe(2)
+  const targetChrome = await chromePageForProfile(voyager.app, secondProfile.id)
+
+  const url = server.url('/home')
+  const sourceItem = await voyager.chrome.evaluate(async (targetUrl: string) => {
+    const state = await window.voyager.bookmarks.add({ title: 'Shared page', url: targetUrl })
+    const item = state.items.find((candidate) => candidate.url === targetUrl)
+    if (!item) throw new Error('Bookmark not created')
+    await window.voyager.bookmarks.copy('bookmark', item.id)
+    return item
+  }, url)
+
+  const copyClipboard = {
+    mode: 'copy',
+    kind: 'bookmark',
+    id: sourceItem.id,
+    sourceProfileId: defaultProfileId
+  }
+  // The clipboard is app-wide, so the already-open target window enables Paste.
+  await expect
+    .poll(
+      async () => (await targetChrome.evaluate(() => window.voyager.bookmarks.getState())).clipboard
+    )
+    .toEqual(copyClipboard)
+  await targetChrome.locator('body').press(`${primaryKey()}+Shift+O`)
+  const manager = targetChrome.getByRole('dialog', { name: 'Bookmarks Manager' })
+  await expect(manager.getByRole('button', { name: 'Paste' })).toBeEnabled()
+
+  // A failed paste must not destroy the node copied in the source profile.
+  const rejected = await targetChrome.evaluate(async () => {
+    try {
+      await window.voyager.bookmarks.paste('missing-folder')
+      return false
+    } catch {
+      return true
+    }
+  })
+  expect(rejected).toBe(true)
+  expect(
+    (await targetChrome.evaluate(() => window.voyager.bookmarks.getState())).clipboard
+  ).toEqual(copyClipboard)
+
+  const copied = await targetChrome.evaluate(async () => window.voyager.bookmarks.paste(null))
+  expect(copied.items).toHaveLength(1)
+  expect(copied.items[0]).toMatchObject({ title: 'Shared page', url })
+  expect(copied.items[0].id).not.toBe(sourceItem.id)
+  expect(copied.clipboard).toEqual(copyClipboard)
+  expect(
+    (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).items
+  ).toHaveLength(1)
+
+  // Cutting in A and pasting in B moves the original node and consumes the
+  // clipboard, while both profiles' UIs receive the updated state.
+  await voyager.chrome.evaluate(
+    async (id) => window.voyager.bookmarks.cut('bookmark', id),
+    sourceItem.id
+  )
+  await expect
+    .poll(
+      async () =>
+        (await targetChrome.evaluate(() => window.voyager.bookmarks.getState())).clipboard?.mode
+    )
+    .toBe('cut')
+
+  const moved = await targetChrome.evaluate(async () => window.voyager.bookmarks.paste(null))
+  expect(moved.items.map((item) => item.id)).toContain(sourceItem.id)
+  expect(moved.clipboard).toBeNull()
+  await expect
+    .poll(
+      async () => (await voyager.chrome.evaluate(() => window.voyager.bookmarks.getState())).items
+    )
+    .toEqual([])
 })

@@ -85,6 +85,7 @@ export const IpcChannels = {
   BookmarksToggleBar: 'bookmarks:toggle-bar',
   BookmarksClear: 'bookmarks:clear',
   BookmarksStateChanged: 'bookmarks:state-changed',
+  BookmarksClipboardChanged: 'bookmarks:clipboard-changed',
 
   PermissionsGetState: 'permissions:get-state',
   PermissionsGetForOrigin: 'permissions:get-for-origin',

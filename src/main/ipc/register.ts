@@ -34,6 +34,7 @@ import {
   addFolder,
   clearBookmarks,
   copyBookmarkNode,
+  currentBookmarkClipboard,
   currentBookmarksState,
   cutBookmarkNode,
   moveBookmarkNode,
@@ -667,8 +668,13 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   const broadcastBookmarks =
     (profileId: string) =>
-    (state: BookmarksState): void =>
-      sendToProfile(profileId, IpcChannels.BookmarksStateChanged, state)
+    (state: BookmarksState, stateProfileId?: string): void =>
+      sendToProfile(stateProfileId ?? profileId, IpcChannels.BookmarksStateChanged, state)
+
+  // The internal clipboard is app-wide: every profile's chrome needs to know
+  // when a node was copied elsewhere so Paste can be enabled immediately.
+  const broadcastBookmarkClipboard = (): void =>
+    broadcastToAll(IpcChannels.BookmarksClipboardChanged, currentBookmarkClipboard())
 
   ipcMain.handle(IpcChannels.BookmarksGetState, (event) =>
     currentBookmarksState(profileFor(event as any))
@@ -802,9 +808,11 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(IpcChannels.BookmarksRemoveFolder, (event, id: string) => {
     const profileId = profileFor(event as any)
-    return removeFolder(profileId, id, broadcastBookmarks(profileId), (visible) =>
+    const state = removeFolder(profileId, id, broadcastBookmarks(profileId), (visible) =>
       setBookmarksBarVisibleForProfile(profileId, visible)
     )
+    broadcastBookmarkClipboard()
+    return state
   })
 
   ipcMain.handle(IpcChannels.BookmarksMove, (event, input: BookmarkMoveInput) => {
@@ -814,17 +822,28 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(IpcChannels.BookmarksCopy, (event, kind: BookmarkNodeKind, id: string) => {
     const profileId = profileFor(event as any)
-    return copyBookmarkNode(profileId, kind, id, broadcastBookmarks(profileId))
+    const state = copyBookmarkNode(profileId, kind, id, broadcastBookmarks(profileId))
+    broadcastBookmarkClipboard()
+    return state
   })
 
   ipcMain.handle(IpcChannels.BookmarksCut, (event, kind: BookmarkNodeKind, id: string) => {
     const profileId = profileFor(event as any)
-    return cutBookmarkNode(profileId, kind, id, broadcastBookmarks(profileId))
+    const state = cutBookmarkNode(profileId, kind, id, broadcastBookmarks(profileId))
+    broadcastBookmarkClipboard()
+    return state
   })
 
   ipcMain.handle(IpcChannels.BookmarksPaste, (event, parentId: string | null) => {
     const profileId = profileFor(event as any)
-    return pasteBookmarkNode(profileId, parentId, broadcastBookmarks(profileId))
+    const state = pasteBookmarkNode(
+      profileId,
+      parentId,
+      broadcastBookmarks(profileId),
+      (targetProfileId, visible) => setBookmarksBarVisibleForProfile(targetProfileId, visible)
+    )
+    broadcastBookmarkClipboard()
+    return state
   })
 
   ipcMain.handle(
@@ -886,9 +905,11 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(IpcChannels.BookmarksClear, (event) => {
     const profileId = profileFor(event as any)
-    return clearBookmarks(profileId, broadcastBookmarks(profileId), (visible) =>
+    const state = clearBookmarks(profileId, broadcastBookmarks(profileId), (visible) =>
       setBookmarksBarVisibleForProfile(profileId, visible)
     )
+    broadcastBookmarkClipboard()
+    return state
   })
 
   ipcMain.handle(IpcChannels.BookmarksToggleBar, (event) => {
