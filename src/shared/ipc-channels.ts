@@ -170,6 +170,8 @@ export const IpcChannels = {
   ExtensionPrivacyGet: 'extension:privacy-get',
   ExtensionPrivacySet: 'extension:privacy-set',
   ExtensionPrivacyChangedEvent: 'extension:privacy-changed-event',
+  ExtensionApiCall: 'extension:api-call',
+  ExtensionApiEvent: 'extension:api-event',
   NativeMessagingHostsGet: 'native-messaging:hosts-get',
   NativeMessagingHostsSet: 'native-messaging:hosts-set',
 

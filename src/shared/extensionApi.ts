@@ -1,0 +1,41 @@
+/** Declarative description of the cross-platform Chrome APIs Voyager emulates. */
+export interface ExtensionApiMethodDefinition {
+  /** Value returned to callbacks/promises when the bridge is unavailable. */
+  fallback?: unknown
+}
+
+export interface ExtensionApiNode {
+  methods?: Record<string, ExtensionApiMethodDefinition>
+  events?: string[]
+  constants?: Record<string, unknown>
+  properties?: Record<string, ExtensionApiNode>
+}
+
+export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
+  accessibilityFeatures: {
+    properties: {
+      animationPolicy: {
+        methods: {
+          get: {},
+          set: {},
+          clear: {}
+        },
+        events: ['onChange']
+      }
+    }
+  }
+}
+
+/** Renderer-to-main request for one emulated extension API call. */
+export interface ExtensionApiCallRequest {
+  path: string[]
+  method: string
+  args: unknown[]
+}
+
+/** Main-to-renderer notification for one emulated extension API event. */
+export interface ExtensionApiEventPayload {
+  path: string[]
+  event: string
+  args: unknown[]
+}

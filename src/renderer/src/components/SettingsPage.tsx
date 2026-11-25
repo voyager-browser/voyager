@@ -2201,11 +2201,14 @@ export function SettingsPage(): React.JSX.Element {
                   are unpacked into Voyager's profile storage. Web Store downloads depend on Google
                   continuing to serve the extension package. Electron does not implement every
                   Chrome extension API. Voyager supplies `chrome.webNavigation`, the full
-                  `chrome.tabs` surface, plus `permissions` and native messaging. Tab details are
-                  limited to sites the extension can access. Cross-window `tabs.move` recreates the
-                  tab with a new id, and `tabs.connect` is unavailable because Electron cannot
-                  bridge long-lived connections to content scripts. `tabs.sendMessage` and
-                  `tabs.executeScript` use Electron's native support where available.
+                  `chrome.tabs` surface, plus `permissions` and native messaging. Emulated APIs are
+                  also available through `browser`, including
+                  `accessibilityFeatures.animationPolicy` (the only non-ChromeOS accessibility
+                  setting). Tab details are limited to sites the extension can access. Cross-window
+                  `tabs.move` recreates the tab with a new id, and `tabs.connect` is unavailable
+                  because Electron cannot bridge long-lived connections to content scripts.
+                  `tabs.sendMessage` and `tabs.executeScript` use Electron's native support where
+                  available.
                 </p>
               </section>
             )}

@@ -230,6 +230,8 @@ import {
   ungroupTabs,
   unsplitView
 } from '../extensions/tabMetadata'
+import { invokeExtensionApi, registerExtensionApis } from '../extensions/api'
+import type { ExtensionApiCall } from '../extensions/api/types'
 
 import { isDefaultBrowser, setDefaultBrowser } from '../defaultBrowser'
 import {
@@ -383,6 +385,8 @@ function userPreferences(profileId: string): UserPreferences {
 }
 
 export function registerIpcHandlers(context: IpcContext): void {
+  registerExtensionApis()
+
   // Apply the persisted theme before any renderer starts.
   nativeTheme.themeSource = getThemeMode()
   lastThemeDark = nativeTheme.shouldUseDarkColors
@@ -2693,6 +2697,15 @@ export function registerIpcHandlers(context: IpcContext): void {
   )
   handleBrowser(IpcChannels.UiSetRailExpanded, (event, expanded: boolean) =>
     context.getWindow(event as any)?.setRailExpanded(expanded)
+  )
+
+  handleExtension(
+    IpcChannels.ExtensionApiCall,
+    async (event, call: ExtensionApiCall | undefined): Promise<unknown> => {
+      const extensionContext = extensionContextFor(event)
+      if (!extensionContext) throw new Error('The calling extension is unavailable.')
+      return invokeExtensionApi(extensionContext, call as ExtensionApiCall)
+    }
   )
 
   registerExtensionInvokeHandlers(extensionIpcHandlers)

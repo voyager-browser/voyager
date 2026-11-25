@@ -57,4 +57,6 @@ export interface SettingsShape {
   extensionPermissionDecisions?: Record<string, Record<string, 'allow' | 'block'>>
   passwordSavingEnabled?: boolean
   nativeMessagingHosts?: NativeMessagingHost[]
+  /** Values persisted by emulated Chrome extension APIs, keyed by API path. */
+  extensionApiSettings?: Record<string, unknown>
 }

@@ -1,4 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import {
+  EXTENSION_API_SCHEMA,
+  type ExtensionApiCallRequest,
+  type ExtensionApiEventPayload,
+  type ExtensionApiNode
+} from '../shared/extensionApi'
 import type { ExtensionTabsEventDetails } from '../shared/extensionTabEvents'
 import type { ExtensionWebNavigationDetails } from '../shared/extensionNavigation'
 import { IpcChannels } from '../shared/ipc-channels'
@@ -32,6 +38,7 @@ const NATIVE_DISCONNECT_BRIDGE = '__voyagerExtensionNativeDisconnect'
 const NATIVE_SEND_BRIDGE = '__voyagerExtensionNativeSend'
 const PRIVACY_GET_BRIDGE = '__voyagerExtensionPrivacyGet'
 const PRIVACY_SET_BRIDGE = '__voyagerExtensionPrivacySet'
+const API_CALL_BRIDGE = '__voyagerExtensionApiCall'
 
 /**
  * Extension service workers can start before a main-process IPC handler is
@@ -933,6 +940,174 @@ const install = function install(): void {
   }
 }
 
+/**
+ * Generic bridge for emulated Chrome APIs that Electron does not implement.
+ * Unlike the one-off shims above, method lists, events, and constants come from
+ * a serialized schema so each namespace only needs a main-process handler.
+ */
+const installExtensionApi = function installExtensionApi(
+  schema: Record<string, ExtensionApiNode>
+): void {
+  const chrome = (globalThis as any).chrome
+  if (!chrome || typeof chrome !== 'object') return
+
+  const define = (target: any, key: string, value: any): void => {
+    try {
+      Object.defineProperty(target, key, {
+        value,
+        enumerable: true,
+        configurable: true,
+        writable: true
+      })
+    } catch {
+      try {
+        target[key] = value
+      } catch {
+        // A frozen binding cannot accept an emulated member.
+      }
+    }
+  }
+
+  const browser =
+    (globalThis as any).browser && typeof (globalThis as any).browser === 'object'
+      ? (globalThis as any).browser
+      : {}
+  if (!(globalThis as any).browser) define(globalThis, 'browser', browser)
+
+  const listeners = new Map<string, Set<(...args: any[]) => void>>()
+  const events = new Map<string, any>()
+  const eventKey = (path: string[], event: string): string => `${path.join('.')}.${event}`
+  const makeEvent = (key: string): any => {
+    let event = events.get(key)
+    if (event) return event
+    const registered = new Set<(...args: any[]) => void>()
+    listeners.set(key, registered)
+    event = {
+      addListener(listener: (...args: any[]) => void): void {
+        if (typeof listener === 'function') registered.add(listener)
+      },
+      removeListener(listener: (...args: any[]) => void): void {
+        registered.delete(listener)
+      },
+      hasListener(listener: (...args: any[]) => void): boolean {
+        return registered.has(listener)
+      }
+    }
+    events.set(key, event)
+    return event
+  }
+
+  Object.defineProperty(globalThis, '__voyagerExtensionApiEventDispatch', {
+    value: (payload: ExtensionApiEventPayload | undefined): void => {
+      if (!payload || !Array.isArray(payload.path)) return
+      const registered = listeners.get(eventKey(payload.path, payload.event))
+      if (!registered) return
+      const args = Array.isArray(payload.args) ? payload.args : []
+      for (const listener of [...registered]) {
+        try {
+          listener(...args)
+        } catch {
+          // A broken extension listener must not break Voyager or other extensions.
+        }
+      }
+    },
+    configurable: true
+  })
+
+  const setLastError = (message: string): void => {
+    const runtime = chrome.runtime ?? {}
+    define(runtime, 'lastError', { message })
+    if (!chrome.runtime) define(chrome, 'runtime', runtime)
+  }
+  const clearLastError = (): void => {
+    const runtime = chrome.runtime
+    if (!runtime) return
+    try {
+      delete runtime.lastError
+    } catch {
+      // Some native bindings do not expose a deletable lastError field.
+    }
+  }
+
+  const callBridge = (globalThis as any).__voyagerExtensionApiCall
+  const makeMethod =
+    (path: string[], method: string, fallback: unknown) =>
+    (...args: any[]): Promise<any> => {
+      clearLastError()
+      const callback = args.find(
+        (value): value is (...values: any[]) => void => typeof value === 'function'
+      )
+      const payload: ExtensionApiCallRequest = {
+        path,
+        method,
+        args: args.filter((value) => typeof value !== 'function')
+      }
+      const invoke = typeof callBridge === 'function' ? callBridge(payload) : undefined
+      const result = Promise.resolve(invoke)
+        .then((value) => {
+          if (value === null || value === undefined) return fallback
+          return value
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error)
+          setLastError(message)
+          return fallback
+        })
+      if (callback) void result.then(callback, () => callback(fallback))
+      return result
+    }
+
+  const installNode = (root: any, path: string[], node: ExtensionApiNode): void => {
+    let current = root
+    for (const segment of path) {
+      if (!current[segment] || typeof current[segment] !== 'object') {
+        define(current, segment, {})
+      }
+      current = current[segment]
+    }
+    const fullPath = [...path]
+    for (const [method, definition] of Object.entries(node.methods ?? {})) {
+      define(current, method, makeMethod(fullPath, method, definition?.fallback))
+    }
+    for (const event of node.events ?? []) {
+      define(current, event, makeEvent(eventKey(fullPath, event)))
+    }
+    for (const [key, value] of Object.entries(node.constants ?? {})) {
+      define(current, key, value)
+    }
+    for (const [key, child] of Object.entries(node.properties ?? {})) {
+      installNode(root, [...fullPath, key], child)
+    }
+  }
+
+  for (const [name, node] of Object.entries(schema)) {
+    installNode(chrome, [name], node)
+    installNode(browser, [name], node)
+  }
+
+  // Native Electron APIs still need to be reachable through `browser`.
+  const seen = new WeakSet<object>()
+  const mirror = (target: any, source: any): void => {
+    if (!source || typeof source !== 'object' || seen.has(source)) return
+    seen.add(source)
+    for (const key of Object.keys(source)) {
+      const value = source[key]
+      if (target[key] === undefined) {
+        define(target, key, value)
+        continue
+      }
+      if (value && typeof value === 'object' && target[key] && typeof target[key] === 'object') {
+        mirror(target[key], value)
+      }
+    }
+  }
+  try {
+    mirror(browser, chrome)
+  } catch {
+    // Native bindings can be opaque; schema APIs are already installed above.
+  }
+}
+
 const inExtension =
   typeof globalThis.location === 'undefined' || globalThis.location.protocol === 'chrome-extension:'
 
@@ -1032,6 +1207,24 @@ if (inExtension) {
     }
   )
 
+  ipcRenderer.on(IpcChannels.ExtensionApiEvent, (_event, payload: ExtensionApiEventPayload) => {
+    const dispatch = (value: ExtensionApiEventPayload): void => {
+      const handler = (globalThis as any).__voyagerExtensionApiEventDispatch
+      if (handler) handler(value)
+    }
+    if (process.contextIsolated) {
+      void contextBridge.executeInMainWorld({
+        func: (eventPayload: ExtensionApiEventPayload) => {
+          const handler = (globalThis as any).__voyagerExtensionApiEventDispatch
+          if (handler) handler(eventPayload)
+        },
+        args: [payload]
+      })
+    } else {
+      dispatch(payload)
+    }
+  })
+
   const createTabBridge = (details: ExtensionTabsCreateDetails): Promise<unknown> =>
     safeInvoke(IpcChannels.ExtensionTabsCreate, null, details)
   const tabsCallBridge = (call: unknown): Promise<unknown> =>
@@ -1058,6 +1251,8 @@ if (inExtension) {
     safeInvoke(IpcChannels.ExtensionPrivacyGet, null, key)
   const privacySetBridge = (key: string, value: unknown): Promise<unknown> =>
     safeInvoke(IpcChannels.ExtensionPrivacySet, false, key, value)
+  const extensionApiBridge = (request: ExtensionApiCallRequest): Promise<unknown> =>
+    safeInvoke(IpcChannels.ExtensionApiCall, undefined, request)
 
   const bridges: Record<string, (...args: any[]) => Promise<unknown>> = {
     [TABS_CREATE_BRIDGE]: createTabBridge,
@@ -1070,18 +1265,24 @@ if (inExtension) {
     [NATIVE_DISCONNECT_BRIDGE]: nativeDisconnectBridge,
     [NATIVE_SEND_BRIDGE]: nativeSendBridge,
     [PRIVACY_GET_BRIDGE]: privacyGetBridge,
-    [PRIVACY_SET_BRIDGE]: privacySetBridge
+    [PRIVACY_SET_BRIDGE]: privacySetBridge,
+    [API_CALL_BRIDGE]: extensionApiBridge
   }
   if (process.contextIsolated) {
     for (const [key, value] of Object.entries(bridges)) {
       contextBridge.exposeInMainWorld(key, value)
     }
     void contextBridge.executeInMainWorld({ func: install })
+    void contextBridge.executeInMainWorld({
+      func: installExtensionApi,
+      args: [EXTENSION_API_SCHEMA]
+    })
   } else {
     // Service worker preload realms share the main world.
     for (const [key, value] of Object.entries(bridges)) {
       Object.defineProperty(globalThis, key, { value, configurable: true })
     }
     install()
+    installExtensionApi(EXTENSION_API_SCHEMA)
   }
 }
