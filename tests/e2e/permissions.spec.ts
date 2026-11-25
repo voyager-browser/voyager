@@ -1,11 +1,26 @@
 import type { ElectronApplication, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
-import { openSettings } from './helpers/voyager'
+import { openSettings, pollUntil, type VoyagerApp } from './helpers/voyager'
 
 async function chromePages(app: ElectronApplication): Promise<Page[]> {
   return app
     .windows()
     .filter((page) => !page.isClosed() && /\/renderer\/index\.html(?:[?#]|$)/.test(page.url()))
+}
+
+async function incognitoChromePage(voyager: VoyagerApp): Promise<Page> {
+  return pollUntil(async () => {
+    for (const page of await chromePages(voyager.app)) {
+      if (page === voyager.chrome) continue
+      try {
+        const state = await page.evaluate(() => window.voyager?.windows?.getState())
+        if (state?.incognito) return page
+      } catch {
+        // The renderer bridge may not be exposed yet.
+      }
+    }
+    return undefined
+  })
 }
 
 test('shows a location prompt with the site, action and all three choices', async ({
@@ -109,15 +124,26 @@ test('incognito site-wide permission choices do not leak into the normal profile
   server
 }) => {
   await voyager.chrome.evaluate(() => window.voyager.windows.openIncognito())
-  await expect.poll(async () => (await chromePages(voyager.app)).length).toBeGreaterThanOrEqual(2)
-  const incognitoChrome = (await chromePages(voyager.app)).find((page) => page !== voyager.chrome)
-  if (!incognitoChrome) throw new Error('Incognito window not found')
+  const incognitoChrome = await incognitoChromePage(voyager)
+  await expect
+    .poll(async () => voyager.tabPages().length, { timeout: 10_000 })
+    .toBeGreaterThanOrEqual(2)
+  const incognitoTab = voyager.tabPages().find((page) => page !== voyager.tab)
+  if (!incognitoTab) throw new Error('Incognito tab not found')
 
   await incognitoChrome.evaluate(
     (url) => window.voyager.navigation.go(url),
     server.url('/permissions')
   )
-  const incognitoTab = await voyager.tabPage('/permissions')
+  await expect
+    .poll(
+      async () => {
+        const state = await incognitoChrome.evaluate(() => window.voyager.tabs.getState())
+        return state.tabs[0]?.url
+      },
+      { timeout: 20_000 }
+    )
+    .toContain('/permissions')
   await incognitoTab.getByRole('button', { name: 'Ask for notifications' }).click()
 
   const prompt = incognitoChrome.getByRole('dialog')
