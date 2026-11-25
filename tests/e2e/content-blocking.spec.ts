@@ -121,6 +121,27 @@ test('reports a custom remote list with no valid domains', async ({ voyager, ser
     .toMatch(/No valid hosts entries/)
 })
 
+test('does not save an error for a custom list removed during download', async ({
+  voyager,
+  server
+}) => {
+  const settings = await openSettings(voyager)
+  const listUrl = server.url('/slow-empty-hosts.txt')
+
+  await addCustomFilterList(settings, listUrl)
+  await expect.poll(() => server.hits('/slow-empty-hosts.txt')).toBeGreaterThan(0)
+
+  await settings.getByRole('button', { name: `Remove custom filter list ${listUrl}` }).click()
+  await expect(
+    settings.getByRole('button', { name: `Remove custom filter list ${listUrl}` })
+  ).toHaveCount(0)
+
+  // The delayed failure arrives after removal; its error must not be restored.
+  await settings.waitForTimeout(1_000)
+  const settingsState = await settings.evaluate(() => window.voyager.settings.get())
+  expect(settingsState.customFilterListErrors[listUrl]).toBeUndefined()
+})
+
 test('page info reports blocked requests', async ({ voyager, server }) => {
   await voyager.chrome.evaluate(() => window.voyager.settings.set('contentBlocking', true))
   await voyager.navigate(server.url('/home'))

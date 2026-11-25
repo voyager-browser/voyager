@@ -165,6 +165,12 @@ async function handle(req: URL, res: ServerResponse, counts: Map<string, number>
     res.end('# no domains in this hosts file\n')
     return
   }
+  if (path === '/slow-empty-hosts.txt') {
+    await delay(600)
+    res.setHeader('content-type', 'text/plain; charset=utf-8')
+    res.end('# a removed list fails after the user has already deleted it\n')
+    return
+  }
   if (path === '/prompt') {
     sendHtml(res, promptPage)
     return
