@@ -66,7 +66,8 @@ import type { WindowController } from '../window/WindowController'
 import {
   openSettingsWindow,
   sendToSettingsWindow,
-  settingsProfileFor
+  settingsProfileFor,
+  settingsTargetProfileId
 } from '../window/settingsWindow'
 import {
   activeWindow,
@@ -1218,6 +1219,12 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
     await deleteProfile(id)
     setLastProfileId(DEFAULT_PROFILE_ID)
+    // A Settings window opened for the deleted profile must not keep reading or
+    // writing that profile's stores. Reload it against the default profile
+    // before sending the updated registry so its active id is accurate.
+    if (settingsTargetProfileId() === id) {
+      openSettingsWindow(undefined, DEFAULT_PROFILE_ID)
+    }
     broadcastProfiles()
     void event
     return profilesState(DEFAULT_PROFILE_ID)
