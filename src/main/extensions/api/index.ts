@@ -11,6 +11,7 @@ import { registerDownloads } from './downloads'
 import { registerExtension } from './extension'
 import { registerHistory } from './history'
 import { registerIdle } from './idle'
+import { registerManagement } from './management'
 import { registerNotifications } from './notifications'
 import { registerProxy } from './proxy'
 import { registerSearch } from './search'
@@ -46,6 +47,7 @@ export function registerExtensionApis(): void {
   registerExtension()
   registerHistory()
   registerIdle()
+  registerManagement()
   registerNotifications()
   registerProxy()
   registerSearch()

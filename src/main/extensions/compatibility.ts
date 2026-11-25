@@ -6,6 +6,7 @@ import { attachDeclarativeNetRequest } from './api/declarativeNetRequest'
 import { attachCookieEvents } from './api/cookies'
 import { attachDownloadEvents } from './api/downloads'
 import { attachExtensionLifecycleEvents } from './api/extension'
+import { applyManagementState } from './api/management'
 import { attachIdleTracking } from './api/idle'
 import { attachProxyEvents } from './api/proxy'
 import { attachWebRequest } from './api/webRequest'
@@ -42,6 +43,7 @@ export function attachExtensionCompatibility(ses: Session, profileId: string): v
   attachWebRequest(ses, profileId)
   void attachExtensions(ses, profileId).then(() => {
     attachExtensionLifecycleEvents(ses, profileId)
+    applyManagementState(ses, profileId)
     refreshCommandShortcuts(ses, profileId)
   })
 }

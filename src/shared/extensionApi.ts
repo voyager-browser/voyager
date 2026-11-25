@@ -132,6 +132,19 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     },
     events: ['onVisited', 'onVisitRemoved']
   },
+  management: {
+    methods: {
+      getSelf: { fallback: null },
+      getAll: { fallback: [] },
+      get: { fallback: null },
+      getPermissionWarningsById: { fallback: [] },
+      getPermissionWarningsByManifest: { fallback: [] },
+      setEnabled: {},
+      uninstallSelf: {},
+      launchUrl: {}
+    },
+    events: ['onInstalled', 'onUninstalled', 'onEnabled', 'onDisabled']
+  },
   i18n: {
     methods: {
       getMessage: { fallback: '' },
