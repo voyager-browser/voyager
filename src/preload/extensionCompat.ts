@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { ExtensionTabsEventDetails } from '../shared/extensionTabEvents'
 import type { ExtensionWebNavigationDetails } from '../shared/extensionNavigation'
 import { IpcChannels } from '../shared/ipc-channels'
 
@@ -8,6 +9,11 @@ interface ExtensionTabsCreateDetails {
   url?: string
   active?: boolean
   index?: number
+  pinned?: boolean
+  selected?: boolean
+  openerTabId?: number
+  splitWithTabId?: number
+  windowId?: number
 }
 
 interface ExtensionPermissionsDetails {
@@ -146,13 +152,21 @@ const install = function install(): void {
       const tabs = chrome.tabs ?? {}
       const create = (
         details?: ExtensionTabsCreateDetails,
-        callback?: (tab: { id: number; url?: string }) => void
-      ): Promise<{ id: number; url?: string }> => {
+        callback?: (tab: any) => void
+      ): Promise<any> => {
         const input = details && typeof details === 'object' ? details : {}
-        const result = Promise.resolve(createTab(input)).then((id: unknown) => ({
-          id: typeof id === 'number' ? id : 0,
-          url: typeof input.url === 'string' ? input.url : undefined
-        }))
+        const lookup = (globalThis as any).__voyagerExtensionTabsCall
+        const result = Promise.resolve(createTab(input)).then((id: unknown) => {
+          const tabId = typeof id === 'number' ? id : 0
+          const fallback = {
+            id: tabId,
+            url: typeof input.url === 'string' ? input.url : undefined
+          }
+          if (typeof lookup !== 'function') return fallback
+          return Promise.resolve(lookup({ operation: 'get', tabId })).then(
+            (tab: unknown) => tab ?? fallback
+          )
+        })
         if (typeof callback === 'function') void result.then(callback)
         return result
       }
@@ -183,6 +197,12 @@ const install = function install(): void {
         typeof value === 'number' ? value : undefined
       const optionalCallback = (...values: unknown[]): ((result: any) => void) | undefined =>
         values.find((value): value is (result: any) => void => typeof value === 'function')
+      const idList = (value: unknown): number[] =>
+        Array.isArray(value)
+          ? value.filter((id): id is number => typeof id === 'number')
+          : typeof value === 'number'
+            ? [value]
+            : []
 
       const query = (queryInfoOrCallback?: unknown, maybeCallback?: unknown): Promise<any> => {
         const queryInfo =
@@ -209,18 +229,12 @@ const install = function install(): void {
           [],
           optionalCallback(windowIdOrCallback, maybeCallback)
         )
-      const remove = (tabIdOrIdsOrCallback?: unknown, maybeCallback?: unknown): Promise<any> => {
-        const tabIds = Array.isArray(tabIdOrIdsOrCallback)
-          ? tabIdOrIdsOrCallback
-          : typeof tabIdOrIdsOrCallback === 'number'
-            ? [tabIdOrIdsOrCallback]
-            : []
-        return call(
-          { operation: 'remove', tabIds },
+      const remove = (tabIdOrIdsOrCallback?: unknown, maybeCallback?: unknown): Promise<any> =>
+        call(
+          { operation: 'remove', tabIds: idList(tabIdOrIdsOrCallback) },
           false,
           optionalCallback(tabIdOrIdsOrCallback, maybeCallback)
         )
-      }
       const update = (
         tabId: number,
         properties?: Record<string, unknown>,
@@ -228,11 +242,19 @@ const install = function install(): void {
       ): Promise<any> =>
         call({ operation: 'update', tabId, updateProperties: properties ?? {} }, null, callback)
       const move = (
-        tabId: number,
+        tabIdOrIds: unknown,
         properties?: Record<string, unknown>,
         callback?: (result: any) => void
       ): Promise<any> =>
-        call({ operation: 'move', tabId, moveProperties: properties ?? {} }, null, callback)
+        call(
+          {
+            operation: 'move',
+            tabIds: idList(tabIdOrIds),
+            moveProperties: properties ?? {}
+          },
+          null,
+          callback
+        )
       const duplicate = (tabId: number, callback?: (result: any) => void): Promise<any> =>
         call({ operation: 'duplicate', tabId }, null, callback)
       const reload = (
@@ -241,7 +263,19 @@ const install = function install(): void {
         maybeCallback?: unknown
       ): Promise<any> => {
         const callback = optionalCallback(tabIdOrCallback, propertiesOrCallback, maybeCallback)
-        return call({ operation: 'reload', tabId: selectedTabId(tabIdOrCallback) }, false, callback)
+        const properties =
+          propertiesOrCallback && typeof propertiesOrCallback === 'object'
+            ? (propertiesOrCallback as Record<string, unknown>)
+            : {}
+        return call(
+          {
+            operation: 'reload',
+            tabId: selectedTabId(tabIdOrCallback),
+            bypassCache: properties.bypassCache === true
+          },
+          false,
+          callback
+        )
       }
       const navigation =
         (operation: 'goBack' | 'goForward') =>
@@ -274,6 +308,109 @@ const install = function install(): void {
           optionalCallback(tabIdOrZoom, zoomOrCallback, maybeCallback)
         )
       }
+      const getZoomSettings = (tabIdOrCallback?: unknown, maybeCallback?: unknown): Promise<any> =>
+        call(
+          { operation: 'getZoomSettings', tabId: selectedTabId(tabIdOrCallback) },
+          { defaultZoomFactor: 1, mode: 'automatic', scope: 'per-origin' },
+          optionalCallback(tabIdOrCallback, maybeCallback)
+        )
+      const setZoomSettings = (
+        tabIdOrSettings?: unknown,
+        settingsOrCallback?: unknown,
+        maybeCallback?: unknown
+      ): Promise<any> => {
+        const hasTabId =
+          typeof tabIdOrSettings === 'number' &&
+          typeof settingsOrCallback === 'object' &&
+          settingsOrCallback !== null
+        const zoomSettings = hasTabId ? settingsOrCallback : tabIdOrSettings
+        return call(
+          {
+            operation: 'setZoomSettings',
+            tabId: hasTabId ? (tabIdOrSettings as number) : undefined,
+            zoomSettings:
+              typeof zoomSettings === 'object' && zoomSettings !== null ? zoomSettings : {}
+          },
+          false,
+          optionalCallback(tabIdOrSettings, settingsOrCallback, maybeCallback)
+        )
+      }
+      const discard = (tabIdOrCallback?: unknown, maybeCallback?: unknown): Promise<any> =>
+        call(
+          { operation: 'discard', tabId: selectedTabId(tabIdOrCallback) },
+          null,
+          optionalCallback(tabIdOrCallback, maybeCallback)
+        )
+      const detectLanguage = (tabIdOrCallback?: unknown, maybeCallback?: unknown): Promise<any> =>
+        call(
+          { operation: 'detectLanguage', tabId: selectedTabId(tabIdOrCallback) },
+          'und',
+          optionalCallback(tabIdOrCallback, maybeCallback)
+        )
+      const captureVisibleTab = (
+        windowIdOrOptionsOrCallback?: unknown,
+        optionsOrCallback?: unknown,
+        maybeCallback?: unknown
+      ): Promise<any> => {
+        const callback = optionalCallback(
+          windowIdOrOptionsOrCallback,
+          optionsOrCallback,
+          maybeCallback
+        )
+        const windowId = selectedTabId(windowIdOrOptionsOrCallback)
+        const firstOptions =
+          windowIdOrOptionsOrCallback && typeof windowIdOrOptionsOrCallback === 'object'
+            ? windowIdOrOptionsOrCallback
+            : undefined
+        const secondOptions =
+          optionsOrCallback && typeof optionsOrCallback === 'object' ? optionsOrCallback : undefined
+        return call(
+          {
+            operation: 'captureVisibleTab',
+            windowId,
+            imageDetails: (secondOptions ?? firstOptions) as Record<string, unknown> | undefined
+          },
+          '',
+          callback
+        )
+      }
+      const group = (optionsOrCallback?: unknown, maybeCallback?: unknown): Promise<any> => {
+        const options =
+          optionsOrCallback && typeof optionsOrCallback === 'object'
+            ? (optionsOrCallback as Record<string, any>)
+            : {}
+        return call(
+          {
+            operation: 'group',
+            tabIds: idList(options.tabIds),
+            groupId: typeof options.groupId === 'number' ? options.groupId : undefined,
+            windowId:
+              typeof options.createProperties?.windowId === 'number'
+                ? options.createProperties.windowId
+                : undefined
+          },
+          -1,
+          optionalCallback(optionsOrCallback, maybeCallback)
+        )
+      }
+      const ungroup = (tabIdsOrCallback?: unknown, maybeCallback?: unknown): Promise<any> =>
+        call(
+          { operation: 'ungroup', tabIds: idList(tabIdsOrCallback) },
+          undefined,
+          optionalCallback(tabIdsOrCallback, maybeCallback)
+        )
+      const createSplit = (tabIdsOrCallback?: unknown, maybeCallback?: unknown): Promise<any> =>
+        call(
+          { operation: 'createSplit', tabIds: idList(tabIdsOrCallback) },
+          -1,
+          optionalCallback(tabIdsOrCallback, maybeCallback)
+        )
+      const unsplit = (splitIdOrCallback?: unknown, maybeCallback?: unknown): Promise<any> =>
+        call(
+          { operation: 'unsplit', splitViewId: selectedTabId(splitIdOrCallback) },
+          undefined,
+          optionalCallback(splitIdOrCallback, maybeCallback)
+        )
       const select = (tabId: number, callback?: (result: any) => void): Promise<any> =>
         call({ operation: 'select', tabId }, null, callback)
       const highlight = (
@@ -304,14 +441,241 @@ const install = function install(): void {
         goForward: navigation('goForward'),
         getZoom,
         setZoom,
+        getZoomSettings,
+        setZoomSettings,
+        discard,
+        detectLanguage,
+        captureVisibleTab,
+        group,
+        ungroup,
+        createSplit,
+        unsplit,
         select,
         highlight
       }
       for (const [key, value] of Object.entries(methods)) define(tabs, key, value)
+
+      const nativeTabs = chrome.tabs ?? {}
+      const scripting = chrome.scripting
+      const setLastError = (message: string): void => {
+        const runtime = chrome.runtime ?? {}
+        define(runtime, 'lastError', { message })
+        if (!chrome.runtime) define(chrome, 'runtime', runtime)
+      }
+      const scriptingTarget = (tabId: number): { tabId: number } => ({ tabId })
+      const normalizeScriptingInjection = (
+        details: Record<string, unknown>,
+        kind: 'script' | 'css'
+      ): Record<string, unknown> => {
+        const normalized = { ...details }
+        if (typeof normalized.file === 'string') {
+          normalized.files = [normalized.file]
+          delete normalized.file
+        }
+        if (typeof normalized.code === 'string') {
+          if (kind === 'script') {
+            try {
+              normalized.func = new Function(String(normalized.code))
+            } catch {
+              normalized.func = undefined
+            }
+          } else {
+            normalized.css = normalized.code
+          }
+          delete normalized.code
+        }
+        return normalized
+      }
+      if (typeof nativeTabs.sendMessage !== 'function') {
+        define(
+          tabs,
+          'sendMessage',
+          (
+            _tabId: number,
+            _message: unknown,
+            optionsOrCallback?: unknown,
+            maybeCallback?: unknown
+          ): Promise<undefined> => {
+            const callback = optionalCallback(optionsOrCallback, maybeCallback)
+            setLastError('chrome.tabs.sendMessage is not available in this build.')
+            const result = Promise.resolve(undefined)
+            if (callback) void result.then(callback)
+            return result
+          }
+        )
+      }
+      if (typeof nativeTabs.connect !== 'function') {
+        define(tabs, 'connect', (): never => {
+          throw new Error('chrome.tabs.connect is not supported by Electron.')
+        })
+      }
+      if (typeof nativeTabs.executeScript !== 'function') {
+        define(
+          tabs,
+          'executeScript',
+          (
+            tabIdOrDetails: unknown,
+            detailsOrCallback?: unknown,
+            maybeCallback?: unknown
+          ): Promise<any> => {
+            const callback = optionalCallback(detailsOrCallback, maybeCallback)
+            const tabId = typeof tabIdOrDetails === 'number' ? tabIdOrDetails : undefined
+            const details =
+              typeof tabIdOrDetails === 'object' && tabIdOrDetails !== null
+                ? (tabIdOrDetails as Record<string, unknown>)
+                : typeof detailsOrCallback === 'object' && detailsOrCallback !== null
+                  ? (detailsOrCallback as Record<string, unknown>)
+                  : {}
+            if (tabId === undefined || typeof scripting?.executeScript !== 'function') {
+              setLastError('chrome.tabs.executeScript requires chrome.scripting in this build.')
+              const result = Promise.resolve(undefined)
+              if (callback) void result.then(callback)
+              return result
+            }
+            const result = Promise.resolve(
+              scripting.executeScript({
+                target: scriptingTarget(tabId),
+                ...normalizeScriptingInjection(details, 'script')
+              } as any)
+            ).then((injections: any) => injections?.[0]?.result)
+            if (callback) void result.then(callback)
+            return result
+          }
+        )
+      }
+      if (typeof nativeTabs.insertCSS !== 'function') {
+        define(
+          tabs,
+          'insertCSS',
+          (
+            tabIdOrDetails: unknown,
+            detailsOrCallback?: unknown,
+            maybeCallback?: unknown
+          ): Promise<void> => {
+            const callback = optionalCallback(detailsOrCallback, maybeCallback)
+            const tabId = typeof tabIdOrDetails === 'number' ? tabIdOrDetails : undefined
+            const details =
+              typeof tabIdOrDetails === 'object' && tabIdOrDetails !== null
+                ? (tabIdOrDetails as Record<string, unknown>)
+                : typeof detailsOrCallback === 'object' && detailsOrCallback !== null
+                  ? (detailsOrCallback as Record<string, unknown>)
+                  : {}
+            if (tabId === undefined || typeof scripting?.insertCSS !== 'function') {
+              setLastError('chrome.tabs.insertCSS requires chrome.scripting in this build.')
+              const result = Promise.resolve()
+              if (callback) void result.then(callback)
+              return result
+            }
+            const result = Promise.resolve(
+              scripting.insertCSS({
+                target: scriptingTarget(tabId),
+                ...normalizeScriptingInjection(details, 'css')
+              } as any)
+            ).then(() => undefined)
+            if (callback) void result.then(callback)
+            return result
+          }
+        )
+      }
+      if (typeof nativeTabs.removeCSS !== 'function') {
+        define(
+          tabs,
+          'removeCSS',
+          (
+            tabIdOrDetails: unknown,
+            detailsOrCallback?: unknown,
+            maybeCallback?: unknown
+          ): Promise<void> => {
+            const callback = optionalCallback(detailsOrCallback, maybeCallback)
+            const tabId = typeof tabIdOrDetails === 'number' ? tabIdOrDetails : undefined
+            const details =
+              typeof tabIdOrDetails === 'object' && tabIdOrDetails !== null
+                ? (tabIdOrDetails as Record<string, unknown>)
+                : typeof detailsOrCallback === 'object' && detailsOrCallback !== null
+                  ? (detailsOrCallback as Record<string, unknown>)
+                  : {}
+            if (tabId === undefined || typeof scripting?.removeCSS !== 'function') {
+              setLastError('chrome.tabs.removeCSS requires chrome.scripting in this build.')
+              const result = Promise.resolve()
+              if (callback) void result.then(callback)
+              return result
+            }
+            const result = Promise.resolve(
+              scripting.removeCSS({
+                target: scriptingTarget(tabId),
+                ...normalizeScriptingInjection(details, 'css')
+              } as any)
+            ).then(() => undefined)
+            if (callback) void result.then(callback)
+            return result
+          }
+        )
+      }
       if (!chrome.tabs) define(chrome, 'tabs', tabs)
     } catch (error) {
       console.warn('[voyager] Could not install chrome.tabs shim:', error)
     }
+  }
+
+  try {
+    const tabs = chrome.tabs ?? {}
+    const tabsListeners = new Map<string, Set<(...args: any[]) => void>>()
+    const canonicalTabsEvent = (name: string): string =>
+      name === 'onZoomChanged' ? 'onZoomChange' : name
+    const makeTabsEvent = (name: string) => {
+      const key = canonicalTabsEvent(name)
+      return {
+        addListener(listener: (...args: any[]) => void): void {
+          let set = tabsListeners.get(key)
+          if (!set) {
+            set = new Set()
+            tabsListeners.set(key, set)
+          }
+          set.add(listener)
+        },
+        removeListener(listener: (...args: any[]) => void): void {
+          tabsListeners.get(key)?.delete(listener)
+        },
+        hasListener(listener: (...args: any[]) => void): boolean {
+          return tabsListeners.get(key)?.has(listener) ?? false
+        }
+      }
+    }
+    const eventNames = [
+      'onActivated',
+      'onAttached',
+      'onCreated',
+      'onDetached',
+      'onHighlighted',
+      'onMoved',
+      'onRemoved',
+      'onReplaced',
+      'onUpdated',
+      'onZoomChange',
+      'onZoomChanged'
+    ]
+    for (const name of eventNames) define(tabs, name, makeTabsEvent(name))
+    define(tabs, 'MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND', 2)
+    define(tabs, 'SPLIT_VIEW_ID_NONE', -1)
+    define(tabs, 'TAB_ID_NONE', -1)
+    define(tabs, 'TAB_INDEX_NONE', -1)
+    Object.defineProperty(globalThis, '__voyagerTabsEventDispatch', {
+      value: (details: ExtensionTabsEventDetails): void => {
+        const listeners = tabsListeners.get(canonicalTabsEvent(details.event))
+        if (!listeners) return
+        for (const listener of [...listeners]) {
+          try {
+            listener(...details.args)
+          } catch {
+            // A broken extension listener must not break Voyager or other extensions.
+          }
+        }
+      },
+      configurable: true
+    })
+    if (!chrome.tabs) define(chrome, 'tabs', tabs)
+  } catch (error) {
+    console.warn('[voyager] Could not install chrome.tabs events:', error)
   }
 
   const openOptionsPage = (globalThis as any).__voyagerExtensionOpenOptionsPage
@@ -585,6 +949,24 @@ if (inExtension) {
     } else {
       const dispatch = (globalThis as any).__voyagerWebNavDispatch
       if (dispatch) dispatch(details)
+    }
+  })
+
+  ipcRenderer.on(IpcChannels.ExtensionTabsEvent, (_event, details: ExtensionTabsEventDetails) => {
+    const dispatch = (value: ExtensionTabsEventDetails): void => {
+      const handler = (globalThis as any).__voyagerTabsEventDispatch
+      if (handler) handler(value)
+    }
+    if (process.contextIsolated) {
+      void contextBridge.executeInMainWorld({
+        func: (value: ExtensionTabsEventDetails) => {
+          const handler = (globalThis as any).__voyagerTabsEventDispatch
+          if (handler) handler(value)
+        },
+        args: [details]
+      })
+    } else {
+      dispatch(details)
     }
   })
 

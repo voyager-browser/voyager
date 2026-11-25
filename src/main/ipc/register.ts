@@ -15,9 +15,9 @@ import {
 } from 'electron'
 import { resolve } from 'node:path'
 import type {
-  ExtensionTab,
   ExtensionTabsCall,
-  ExtensionTabsQueryInfo
+  ExtensionTabsCreateProperties,
+  ExtensionZoomSettings
 } from '../../shared/extensionTabs'
 import { IpcChannels } from '../../shared/ipc-channels'
 import {
@@ -38,7 +38,6 @@ import type {
   BookmarkNodeKind,
   BookmarkPatch,
   BookmarksState,
-  BrowserState,
   CertificateExportFormat,
   ClearBrowsingDataOptions,
   ExtensionInfo,
@@ -49,7 +48,6 @@ import type {
   PermissionRequestChoice,
   SettingsTarget,
   SitePermissionsState,
-  TabState,
   ThemeColorPatch,
   ThemeFileInput,
   ThemeMode,
@@ -212,6 +210,26 @@ import {
   webContentsNativeSender,
   type NativeMessagingSender
 } from '../extensions/nativeMessaging'
+import {
+  asExtensionTab,
+  entriesForWindow,
+  extensionTabEntries,
+  extensionWindowId,
+  queryExtensionTabs,
+  type ExtensionTabEntry
+} from '../extensions/tabProjection'
+import { emitTabUpdated, emitZoomChange, emitTabsEvent } from '../extensions/tabEvents'
+import {
+  getZoomSettings,
+  groupTabs,
+  setAutoDiscardable,
+  setTabMutedBy,
+  setTabOpener,
+  setZoomSettings,
+  splitTabs,
+  ungroupTabs,
+  unsplitView
+} from '../extensions/tabMetadata'
 
 import { isDefaultBrowser, setDefaultBrowser } from '../defaultBrowser'
 import {
@@ -910,163 +928,94 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   handleExtension(
     IpcChannels.ExtensionTabsCreate,
-    (
-      event,
-      details: { url?: unknown; active?: unknown; index?: unknown } | undefined
-    ): number | null => {
-      const rawUrl = typeof details?.url === 'string' ? details.url : ''
+    (event, details: ExtensionTabsCreateProperties | undefined): number | null => {
       const context = extensionContextFor(event)
       if (!context) return null
       const sender = extensionSenderFor(event)
       const baseUrl = 'getURL' in sender ? sender.getURL() : sender.scope
-      let url: string
-      try {
-        const resolved = new URL(rawUrl, baseUrl)
-        if (
-          resolved.protocol !== 'http:' &&
-          resolved.protocol !== 'https:' &&
-          resolved.protocol !== 'chrome-extension:'
-        ) {
+      let url: string | undefined
+      const rawUrl = typeof details?.url === 'string' ? details.url : ''
+      if (rawUrl) {
+        try {
+          const resolved = new URL(rawUrl, baseUrl)
+          if (
+            resolved.protocol !== 'http:' &&
+            resolved.protocol !== 'https:' &&
+            resolved.protocol !== 'file:' &&
+            resolved.protocol !== 'chrome-extension:'
+          ) {
+            return null
+          }
+          if (resolved.protocol === 'chrome-extension:') {
+            if (resolved.host !== context.extensionId) return null
+          } else if (
+            !extensionCanAccessSite(context.profileId, context.extensionId, resolved.toString())
+          ) {
+            return null
+          }
+          url = resolved.toString()
+        } catch {
           return null
         }
-        if (resolved.protocol === 'chrome-extension:') {
-          if (resolved.host !== context.extensionId) return null
-        } else if (
-          !extensionCanAccessSite(context.profileId, context.extensionId, resolved.toString())
-        ) {
-          return null
-        }
-        url = resolved.toString()
-      } catch {
-        return null
       }
+
       // Extension service workers are not attached to a browser window, so use
       // a window from the same profile when the sender cannot resolve one.
       const owner = extensionOwnerFor(event, context.profileId)
       if (!owner) return null
-      const tabId = owner.tabs.create({
+      const requestedWindowId = extensionWindowId(owner, details?.windowId)
+      const target =
+        requestedWindowId === null
+          ? null
+          : allWindows().find(
+              (window) =>
+                window.window.id === requestedWindowId &&
+                window.profile === context.profileId &&
+                !window.window.isDestroyed()
+            )
+      if (!target) return null
+
+      const active = details?.active ?? details?.selected ?? true
+      const internalId = target.tabs.create({
         url,
-        active: details?.active !== false,
+        active,
         index: typeof details?.index === 'number' ? details.index : undefined
       })
-      return owner.tabs.webContentsIdForTab(tabId)
+      const tabId = target.tabs.webContentsIdForTab(internalId)
+      if (tabId === null) return null
+      if (details?.pinned === true) target.tabs.pinToggle(internalId)
+      if (typeof details?.openerTabId === 'number') {
+        setTabOpener(tabId, details.openerTabId)
+      }
+      if (typeof details?.splitWithTabId === 'number') {
+        const state = target.tabs.snapshot()
+        const sibling = entriesForWindow(target, state).find(
+          (entry) => entry.webContentsId === details?.splitWithTabId
+        )
+        if (sibling) target.tabs.openSplit(internalId, sibling.internalId)
+      }
+      return tabId
     }
   )
 
-  interface ExtensionTabEntry {
-    window: WindowController
-    state: BrowserState
-    tab: TabState
-    internalId: string
-    webContentsId: number | null
-  }
-
-  type ExtensionTabEntryWithContents = ExtensionTabEntry & { webContentsId: number }
-
-  const extensionTabEntries = (profileId: string): ExtensionTabEntryWithContents[] =>
-    allWindows()
-      .filter((window) => window.profile === profileId && !window.window.isDestroyed())
-      .flatMap((window) => {
-        const state = window.tabs.snapshot()
-        return state.tabs
-          .map((tab) => ({
-            window,
-            state,
-            tab,
-            internalId: tab.id,
-            webContentsId: window.tabs.webContentsIdForTab(tab.id)
-          }))
-          .filter((entry): entry is ExtensionTabEntryWithContents => entry.webContentsId !== null)
-      })
-
-  const extensionWindowId = (owner: WindowController | null, requested?: number): number | null => {
-    if (requested === undefined || requested === -2) return owner?.window.id ?? null
-    return requested
-  }
-
-  const asExtensionTab = (entry: ExtensionTabEntryWithContents): ExtensionTab => {
-    const index = entry.state.tabs.findIndex((tab) => tab.id === entry.internalId)
-    const active = entry.state.activeTabId === entry.internalId
-    const extensionTab: ExtensionTab = {
-      id: entry.webContentsId,
-      index: Math.max(index, 0),
-      windowId: entry.window.window.id ?? 0,
-      active,
-      pinned: entry.tab.pinned,
-      muted: entry.tab.muted,
-      highlighted: active,
-      selected: active,
-      discarded: entry.tab.discarded === true,
-      status: entry.tab.loading ? 'loading' : 'complete',
-      url: entry.tab.url,
-      title: entry.tab.title,
-      favIconUrl: entry.tab.favicon ?? undefined
-    }
-    return extensionTab
-  }
-
-  const extensionTabMatches = (value: unknown, expected: unknown): boolean => {
-    if (expected === undefined) return true
-    if (Array.isArray(expected)) return expected.includes(value)
-    return expected === value
-  }
-
-  const extensionPatternMatches = (
-    value: string | undefined,
-    expected: string | string[]
-  ): boolean => {
-    if (value === undefined) return false
-    const patterns = Array.isArray(expected) ? expected : [expected]
-    return patterns.some((pattern) => {
-      if (pattern === '<all_urls>') return true
-      const expression = pattern
-        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-        .replace(/\*/g, '.*')
-        .replace(/\?/g, '.')
-      return new RegExp(`^${expression}$`).test(value)
-    })
-  }
-
-  const queryExtensionTabs = (
-    entries: ExtensionTabEntryWithContents[],
-    query: ExtensionTabsQueryInfo | undefined,
-    owner: WindowController | null
-  ): ExtensionTabEntryWithContents[] => {
-    if (!query) return entries
-    const requestedWindowId = query.windowId === -2 ? (owner?.window.id ?? null) : query.windowId
-    return entries.filter((entry) => {
-      const tab = asExtensionTab(entry)
-      if (!extensionTabMatches(tab.active, query.active)) return false
-      if (!extensionTabMatches(tab.pinned, query.pinned)) return false
-      if (!extensionTabMatches(tab.muted, query.muted)) return false
-      if (!extensionTabMatches(tab.highlighted, query.highlighted)) return false
-      if (!extensionTabMatches(tab.selected, query.selected)) return false
-      if (!extensionTabMatches(tab.discarded, query.discarded)) return false
-      if (!extensionTabMatches(tab.status, query.status)) return false
-      if (query.windowId !== undefined && tab.windowId !== requestedWindowId) return false
-      if (query.currentWindow === true && entry.window !== owner) return false
-      if (query.index !== undefined && tab.index !== query.index) return false
-      if (query.url !== undefined && !extensionPatternMatches(tab.url, query.url)) return false
-      if (query.title !== undefined && !extensionPatternMatches(tab.title, query.title)) {
-        return false
-      }
-      return true
-    })
-  }
+  type ExtensionTabEntryWithContents = ExtensionTabEntry
 
   handleExtension(
     IpcChannels.ExtensionTabsCall,
-    (event, call: ExtensionTabsCall | undefined): unknown => {
+    async (event, call: ExtensionTabsCall | undefined): Promise<unknown> => {
       const context = extensionContextFor(event)
       if (!context || !call?.operation) return null
       const owner = extensionOwnerFor(event, context.profileId)
+      const sender = extensionSenderFor(event)
+      const baseUrl = 'getURL' in sender ? sender.getURL() : sender.scope
       const entries = extensionTabEntries(context.profileId).filter((entry) =>
         extensionCanAccessSite(context.profileId, context.extensionId, entry.tab.url)
       )
-      const findTab = (tabId?: number): ExtensionTabEntryWithContents | null =>
-        typeof tabId === 'number'
-          ? (entries.find((entry) => entry.webContentsId === tabId) ?? null)
-          : null
+      const refreshed = (entry: ExtensionTabEntryWithContents): ExtensionTabEntryWithContents =>
+        extensionTabEntries(context.profileId).find(
+          (candidate) =>
+            candidate.internalId === entry.internalId && candidate.window === entry.window
+        ) ?? entry
       const activeTab = (): ExtensionTabEntryWithContents | null => {
         const windowId = extensionWindowId(owner)
         return (
@@ -1076,8 +1025,41 @@ export function registerIpcHandlers(context: IpcContext): void {
           ) ?? null
         )
       }
+      const findTab = (tabId?: number): ExtensionTabEntryWithContents | null => {
+        if (tabId === -1) return activeTab()
+        return typeof tabId === 'number'
+          ? (entries.find((entry) => entry.webContentsId === tabId) ?? null)
+          : null
+      }
       const windowEntries = (windowId: number | null): ExtensionTabEntryWithContents[] =>
         windowId === null ? [] : entries.filter((entry) => entry.window.window.id === windowId)
+      const contentsFor = (entry: ExtensionTabEntryWithContents) =>
+        electronWebContents.fromId(entry.webContentsId)
+      const resolveUrl = (raw: string): string | null => {
+        try {
+          const resolved = new URL(raw, baseUrl)
+          if (
+            resolved.protocol !== 'http:' &&
+            resolved.protocol !== 'https:' &&
+            resolved.protocol !== 'file:' &&
+            resolved.protocol !== 'chrome-extension:'
+          ) {
+            return null
+          }
+          if (resolved.protocol === 'chrome-extension:' && resolved.host !== context.extensionId) {
+            return null
+          }
+          if (
+            resolved.protocol !== 'chrome-extension:' &&
+            !extensionCanAccessSite(context.profileId, context.extensionId, resolved.toString())
+          ) {
+            return null
+          }
+          return resolved.toString()
+        } catch {
+          return null
+        }
+      }
 
       switch (call.operation) {
         case 'query':
@@ -1127,33 +1109,96 @@ export function registerIpcHandlers(context: IpcContext): void {
           if (properties.pinned === false && entry.tab.pinned) {
             entry.window.tabs.pinToggle(entry.internalId)
           }
-          if (properties.muted === true && !entry.tab.muted) {
+          if (properties.muted !== undefined && properties.muted !== entry.tab.muted) {
             entry.window.tabs.muteToggle(entry.internalId)
+            setTabMutedBy(
+              entry.webContentsId,
+              properties.muted ? context.extensionId : null,
+              properties.muted
+            )
           }
-          if (properties.muted === false && entry.tab.muted) {
-            entry.window.tabs.muteToggle(entry.internalId)
+          if (typeof properties.url === 'string') {
+            const url = resolveUrl(properties.url)
+            if (!url) return null
+            const contents = contentsFor(entry)
+            if (!contents || contents.isDestroyed()) return null
+            void contents.loadURL(url)
           }
-          const updated = extensionTabEntries(context.profileId).find(
-            (candidate) =>
-              candidate.internalId === entry.internalId && candidate.window === entry.window
-          )
-          return updated ? asExtensionTab(updated) : null
+          const changes: Record<string, unknown> = {}
+          if (properties.autoDiscardable !== undefined) {
+            setAutoDiscardable(entry.webContentsId, properties.autoDiscardable)
+            changes.autoDiscardable = properties.autoDiscardable
+          }
+          if (typeof properties.openerTabId === 'number') {
+            setTabOpener(entry.webContentsId, properties.openerTabId)
+          }
+          const updated = refreshed(entry)
+          emitTabUpdated(context.profileId, updated, changes as any)
+          return asExtensionTab(updated)
         }
         case 'move': {
-          const entry = findTab(call.tabId)
-          const index = call.moveProperties?.index
-          if (!entry || typeof index !== 'number') return null
-          const targetWindow = extensionWindowId(owner, call.moveProperties?.windowId)
-          if (targetWindow !== null && targetWindow !== entry.window.window.id) return null
-          const order = entry.state.tabs.map((tab) => tab.id)
-          const without = order.filter((id) => id !== entry.internalId)
-          const insertion = Math.max(
-            0,
-            Math.min(index < 0 ? without.length : index, without.length)
-          )
-          without.splice(insertion, 0, entry.internalId)
-          entry.window.tabs.reorder(without)
-          return asExtensionTab(entry)
+          const targetIds = call.tabIds ?? (typeof call.tabId === 'number' ? [call.tabId] : [])
+          const requestedWindow = extensionWindowId(owner, call.moveProperties?.windowId)
+          const moved: ExtensionTabEntryWithContents[] = []
+          for (const targetId of targetIds) {
+            const entry = findTab(targetId)
+            if (!entry) continue
+            const index = call.moveProperties?.index ?? entry.state.tabs.length
+            const destination =
+              requestedWindow === null || requestedWindow === entry.window.window.id
+                ? entry.window
+                : allWindows().find(
+                    (window) =>
+                      window.window.id === requestedWindow &&
+                      window.profile === context.profileId &&
+                      !window.window.isDestroyed()
+                  )
+            if (!destination) continue
+            if (destination === entry.window) {
+              const order = entry.state.tabs.map((tab) => tab.id)
+              const without = order.filter((id) => id !== entry.internalId)
+              const insertion = Math.max(
+                0,
+                Math.min(index < 0 ? without.length : index, without.length)
+              )
+              without.splice(insertion, 0, entry.internalId)
+              entry.window.tabs.reorder(without)
+              moved.push(refreshed(entry))
+              continue
+            }
+
+            // Moving between windows recreates the tab because Voyager owns its
+            // WebContentsView per window. The new tab keeps the URL and pinned
+            // state but receives a new Chrome-visible tab id.
+            const oldIndex = entry.state.tabs.findIndex((tab) => tab.id === entry.internalId)
+            const newInternalId = destination.tabs.create({ url: entry.tab.url, active: false })
+            const newTabId = destination.tabs.webContentsIdForTab(newInternalId)
+            if (newTabId === null) continue
+            const newState = destination.tabs.snapshot()
+            const newEntry = entriesForWindow(destination, newState).find(
+              (candidate) => candidate.internalId === newInternalId
+            )
+            const insertion = Math.max(
+              0,
+              Math.min(index < 0 ? newState.tabs.length : index, newState.tabs.length)
+            )
+            const order = newState.tabs.map((tab) => tab.id).filter((id) => id !== newInternalId)
+            order.splice(insertion, 0, newInternalId)
+            destination.tabs.reorder(order)
+            if (entry.tab.pinned) destination.tabs.pinToggle(newInternalId)
+            emitTabsEvent(context.profileId, 'onDetached', [
+              entry.webContentsId,
+              { windowId: entry.window.window.id, position: oldIndex }
+            ])
+            emitTabsEvent(context.profileId, 'onAttached', [
+              newTabId,
+              { windowId: destination.window.id, position: insertion }
+            ])
+            entry.window.tabs.close(entry.internalId)
+            if (newEntry) moved.push(refreshed(newEntry))
+          }
+          if (targetIds.length === 1) return moved[0] ? asExtensionTab(moved[0]) : null
+          return moved.map(asExtensionTab)
         }
         case 'duplicate': {
           const entry = findTab(call.tabId)
@@ -1171,31 +1216,161 @@ export function registerIpcHandlers(context: IpcContext): void {
         case 'reload': {
           const entry = findTab(call.tabId) ?? activeTab()
           if (!entry) return null
-          entry.window.tabs.reload(entry.internalId)
+          const contents = contentsFor(entry)
+          if (call.bypassCache && contents && !contents.isDestroyed()) {
+            contents.reloadIgnoringCache()
+          } else {
+            entry.window.tabs.reload(entry.internalId)
+          }
           return true
         }
         case 'goBack':
         case 'goForward': {
           const entry = findTab(call.tabId) ?? activeTab()
-          if (!entry || entry.tab.id !== entry.state.activeTabId) return false
-          if (call.operation === 'goBack') entry.window.tabs.goBack()
-          else entry.window.tabs.goForward()
+          if (!entry) return false
+          const contents = contentsFor(entry)
+          if (!contents || contents.isDestroyed()) return false
+          const history = contents.navigationHistory
+          if (call.operation === 'goBack') {
+            if (!history.canGoBack()) return false
+            history.goBack()
+          } else {
+            if (!history.canGoForward()) return false
+            history.goForward()
+          }
           return true
         }
         case 'getZoom': {
           const entry = findTab(call.tabId) ?? activeTab()
           if (!entry) return null
-          const contents = electronWebContents.fromId(entry.webContentsId)
+          const contents = contentsFor(entry)
           return contents && !contents.isDestroyed() ? contents.getZoomFactor() : null
         }
         case 'setZoom': {
           const entry = findTab(call.tabId) ?? activeTab()
           const zoom = call.zoom
           if (!entry || typeof zoom !== 'number' || !Number.isFinite(zoom)) return false
-          const contents = electronWebContents.fromId(entry.webContentsId)
+          const contents = contentsFor(entry)
           if (!contents || contents.isDestroyed()) return false
-          contents.setZoomFactor(Math.max(0.25, Math.min(zoom, 5)))
+          const oldZoom = contents.getZoomFactor()
+          const nextZoom = Math.max(0.25, Math.min(zoom, 5))
+          contents.setZoomFactor(nextZoom)
+          emitZoomChange(context.profileId, entry.webContentsId, oldZoom, nextZoom)
           return true
+        }
+        case 'getZoomSettings': {
+          const entry = findTab(call.tabId) ?? activeTab()
+          return entry ? getZoomSettings(entry.webContentsId) : null
+        }
+        case 'setZoomSettings': {
+          const entry = findTab(call.tabId) ?? activeTab()
+          if (!entry || !call.zoomSettings) return false
+          const settings: ExtensionZoomSettings = {
+            defaultZoomFactor:
+              typeof call.zoomSettings.defaultZoomFactor === 'number'
+                ? call.zoomSettings.defaultZoomFactor
+                : undefined,
+            mode: call.zoomSettings.mode,
+            scope: call.zoomSettings.scope
+          }
+          setZoomSettings(entry.webContentsId, settings)
+          const contents = contentsFor(entry)
+          if (contents && !contents.isDestroyed() && settings.defaultZoomFactor !== undefined) {
+            const oldZoom = contents.getZoomFactor()
+            const nextZoom = Math.max(0.25, Math.min(settings.defaultZoomFactor, 5))
+            contents.setZoomFactor(nextZoom)
+            emitZoomChange(context.profileId, entry.webContentsId, oldZoom, nextZoom)
+          }
+          return true
+        }
+        case 'discard': {
+          const entry = findTab(call.tabId) ?? activeTab()
+          if (!entry) return null
+          entry.window.tabs.discard(entry.internalId)
+          return asExtensionTab(refreshed(entry))
+        }
+        case 'detectLanguage': {
+          const entry = findTab(call.tabId) ?? activeTab()
+          if (!entry) return 'und'
+          const contents = contentsFor(entry)
+          if (!contents || contents.isDestroyed()) return 'und'
+          try {
+            const detected = await contents.executeJavaScript(
+              `String(document.documentElement.lang || navigator.language || 'und')`
+            )
+            const language = String(detected || 'und').split('-')[0]
+            return language || 'und'
+          } catch {
+            return 'und'
+          }
+        }
+        case 'captureVisibleTab': {
+          const windowId = extensionWindowId(owner, call.windowId)
+          const entry =
+            windowEntries(windowId).find(
+              (candidate) => candidate.tab.id === candidate.state.activeTabId
+            ) ?? activeTab()
+          if (!entry) return ''
+          const contents = contentsFor(entry)
+          if (!contents || contents.isDestroyed()) return ''
+          const format = call.imageDetails?.format === 'jpeg' ? 'jpeg' : 'png'
+          const quality =
+            typeof call.imageDetails?.quality === 'number'
+              ? Math.max(0, Math.min(call.imageDetails.quality, 100))
+              : undefined
+          const image = await contents.capturePage()
+          if (format === 'jpeg') {
+            const jpeg = image.toJPEG(quality ?? 80).toString('base64')
+            return `data:image/jpeg;base64,${jpeg}`
+          }
+          const png = image.toPNG().toString('base64')
+          return `data:image/png;base64,${png}`
+        }
+        case 'group': {
+          const targets = (call.tabIds ?? [])
+            .map((tabId) => findTab(tabId))
+            .filter((entry): entry is ExtensionTabEntryWithContents => entry !== null)
+          if (targets.length === 0) return -1
+          const groupId = groupTabs(
+            targets.map((entry) => entry.webContentsId),
+            call.groupId
+          )
+          for (const entry of targets) {
+            emitTabUpdated(context.profileId, refreshed(entry), { groupId })
+          }
+          return groupId
+        }
+        case 'ungroup': {
+          const targets = (call.tabIds ?? [])
+            .map((tabId) => findTab(tabId))
+            .filter((entry): entry is ExtensionTabEntryWithContents => entry !== null)
+          ungroupTabs(targets.map((entry) => entry.webContentsId))
+          for (const entry of targets) {
+            emitTabUpdated(context.profileId, refreshed(entry), { groupId: -1 })
+          }
+          return undefined
+        }
+        case 'createSplit': {
+          const [firstId, secondId] = call.tabIds ?? []
+          const first = findTab(firstId)
+          const second = findTab(secondId)
+          if (!first || !second || first.window !== second.window) return -1
+          first.window.tabs.openSplit(first.internalId, second.internalId)
+          const splitViewId = splitTabs([first.webContentsId, second.webContentsId])
+          for (const entry of [first, second]) {
+            emitTabUpdated(context.profileId, refreshed(entry), { splitViewId })
+          }
+          return splitViewId
+        }
+        case 'unsplit': {
+          const affected = unsplitView(call.splitViewId ?? -1)
+          for (const tabId of affected) {
+            const entry = findTab(tabId)
+            if (!entry) continue
+            entry.window.tabs.closeSplit()
+            emitTabUpdated(context.profileId, refreshed(entry), { splitViewId: -1 })
+          }
+          return undefined
         }
         case 'select': {
           const entry = findTab(call.tabId)

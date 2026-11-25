@@ -15,6 +15,7 @@ import {
   ensureProfileSession
 } from '../profiles/session'
 import { profileById, profilePartition } from '../profiles/profiles'
+import { publishExtensionTabState } from '../extensions/tabEvents'
 
 import {
   currentBookmarksState,
@@ -109,6 +110,7 @@ export class WindowController {
     this.tabs = new TabManager(this, (state) => {
       this.sendToChrome(IpcChannels.TabsStateChanged, state)
       this.persistSession(state)
+      publishExtensionTabState(this.profileId, this, state)
     })
 
     this.window.contentView.addChildView(this.chrome)

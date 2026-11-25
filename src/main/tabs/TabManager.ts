@@ -306,6 +306,14 @@ export class TabManager {
     this.broadcast()
   }
 
+  /** Discard a tab on demand, independent of the Memory Saver setting. */
+  discard(id: string): void {
+    const entry = this.entries.get(id)
+    if (!entry || entry.discarded) return
+    this.discardTab(entry)
+    this.broadcast()
+  }
+
   duplicate(id: string): void {
     const entry = this.entries.get(id)
     if (!entry) return
@@ -585,7 +593,10 @@ export class TabManager {
         // stayed open. Real navigations are recorded by did-navigate / did-navigate-in-page.
         if (updateHistoryTitle(profileId, entry.url, newTitle)) {
           try {
-            this.window.sendToChrome(IpcChannels.HistoryStateChanged, currentHistoryState(profileId))
+            this.window.sendToChrome(
+              IpcChannels.HistoryStateChanged,
+              currentHistoryState(profileId)
+            )
           } catch {
             // Ignore.
           }
