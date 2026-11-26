@@ -367,11 +367,10 @@ test('deleting the settings profile retargets Settings to the default profile', 
   const verticalTabs = settings.getByRole('checkbox', { name: /Use vertical tabs/ })
 
   // Give the temporary profile a distinguishable preference before deleting it.
-  await settings.evaluate(() => window.voyager.settings.set('verticalTabs', true))
+  await verticalTabs.check()
   expect((await settings.evaluate(() => window.voyager.profiles.getState())).activeProfileId).toBe(
     profile.id
   )
-  await expect(verticalTabs).toBeChecked()
 
   await voyager.chrome.evaluate((id) => window.voyager.profiles.delete(id), profile.id)
 
