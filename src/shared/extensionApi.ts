@@ -123,6 +123,24 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     },
     events: ['onClicked']
   },
+  debugger: {
+    methods: {
+      attach: {},
+      detach: {},
+      getTargets: { fallback: [] },
+      sendCommand: { fallback: {} }
+    },
+    events: ['onDetach', 'onEvent'],
+    constants: {
+      DetachReason: { target_closed: 'target_closed', canceled_by_user: 'canceled_by_user' },
+      TargetInfoType: {
+        page: 'page',
+        background_page: 'background_page',
+        worker: 'worker',
+        other: 'other'
+      }
+    }
+  },
   runtime: {
     // Electron owns messaging and ports; only fill lifecycle gaps so the
     // worker can register listeners that it would otherwise crash on.

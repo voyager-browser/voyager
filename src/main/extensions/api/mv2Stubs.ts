@@ -10,7 +10,11 @@ interface Mv2Stub {
  * callable, permission-aware no-ops. Renderer fallbacks supply the documented
  * return shapes, so extensions can bootstrap without runtime errors.
  */
-const STUBS: Mv2Stub[] = [{ path: 'browserAction' }, { path: 'pageAction' }]
+const STUBS: Mv2Stub[] = [
+  { path: 'browserAction' },
+  { path: 'pageAction' },
+  { path: 'debugger', permissions: ['debugger'] }
+]
 
 export function registerMv2Stubs(): void {
   for (const stub of STUBS) {
