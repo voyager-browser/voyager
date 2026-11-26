@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { isAbsolute, join } from 'node:path'
+import { delimiter, isAbsolute, join } from 'node:path'
 import type { WebContents } from 'electron'
 import type { NativeMessagingHost } from '../../shared/types'
 import { getSettings, setSettings } from '../store'
@@ -115,19 +115,40 @@ const CHROME_HOSTS_DIR_ENV = 'VOYAGER_CHROME_NATIVE_HOSTS_DIR'
  */
 function chromeNativeHostDirectories(): string[] {
   const override = process.env[CHROME_HOSTS_DIR_ENV]
-  if (override) return [override]
+  if (override) return override.split(delimiter).filter((path) => path.length > 0)
+  const home = homedir()
   if (process.platform === 'darwin') {
-    const support = join(homedir(), 'Library', 'Application Support')
+    const support = join(home, 'Library', 'Application Support')
+    const roots = [
+      join(support, 'Google', 'Chrome'),
+      join(support, 'Google', 'Chrome Beta'),
+      join(support, 'Google', 'Chrome Dev'),
+      join(support, 'Google', 'Chrome Canary'),
+      join(support, 'Chromium'),
+      join(support, 'Microsoft Edge'),
+      join(support, 'BraveSoftware', 'Brave-Browser'),
+      join(support, 'Vivaldi')
+    ]
     return [
-      join(support, 'Google', 'Chrome', 'NativeMessagingHosts'),
-      join(support, 'Chromium', 'NativeMessagingHosts')
+      ...roots.map((root) => join(root, 'NativeMessagingHosts')),
+      '/Library/Google/Chrome/NativeMessagingHosts',
+      '/Library/Application Support/Google/Chrome/NativeMessagingHosts',
+      '/Library/Chromium/NativeMessagingHosts'
     ]
   }
   if (process.platform === 'linux') {
-    const config = join(homedir(), '.config')
+    const config = join(home, '.config')
+    const roots = [
+      join(config, 'google-chrome'),
+      join(config, 'chromium'),
+      join(config, 'microsoft-edge'),
+      join(config, 'BraveSoftware', 'Brave-Browser'),
+      join(config, 'vivaldi')
+    ]
     return [
-      join(config, 'google-chrome', 'NativeMessagingHosts'),
-      join(config, 'chromium', 'NativeMessagingHosts')
+      ...roots.map((root) => join(root, 'NativeMessagingHosts')),
+      '/etc/opt/chrome/native-messaging-hosts',
+      '/etc/chromium/native-messaging-hosts'
     ]
   }
   // Windows registers native hosts in the registry rather than a profile dir.
