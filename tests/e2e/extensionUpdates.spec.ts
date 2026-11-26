@@ -246,6 +246,7 @@ test('verifies CRX3 signatures and derives the signing identity', () => {
   expect(verifyCrx3Signature(crx, signer.extensionId)).toEqual({
     publicKeyHash: signer.publicKeyHash,
     extensionId: signer.extensionId,
+    publicKeyBase64: signer.publicKeyDer.toString('base64'),
     signedId: signer.publicKeyHash.slice(0, 32)
   })
 

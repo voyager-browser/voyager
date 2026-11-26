@@ -209,8 +209,8 @@ export function verifyCrx3Signature(file: Buffer, expectedId?: string): Verified
 /** Best-effort identity for a user-supplied CRX; unsigned packages stay installable. */
 export function crxSigningIdentity(file: Buffer): CrxSigningIdentity | null {
   try {
-    const { publicKeyHash, extensionId } = verifyCrx3Signature(file)
-    return { publicKeyHash, extensionId }
+    const { publicKeyHash, extensionId, publicKeyBase64 } = verifyCrx3Signature(file)
+    return { publicKeyHash, extensionId, publicKeyBase64 }
   } catch {
     return null
   }
