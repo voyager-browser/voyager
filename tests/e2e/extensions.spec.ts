@@ -155,6 +155,7 @@ test('confirms Settings installs in the browser window with plain-language acces
   )
   const prompt = voyager.chrome.getByRole('dialog')
   await expect(prompt).toBeVisible()
+  await expect(prompt.locator('img')).toHaveAttribute('src', /^data:image\/png;base64,/)
   await expect(prompt).toContainText('Add Voyager E2E Password Filler?')
   await expect(prompt).toContainText('Read your browsing history')
   await expect(prompt).toContainText('Communicate with cooperating native applications')

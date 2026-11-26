@@ -65,9 +65,17 @@ export function ExtensionInstallPrompt(): React.JSX.Element | null {
         }}
       >
         <div className="flex items-start gap-3 px-4 pb-3 pt-4">
-          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent">
-            <Puzzle className="h-5 w-5" />
-          </span>
+          {request.iconUrl ? (
+            <img
+              src={request.iconUrl}
+              alt=""
+              className="mt-0.5 h-9 w-9 shrink-0 rounded-lg object-contain"
+            />
+          ) : (
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent">
+              <Puzzle className="h-5 w-5" />
+            </span>
+          )}
           <div className="min-w-0 flex-1">
             <p id="extension-install-prompt-title" className="text-[13.5px] leading-5 text-fg">
               Add <span className="font-semibold">{request.name}</span>?

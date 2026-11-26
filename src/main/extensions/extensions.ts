@@ -77,9 +77,9 @@ const ICON_MIME_TYPES: Record<string, string> = {
  * the browser's session, which may differ from the profile session that owns
  * the extension, so `chrome-extension://` images can fail to load there.
  */
-function actionIconDataUrl(extension: Extension, icon: string): string | null {
+function actionIconDataUrl(extensionPath: string, icon: string): string | null {
   if (icon.startsWith('data:image/')) return icon
-  const root = resolve(extension.path)
+  const root = resolve(extensionPath)
   const candidate = resolve(root, icon.replace(/^\/+/, ''))
   if (candidate !== root && !candidate.startsWith(root + sep)) return null
   try {
@@ -235,7 +235,7 @@ export function currentExtensionsState(ses: Session, profileId: string): Extensi
     if (extension) {
       const manifest = (extension.manifest ?? {}) as Record<string, unknown>
       const action = readAction(manifest)
-      const iconUrl = action?.icon ? actionIconDataUrl(extension, action.icon) : null
+      const iconUrl = action?.icon ? actionIconDataUrl(extension.path, action.icon) : null
       return {
         id: extension.id,
         name: localizedManifestString(manifest.name, manifest, extension.path) || extension.name,
@@ -312,9 +312,11 @@ export async function installExtension(
   const manifest = extensionManifest(absolute)
   if (options.confirm) {
     const access = installAccessForManifest(manifest)
+    const action = readAction(manifest)
     const approved = await options.confirm({
       name: localizedManifestString(manifest.name, manifest, absolute),
       version: manifest.version as string,
+      iconUrl: action?.icon ? actionIconDataUrl(absolute, action.icon) : null,
       ...access
     })
     if (!approved) {

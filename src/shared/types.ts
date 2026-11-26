@@ -218,6 +218,8 @@ export interface ExtensionInstallDetails {
   version: string
   permissions: string[]
   origins: string[]
+  /** Manifest action icon, inlined so the chrome renderer can display it. */
+  iconUrl?: string | null
 }
 
 export interface ExtensionInstallRequest extends ExtensionInstallDetails {
