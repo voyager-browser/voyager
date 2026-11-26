@@ -539,6 +539,22 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     },
     constants: { Level: { system: 'system', display: 'display' } }
   },
+  printerProvider: {
+    events: [
+      'onGetCapabilityRequested',
+      'onGetPrintersRequested',
+      'onGetUsbPrinterInfoRequested',
+      'onPrintRequested'
+    ],
+    constants: {
+      PrintError: {
+        OK: 'OK',
+        FAILED: 'FAILED',
+        INVALID_TICKET: 'INVALID_TICKET',
+        INVALID_DATA: 'INVALID_DATA'
+      }
+    }
+  },
   runtime: {
     // Electron owns messaging and ports; only fill lifecycle gaps so the
     // worker can register listeners that it would otherwise crash on.
