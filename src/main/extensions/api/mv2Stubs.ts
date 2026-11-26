@@ -34,7 +34,8 @@ const STUBS: Mv2Stub[] = [
   { path: 'power', permissions: ['power'] },
   { path: 'printerProvider', permissions: ['printerProvider'] },
   { path: 'publicSuffix', permissions: ['publicSuffix'] },
-  { path: 'system.storage', permissions: ['system.storage'] }
+  { path: 'system.storage', permissions: ['system.storage'] },
+  { path: 'ttsEngine', permissions: ['ttsEngine'] }
 ]
 
 export function registerMv2Stubs(): void {

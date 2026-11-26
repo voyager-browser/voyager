@@ -572,6 +572,34 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     },
     events: ['onInstalled', 'onStartup', 'onSuspend', 'onSuspendCanceled']
   },
+  ttsEngine: {
+    methods: {
+      sendTtsAudio: {},
+      sendTtsEvent: {},
+      updateLanguage: {},
+      updateVoices: {}
+    },
+    events: [
+      'onInstallLanguageRequest',
+      'onLanguageStatusRequest',
+      'onPause',
+      'onResume',
+      'onSpeak',
+      'onSpeakWithAudioStream',
+      'onStop',
+      'onUninstallLanguageRequest'
+    ],
+    constants: {
+      LanguageInstallStatus: {
+        notInstalled: 'notInstalled',
+        installing: 'installing',
+        installed: 'installed',
+        failed: 'failed'
+      },
+      TtsClientSource: { chromefeature: 'chromefeature', extension: 'extension' },
+      VoiceGender: { male: 'male', female: 'female' }
+    }
+  },
   declarativeNetRequest: {
     methods: {
       updateDynamicRules: {},
