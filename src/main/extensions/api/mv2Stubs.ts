@@ -28,7 +28,8 @@ const STUBS: Mv2Stub[] = [
   { path: 'fontSettings', permissions: ['fontSettings'] },
   { path: 'gcm', permissions: ['gcm'] },
   { path: 'identity', permissions: ['identity'] },
-  { path: 'instanceID', permissions: ['gcm'] }
+  { path: 'instanceID', permissions: ['gcm'] },
+  { path: 'mimeHandler' }
 ]
 
 export function registerMv2Stubs(): void {

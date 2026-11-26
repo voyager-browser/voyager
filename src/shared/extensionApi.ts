@@ -502,6 +502,14 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     },
     events: ['onTokenRefresh']
   },
+  mimeHandler: {
+    methods: {
+      abortAndFallbackToNativeHandler: {},
+      getMimeHandlerOptions: { fallback: {} },
+      getStreamInfo: { fallback: {} },
+      setMimeHandlerOptions: {}
+    }
+  },
   runtime: {
     // Electron owns messaging and ports; only fill lifecycle gaps so the
     // worker can register listeners that it would otherwise crash on.
