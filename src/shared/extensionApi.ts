@@ -510,6 +510,28 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       setMimeHandlerOptions: {}
     }
   },
+  omnibox: {
+    methods: {
+      sendSuggestions: {},
+      setDefaultSuggestion: {}
+    },
+    events: [
+      'onActionExecuted',
+      'onDeleteSuggestion',
+      'onInputCancelled',
+      'onInputChanged',
+      'onInputEntered',
+      'onInputStarted'
+    ],
+    constants: {
+      DescriptionStyleType: { url: 'url', match: 'match', dim: 'dim' },
+      OnInputEnteredDisposition: {
+        currentTab: 'currentTab',
+        newForegroundTab: 'newForegroundTab',
+        newBackgroundTab: 'newBackgroundTab'
+      }
+    }
+  },
   runtime: {
     // Electron owns messaging and ports; only fill lifecycle gaps so the
     // worker can register listeners that it would otherwise crash on.
