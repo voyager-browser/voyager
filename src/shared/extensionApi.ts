@@ -93,6 +93,36 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     },
     events: ['onInstalled', 'onUpdateAvailable', 'onSuspend']
   },
+  browserAction: {
+    preserveNative: true,
+    methods: {
+      disable: {},
+      enable: {},
+      getBadgeBackgroundColor: { fallback: {} },
+      getBadgeText: { fallback: '' },
+      getPopup: { fallback: '' },
+      getTitle: { fallback: '' },
+      setBadgeBackgroundColor: {},
+      setBadgeText: {},
+      setIcon: {},
+      setPopup: {},
+      setTitle: {}
+    },
+    events: ['onClicked']
+  },
+  pageAction: {
+    preserveNative: true,
+    methods: {
+      getPopup: { fallback: '' },
+      getTitle: { fallback: '' },
+      hide: {},
+      setIcon: {},
+      setPopup: {},
+      setTitle: {},
+      show: {}
+    },
+    events: ['onClicked']
+  },
   runtime: {
     // Electron owns messaging and ports; only fill lifecycle gaps so the
     // worker can register listeners that it would otherwise crash on.

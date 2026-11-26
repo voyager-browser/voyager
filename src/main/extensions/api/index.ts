@@ -12,6 +12,7 @@ import { registerExtension } from './extension'
 import { registerHistory } from './history'
 import { registerIdle } from './idle'
 import { registerManagement } from './management'
+import { registerMv2Stubs } from './mv2Stubs'
 import { registerNotifications } from './notifications'
 import { registerProxy } from './proxy'
 import { registerSearch } from './search'
@@ -50,6 +51,7 @@ export function registerExtensionApis(): void {
   registerHistory()
   registerIdle()
   registerManagement()
+  registerMv2Stubs()
   registerNotifications()
   registerProxy()
   registerSearch()
