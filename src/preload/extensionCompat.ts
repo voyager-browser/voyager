@@ -1062,6 +1062,10 @@ const installExtensionApi = function installExtensionApi(
     const runtime = chrome.runtime ?? {}
     define(runtime, 'lastError', { message })
     if (!chrome.runtime) define(chrome, 'runtime', runtime)
+    const extension = chrome.extension
+    if (extension && typeof extension === 'object') {
+      define(extension, 'lastError', { message })
+    }
   }
   const clearLastError = (): void => {
     const runtime = chrome.runtime

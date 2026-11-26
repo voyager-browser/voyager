@@ -243,15 +243,24 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
   },
   extension: {
     methods: {
+      getBackgroundPage: { fallback: null },
+      getExtensionTabs: { fallback: [] },
       getURL: { fallback: '' },
       getManifest: { fallback: {} },
       getId: { fallback: '' },
       getExtension: { fallback: null },
+      getViews: { fallback: [] },
       sendMessage: { fallback: false },
+      sendRequest: { fallback: false },
+      setUpdateUrlData: {},
       isAllowedIncognitoAccess: { fallback: false },
       isAllowedFileSchemeAccess: { fallback: false }
     },
-    events: ['onInstalled', 'onUpdateAvailable', 'onSuspend']
+    events: ['onInstalled', 'onRequest', 'onRequestExternal', 'onUpdateAvailable', 'onSuspend'],
+    constants: {
+      inIncognitoContext: false,
+      ViewType: { tab: 'tab', popup: 'popup' }
+    }
   },
   browserAction: {
     preserveNative: true,

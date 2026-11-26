@@ -141,6 +141,11 @@ export function registerExtension(): void {
       attachExtensionLifecycleEvents(ses, context.profileId)
 
       switch (method) {
+        case 'getBackgroundPage':
+        case 'getExtensionTabs':
+        case 'getViews':
+          return method === 'getBackgroundPage' ? null : []
+
         case 'getURL':
           return extensionResourceUrl(context.extension, typeof args[0] === 'string' ? args[0] : '')
 
@@ -164,7 +169,11 @@ export function registerExtension(): void {
         }
 
         case 'sendMessage':
+        case 'sendRequest':
           return sendExtensionMessage(context, args)
+
+        case 'setUpdateUrlData':
+          return undefined
 
         case 'isAllowedIncognitoAccess':
           // Incognito partitions do not load extensions; a stored opt-in can
