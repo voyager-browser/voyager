@@ -23,6 +23,14 @@ import { startExtensionUpdateScheduler, stopExtensionUpdateScheduler } from './e
 
 app.setName('Voyager')
 
+// Electron only initializes the service-worker preload realm through its
+// sandboxed renderer client. First-party windows request that client in their
+// web preferences, but extension background workers are launched without a
+// WebContents and inherit this process-wide switch instead. Do not remove a
+// caller-supplied --no-sandbox: CI containers use it to avoid needing the
+// platform sandbox helper, while the renderer client still honors this switch.
+app.commandLine.appendSwitch('enable-sandbox')
+
 // Must run before the app is ready. Registering the settings scheme as
 // standard + secure lets relative asset URLs resolve and CORS-enabled module
 // scripts load from voyager:// .
