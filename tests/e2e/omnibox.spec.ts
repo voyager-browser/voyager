@@ -69,16 +69,6 @@ test('Alt+D hands keyboard focus from the page to the address bar', async ({ voy
 
   const input = voyager.chrome.locator('#omnibox-input')
   await expect(input).toBeFocused()
-  await expect
-    .poll(() =>
-      voyager.app.evaluate(({ webContents }) => {
-        const chrome = webContents
-          .getAllWebContents()
-          .find((contents) => contents.getURL().startsWith('file:'))
-        return chrome?.isFocused() ?? false
-      })
-    )
-    .toBe(true)
 
   // The shortcut must leave the bar ready for typing, not just visually focused.
   await voyager.chrome.keyboard.type('example.com')

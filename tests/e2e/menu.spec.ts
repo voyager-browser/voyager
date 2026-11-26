@@ -96,6 +96,9 @@ test('app menu state follows the focused window profile', async ({ voyager }) =>
   await secondChrome.evaluate(async () => {
     await window.voyager.settings.set('developerMode', false)
   })
+  // Evaluating the background window can make it frontmost. Restore A before
+  // asserting that the shared menu still reflects A's saved state.
+  await voyager.chrome.bringToFront()
   await expect.poll(async () => (await menuState()).developerMode).toBe(true)
   expect((await menuState()).forDevelopers).toBe(true)
 
