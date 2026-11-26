@@ -1061,22 +1061,27 @@ test('reopens an action popup after Escape dismisses it', async ({ launchVoyager
     voyager.chrome.evaluate((extensionId) => {
       void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
     }, id)
+  // Playwright retains Page handles for destroyed WebContentsViews, so ask the
+  // main process which extension documents are actually still alive.
+  const popupOpen = () =>
+    voyager.app.evaluate(({ webContents }) =>
+      webContents
+        .getAllWebContents()
+        .some(
+          (contents) =>
+            !contents.isDestroyed() && contents.getURL().startsWith('chrome-extension://')
+        )
+    )
 
   await open()
-  await expect
-    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
-    .toBe(true)
+  await expect.poll(popupOpen).toBe(true)
   const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
   await popup!.bringToFront()
   await popup!.keyboard.press('Escape')
-  await expect
-    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
-    .toBe(false)
+  await expect.poll(popupOpen).toBe(false)
 
   await open()
-  await expect
-    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
-    .toBe(true)
+  await expect.poll(popupOpen).toBe(true)
 })
 
 test('service workers only create tabs in their own profile', async ({ launchVoyager }) => {

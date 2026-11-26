@@ -2219,6 +2219,14 @@ export function registerIpcHandlers(context: IpcContext): void {
     if (owner) closePanelForOwner(owner)
   })
 
+  // Escape synthesized by automation reaches the panel renderer but not the
+  // native before-input-event hook. Only the panel itself may dismiss itself.
+  handleExtension(IpcChannels.ExtensionPanelDismiss, (event) => {
+    if (!('sender' in event)) return
+    const owner = allWindows().find((window) => window.isExtensionPanelWebContents(event.sender))
+    if (owner) closePanelForOwner(owner)
+  })
+
   handleBrowser(
     IpcChannels.ExtensionsSetPinned,
     (event, payload: { id?: unknown; pinned?: unknown }) => {

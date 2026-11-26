@@ -394,6 +394,11 @@ export class WindowController {
     return this.tabIdForWebContents(webContents) !== null
   }
 
+  /** Whether `webContents` is the current extension menu or popup panel. */
+  isExtensionPanelWebContents(webContents: WebContents): boolean {
+    return this.extensionPanel?.webContents === webContents
+  }
+
   /** Top-left of the panel in window coordinates, for anchoring native menus. */
   extensionPanelOrigin(): { x: number; y: number } | null {
     if (!this.extensionPanel) return null

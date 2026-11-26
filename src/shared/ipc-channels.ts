@@ -158,6 +158,7 @@ export const IpcChannels = {
   ExtensionTabsPortEvent: 'extension:tabs-port-event',
   ExtensionOpenOptionsPage: 'extension:open-options-page',
   ExtensionActionOpenPopup: 'extension:action-open-popup',
+  ExtensionPanelDismiss: 'extension:panel-dismiss',
   ExtensionPermissionRequest: 'extension:permission-request',
   ExtensionPermissionRespond: 'extension:permission-respond',
   ExtensionPermissionRequestCancelled: 'extension:permission-request-cancelled',
