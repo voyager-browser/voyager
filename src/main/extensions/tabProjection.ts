@@ -16,19 +16,39 @@ export interface MutableExtensionTabEntry extends ExtensionTabEntry {
   webContentsId: number
 }
 
+/** Remember native ids while the window is alive for late shutdown callbacks. */
+const windowIds = new WeakMap<WindowController, number>()
+
+function extensionWindowIdFor(owner: WindowController): number {
+  if (owner.window.isDestroyed()) return windowIds.get(owner) ?? 0
+  try {
+    const id = owner.window.id
+    windowIds.set(owner, id)
+    return id
+  } catch {
+    return windowIds.get(owner) ?? 0
+  }
+}
+
 export function entriesForWindow(
   owner: WindowController,
   state: BrowserState
 ): MutableExtensionTabEntry[] {
-  return state.tabs
-    .map((tab) => ({
+  if (owner.window.isDestroyed()) return []
+  const entries: MutableExtensionTabEntry[] = []
+  for (const tab of state.tabs) {
+    // A tab webContents can be destroyed between the snapshot and this map.
+    const webContentsId = owner.tabs.webContentsIdForTab(tab.id)
+    if (webContentsId === null) continue
+    entries.push({
       window: owner,
       state,
       tab,
       internalId: tab.id,
-      webContentsId: owner.tabs.webContentsIdForTab(tab.id)
-    }))
-    .filter((entry): entry is MutableExtensionTabEntry => entry.webContentsId !== null)
+      webContentsId
+    })
+  }
+  return entries
 }
 
 /** Every tab in the profile that has a live tab webContents. */
@@ -61,7 +81,7 @@ export function asExtensionTab(entry: ExtensionTabEntry): ExtensionTab {
   return {
     id: entry.webContentsId,
     index: Math.max(index, 0),
-    windowId: entry.window.window.id ?? 0,
+    windowId: extensionWindowIdFor(entry.window),
     active,
     pinned: entry.tab.pinned,
     muted: entry.tab.muted,

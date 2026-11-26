@@ -65,20 +65,25 @@ export class TabManager {
 
   /** Resolve the tab that owns a WebContents, used for permission scoping. */
   tabIdForWebContents(webContents: WebContents): string | null {
+    if (webContents.isDestroyed()) return null
     for (const [id, entry] of this.entries) {
-      if (entry.view.webContents.id === webContents.id) return id
+      const candidate = entry.view.webContents
+      if (!candidate.isDestroyed() && candidate.id === webContents.id) return id
     }
     return null
   }
 
-  /** Numeric WebContents id for the active tab, when there is one. */
   /** Numeric WebContents id used by Chrome's extension tab API. */
   webContentsIdForTab(id: string): number | null {
-    return this.entries.get(id)?.view.webContents.id ?? null
+    const contents = this.entries.get(id)?.view.webContents
+    if (!contents || contents.isDestroyed()) return null
+    return contents.id
   }
 
   activeWebContentsId(): number | null {
-    return this.activeWebContents()?.id ?? null
+    const contents = this.activeWebContents()
+    if (!contents || contents.isDestroyed()) return null
+    return contents.id
   }
 
   /** Keep internal pages on the Voyager favicon without shadowing site icons. */
@@ -96,6 +101,7 @@ export class TabManager {
       const entry = this.entries.get(id)
       if (!entry) continue
       const wc = entry.view.webContents
+      if (wc.isDestroyed()) continue
       tabs.push({
         id,
         title: isNewTab(entry.url) ? 'New Tab' : entry.title,
@@ -693,6 +699,7 @@ export class TabManager {
   }
 
   private broadcast(): void {
+    if (this.window.window.isDestroyed()) return
     this.onStateChanged(this.snapshot())
   }
 
@@ -799,6 +806,8 @@ export class TabManager {
 
   private activeWebContents(): WebContents | null {
     if (this.activeId === null) return null
-    return this.entries.get(this.activeId)?.view.webContents ?? null
+    const contents = this.entries.get(this.activeId)?.view.webContents
+    if (!contents || contents.isDestroyed()) return null
+    return contents
   }
 }
