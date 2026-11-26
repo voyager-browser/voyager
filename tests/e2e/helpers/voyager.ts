@@ -65,10 +65,25 @@ export async function pollUntil<T>(
 const closedApps = new WeakMap<ElectronApplication, Promise<void>>()
 const GRACEFUL_QUIT_WAIT_MS = 5_000
 
-/** Resolve when the Electron process exits, or after a short grace period. */
-function waitForElectronExit(app: ElectronApplication): Promise<void> {
-  return new Promise((resolve) => {
+type ElectronChild = ReturnType<ElectronApplication['process']>
+
+/**
+ * Stubbed apps in unit-like E2E cases may not expose a child process. Treat a
+ * missing or already-exited child as a no-op instead of masking setup failures.
+ */
+function runningElectronChild(app: ElectronApplication): ElectronChild | null {
+  if (typeof app.process !== 'function') return null
+  try {
     const child = app.process()
+    return child && child.exitCode === null && child.signalCode === null ? child : null
+  } catch {
+    return null
+  }
+}
+
+/** Resolve when the Electron process exits, or after a short grace period. */
+function waitForElectronExit(app: ElectronApplication, child: ElectronChild): Promise<void> {
+  return new Promise((resolve) => {
     if (child.exitCode !== null || child.signalCode !== null) {
       resolve()
       return
@@ -99,9 +114,9 @@ export async function closeElectronApp(app: ElectronApplication): Promise<void> 
   const active = closedApps.get(app)
   if (active) return active
   const task = (async (): Promise<void> => {
-    const child = app.process()
-    if (child.exitCode === null && child.signalCode === null) {
-      const exited = waitForElectronExit(app)
+    const child = runningElectronChild(app)
+    if (child) {
+      const exited = waitForElectronExit(app, child)
       await Promise.race([
         app
           .evaluate(({ app }) => {
