@@ -120,11 +120,10 @@ function hostForExtension(
   )
 }
 
-function closePort(id: string): void {
-  const port = ports.get(id)
-  if (!port || port.closed) return
+function releasePort(port: NativePort, terminate: boolean): void {
+  if (port.closed) return
   port.closed = true
-  ports.delete(id)
+  ports.delete(port.id)
   if (!port.sender.isDestroyed()) {
     port.sender.removeDestroyedListener(port.onSenderDestroyed)
   }
@@ -133,12 +132,28 @@ function closePort(id: string): void {
   } catch {
     // The pipe may already be closed when the host exited first.
   }
-  try {
-    if (!port.child.killed) port.child.kill()
-  } catch {
-    // The process may have already exited.
+  if (terminate) {
+    try {
+      if (!port.child.killed) port.child.kill()
+    } catch {
+      // The process may have already exited.
+    }
   }
-  port.onDisconnect(id)
+  port.onDisconnect(port.id)
+}
+
+function closePort(id: string): void {
+  const port = ports.get(id)
+  if (port) releasePort(port, true)
+}
+
+/**
+ * End every native host's stdin during shutdown. A conforming host exits on
+ * EOF; the parent process no longer holds an open child pipe that can delay a
+ * graceful app.quit().
+ */
+export function closeAllNativePorts(): void {
+  for (const port of [...ports.values()]) releasePort(port, false)
 }
 
 export interface NativeConnectionInput {

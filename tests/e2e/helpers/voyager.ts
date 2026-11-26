@@ -60,16 +60,60 @@ export async function pollUntil<T>(
   throw new Error(`Timed out after ${timeout}ms waiting for condition`)
 }
 
-const closedApps = new WeakSet<ElectronApplication>()
+const closedApps = new WeakMap<ElectronApplication, Promise<void>>()
+const GRACEFUL_QUIT_WAIT_MS = 5_000
+
+/** Resolve when the Electron process exits, or after a short grace period. */
+function waitForElectronExit(app: ElectronApplication): Promise<void> {
+  return new Promise((resolve) => {
+    const child = app.process()
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolve()
+      return
+    }
+    const finish = (): void => {
+      clearTimeout(timer)
+      app.off('close', finish)
+      resolve()
+    }
+    const timer = setTimeout(finish, GRACEFUL_QUIT_WAIT_MS)
+    timer.unref?.()
+    app.once('close', finish)
+  })
+}
 
 /**
  * Close an Electron app at most once. A failed setup and fixture teardown can
  * both try to close the same raw app, so the cleanup path stays idempotent.
+ *
+ * Ask the main process to quit before Playwright closes its Node connection.
+ * ElectronApplication.close() flushes trace and screencast state first; when a
+ * CI worker is busy that can delay the quit request long enough to exhaust the
+ * test timeout. Quitting first lets the normal before-quit/will-quit handlers
+ * run while the connection is still open, then app.close() only collects the
+ * already-exiting process.
  */
 export async function closeElectronApp(app: ElectronApplication): Promise<void> {
-  if (closedApps.has(app)) return
-  closedApps.add(app)
-  await app.close().catch(() => undefined)
+  const active = closedApps.get(app)
+  if (active) return active
+  const task = (async (): Promise<void> => {
+    const child = app.process()
+    if (child.exitCode === null && child.signalCode === null) {
+      const exited = waitForElectronExit(app)
+      await Promise.race([
+        app
+          .evaluate(({ app }) => {
+            app.quit()
+          })
+          .catch(() => undefined),
+        exited
+      ])
+      await exited
+    }
+    await app.close().catch(() => undefined)
+  })()
+  closedApps.set(app, task)
+  return task
 }
 
 export interface AppRegistry {

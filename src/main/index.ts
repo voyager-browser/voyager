@@ -18,6 +18,7 @@ import { lastProfileId } from './profiles/profiles'
 import { ensureProfileSession, sessionForProfile } from './profiles/session'
 import { cancelAllExtensionPermissions } from './extensions/extensionPermissions'
 import { attachExtensions } from './extensions/extensions'
+import { closeAllNativePorts } from './extensions/nativeMessaging'
 import { startExtensionUpdateScheduler, stopExtensionUpdateScheduler } from './extensions/updates'
 
 app.setName('Voyager')
@@ -97,6 +98,7 @@ registerIpcHandlers({
 app.on('will-quit', () => {
   stopExtensionUpdateScheduler()
   cancelAllExtensionPermissions()
+  closeAllNativePorts()
   flushAllStores()
 })
 
