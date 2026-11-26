@@ -73,6 +73,8 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
     'chooseCrx',
     'install',
     'installFromStore',
+    'onInstallRequest',
+    'respondInstall',
     'uninstall',
     'checkUpdates',
     'openPopup',

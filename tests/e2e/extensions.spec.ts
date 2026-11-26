@@ -158,7 +158,7 @@ test('confirms Settings installs in the browser window with plain-language acces
   await expect(prompt).toContainText('See your browsing tabs and activity')
   await expect(prompt).toContainText('cooperate with native apps')
   await expect(prompt).toContainText('Access https://example.test/*')
-  await prompt.getByRole('button', { name: 'Cancel' }).click()
+  await prompt.getByRole('button', { name: 'Cancel', exact: true }).click()
   expect(await cancelled).toEqual([])
   await expect(voyager.chrome.getByRole('dialog')).toHaveCount(0)
 
