@@ -681,6 +681,38 @@ test('exchanges native messages between an extension and a native host', async (
   await expect(popup!.locator('#native-port-result')).toHaveText('port')
 })
 
+test('discovers Chrome native messaging host manifests', async ({ launchVoyager, userDataDir }) => {
+  const hostsDir = join(userDataDir, 'chrome-native-hosts')
+  mkdirSync(hostsDir, { recursive: true })
+  writeFileSync(
+    join(hostsDir, 'com.voyager.e2e.json'),
+    JSON.stringify({
+      name: 'com.voyager.e2e',
+      description: 'Chrome-style host manifest for E2E',
+      path: NATIVE_HOST_PATH,
+      type: 'stdio',
+      allowed_origins: ['*']
+    })
+  )
+
+  const voyager = await launchVoyager({
+    env: { VOYAGER_CHROME_NATIVE_HOSTS_DIR: hostsDir },
+    seed: { settings: { installedExtensions: [EXTENSION_PATH] } }
+  })
+  const extensions = await voyager.chrome.evaluate(() => window.voyager.extensions.getState())
+  const id = extensions[0]?.id as string
+  await voyager.chrome.evaluate((extensionId) => {
+    void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
+  }, id)
+
+  await expect
+    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
+    .toBe(true)
+  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+  await popup!.getByRole('button', { name: 'Send native message' }).click()
+  await expect(popup!.locator('#native-result')).toHaveText('one-shot')
+})
+
 test('auto-grants nativeMessaging from an MV3 manifest without prompting', async ({
   launchVoyager
 }) => {

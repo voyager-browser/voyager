@@ -1,6 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { isAbsolute } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { isAbsolute, join } from 'node:path'
 import type { WebContents } from 'electron'
 import type { NativeMessagingHost } from '../../shared/types'
 import { getSettings, setSettings } from '../store'
@@ -104,6 +106,63 @@ export function setNativeHosts(profileId: string, value: unknown): NativeMessagi
   return next
 }
 
+const CHROME_HOSTS_DIR_ENV = 'VOYAGER_CHROME_NATIVE_HOSTS_DIR'
+
+/**
+ * Native messaging apps such as Bitwarden register with Chrome by dropping a
+ * host manifest in Chrome's profile directory. Those manifests already name
+ * the allowed `chrome-extension://` origins, so Voyager can honor them too.
+ */
+function chromeNativeHostDirectories(): string[] {
+  const override = process.env[CHROME_HOSTS_DIR_ENV]
+  if (override) return [override]
+  if (process.platform === 'darwin') {
+    const support = join(homedir(), 'Library', 'Application Support')
+    return [
+      join(support, 'Google', 'Chrome', 'NativeMessagingHosts'),
+      join(support, 'Chromium', 'NativeMessagingHosts')
+    ]
+  }
+  if (process.platform === 'linux') {
+    const config = join(homedir(), '.config')
+    return [
+      join(config, 'google-chrome', 'NativeMessagingHosts'),
+      join(config, 'chromium', 'NativeMessagingHosts')
+    ]
+  }
+  // Windows registers native hosts in the registry rather than a profile dir.
+  return []
+}
+
+function chromeNativeHost(hostName: string, origin: string): NativeMessagingHost | null {
+  for (const directory of chromeNativeHostDirectories()) {
+    const manifestPath = join(directory, `${hostName}.json`)
+    try {
+      if (!existsSync(manifestPath)) continue
+      const parsed: unknown = JSON.parse(readFileSync(manifestPath, 'utf8'))
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue
+      const candidate = parsed as Record<string, unknown>
+      if (candidate.name !== hostName) continue
+      if (typeof candidate.path !== 'string' || !isAbsolute(candidate.path)) continue
+      if (candidate.type !== undefined && candidate.type !== 'stdio') continue
+      if (!existsSync(candidate.path)) continue
+      const allowedOrigins = Array.isArray(candidate.allowed_origins)
+        ? candidate.allowed_origins.filter(isAllowedOrigin).map(normalizeOrigin)
+        : []
+      if (!allowedOrigins.includes('*') && !allowedOrigins.includes(origin)) continue
+      return {
+        name: hostName,
+        path: candidate.path,
+        allowedOrigins,
+        ...(typeof candidate.description === 'string' ? { description: candidate.description } : {})
+      }
+    } catch {
+      // A malformed or unreadable host manifest must not break the extension.
+    }
+  }
+  return null
+}
+
 function hostForExtension(
   profileId: string,
   hostName: string,
@@ -111,13 +170,12 @@ function hostForExtension(
 ): NativeMessagingHost | null {
   if (!/^[a-zA-Z0-9._-]+$/.test(hostName)) return null
   const origin = normalizeOrigin(`chrome-extension://${extensionId}`)
-  return (
-    getNativeHosts(profileId).find(
-      (host) =>
-        host.name === hostName &&
-        (host.allowedOrigins.includes('*') || host.allowedOrigins.includes(origin))
-    ) ?? null
+  const registered = getNativeHosts(profileId).find(
+    (host) =>
+      host.name === hostName &&
+      (host.allowedOrigins.includes('*') || host.allowedOrigins.includes(origin))
   )
+  return registered ?? chromeNativeHost(hostName, origin)
 }
 
 function releasePort(port: NativePort, terminate: boolean): void {
