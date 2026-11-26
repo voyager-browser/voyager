@@ -446,14 +446,30 @@ test('maps chrome.tabs queries and actions to Voyager tabs', async ({ launchVoya
     void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
   }, id)
 
-  await expect
-    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
-    .toBe(true)
-  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))!
-  await popup.getByRole('button', { name: 'Probe tabs' }).click()
+  await expect.poll(async () => Boolean(await liveExtensionPage(voyager.app))).toBe(true)
+  await pollUntil(async () => {
+    const live = await liveExtensionPage(voyager.app)
+    if (!live) return undefined
+    try {
+      await live.getByRole('button', { name: 'Probe tabs' }).click()
+      return true
+    } catch {
+      return undefined
+    }
+  })
 
   await expect
-    .poll(async () => JSON.parse((await popup.locator('#tabs-probe-result').textContent()) ?? '{}'))
+    .poll(async () => {
+      const live = await liveExtensionPage(voyager.app)
+      if (!live) return null
+      try {
+        const text = await live.locator('#tabs-probe-result').textContent()
+        if (!text || text === 'No tabs probed') return null
+        return JSON.parse(text)
+      } catch {
+        return null
+      }
+    })
     .toMatchObject({ pinned: true, firstMoved: true, zoomApplied: true, removed: true })
   await expect.poll(async () => (await voyager.state()).tabs[0]?.url).toBe(server.url('/second'))
   await expect
