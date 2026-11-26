@@ -1104,20 +1104,25 @@ const installExtensionApi = function installExtensionApi(
       current = current[segment]
     }
     const fullPath = [...path]
+    const preserve = node.preserveNative === true
+    const fill = (key: string): boolean => !preserve || typeof current[key] === 'undefined'
     for (const [method, definition] of Object.entries(node.methods ?? {})) {
-      define(current, method, makeMethod(fullPath, method, definition?.fallback))
+      if (fill(method)) define(current, method, makeMethod(fullPath, method, definition?.fallback))
     }
     for (const event of node.events ?? []) {
-      define(current, event, makeEvent(eventKey(fullPath, event)))
+      if (fill(event)) define(current, event, makeEvent(eventKey(fullPath, event)))
     }
     for (const event of node.bridgedEvents ?? []) {
-      define(current, event, makeEvent(eventKey(fullPath, event), true))
+      if (fill(event)) define(current, event, makeEvent(eventKey(fullPath, event), true))
     }
     for (const [key, value] of Object.entries(node.constants ?? {})) {
-      define(current, key, value)
+      if (fill(key)) define(current, key, value)
     }
     for (const [key, child] of Object.entries(node.properties ?? {})) {
-      installNode(root, [...fullPath, key], child)
+      installNode(root, [...fullPath, key], {
+        ...child,
+        preserveNative: child.preserveNative ?? preserve
+      })
     }
   }
 

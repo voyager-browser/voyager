@@ -11,6 +11,8 @@ export interface ExtensionApiNode {
   bridgedEvents?: string[]
   constants?: Record<string, unknown>
   properties?: Record<string, ExtensionApiNode>
+  /** Add only missing members so Electron's native bindings keep working. */
+  preserveNative?: boolean
 }
 
 const contentSettingNode = (
@@ -90,6 +92,15 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       isAllowedFileSchemeAccess: { fallback: false }
     },
     events: ['onInstalled', 'onUpdateAvailable', 'onSuspend']
+  },
+  runtime: {
+    // Electron owns messaging and ports; only fill lifecycle gaps so the
+    // worker can register listeners that it would otherwise crash on.
+    preserveNative: true,
+    methods: {
+      getContexts: { fallback: [] }
+    },
+    events: ['onInstalled', 'onStartup', 'onSuspend', 'onSuspendCanceled']
   },
   declarativeNetRequest: {
     methods: {
@@ -223,6 +234,62 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       get: { fallback: [] }
     }
   },
+  permissions: {
+    // Electron owns permission prompts; keep its methods and add only the
+    // lifecycle events its MV3 bindings can omit.
+    preserveNative: true,
+    methods: {
+      request: {},
+      contains: { fallback: false },
+      getAll: { fallback: { permissions: [], origins: [] } },
+      remove: {}
+    },
+    events: ['onAdded', 'onRemoved', 'onChanged']
+  },
+  offscreen: {
+    // An offscreen document cannot run in this build, but callers still need
+    // the enum and callable methods so worker bootstrap does not throw.
+    preserveNative: true,
+    constants: {
+      Reason: {
+        AUDIO_CAPTURE: 'AUDIO_CAPTURE',
+        CLIPBOARD: 'CLIPBOARD',
+        LOCAL_STORAGE: 'LOCAL_STORAGE',
+        VIDEO_CAPTURE: 'VIDEO_CAPTURE'
+      }
+    },
+    methods: {
+      createDocument: {},
+      closeDocument: {},
+      hasDocument: { fallback: false }
+    }
+  },
+  sidePanel: {
+    preserveNative: true,
+    methods: {
+      open: {},
+      setOptions: {},
+      getOptions: { fallback: {} },
+      setPanelBehavior: {},
+      getPanelBehavior: { fallback: {} }
+    },
+    events: ['onPanelOptionsChanged']
+  },
+  scripting: {
+    preserveNative: true,
+    constants: {
+      ExecutionWorld: { ISOLATED: 'ISOLATED', MAIN: 'MAIN' }
+    },
+    methods: {
+      executeScript: { fallback: [] },
+      insertCSS: {},
+      removeCSS: {},
+      registerContentScripts: {},
+      unregisterContentScripts: {},
+      getRegisteredContentScripts: { fallback: [] },
+      updateContentScripts: {}
+    }
+  },
   proxy: {
     methods: {
       set: {},
@@ -268,7 +335,10 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       'onHeadersReceived',
       'onCompleted',
       'onErrorOccurred'
-    ]
+    ],
+    // Electron cannot surface redirects or auth challenges, but extensions
+    // still register listeners for them during service-worker bootstrap.
+    events: ['onBeforeRedirect', 'onAuthRequired']
   },
   idle: {
     methods: {
