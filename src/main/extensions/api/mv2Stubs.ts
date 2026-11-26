@@ -13,7 +13,9 @@ interface Mv2Stub {
 const STUBS: Mv2Stub[] = [
   { path: 'browserAction' },
   { path: 'pageAction' },
-  { path: 'debugger', permissions: ['debugger'] }
+  { path: 'debugger', permissions: ['debugger'] },
+  { path: 'declarativeContent', permissions: ['declarativeContent'] },
+  { path: 'declarativeWebRequest', permissions: ['declarativeWebRequest'] }
 ]
 
 export function registerMv2Stubs(): void {

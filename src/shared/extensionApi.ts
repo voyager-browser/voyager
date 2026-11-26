@@ -9,6 +9,10 @@ export interface ExtensionApiNode {
   events?: string[]
   /** Events whose listener registration must also reach the main process. */
   bridgedEvents?: string[]
+  /** Declarative events that also expose rule-management methods. */
+  ruleEvents?: string[]
+  /** Constructor-style members used to build declarative rules. */
+  constructors?: string[]
   constants?: Record<string, unknown>
   properties?: Record<string, ExtensionApiNode>
   /** Add only missing members so Electron's native bindings keep working. */
@@ -138,6 +142,41 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
         background_page: 'background_page',
         worker: 'worker',
         other: 'other'
+      }
+    }
+  },
+  declarativeContent: {
+    ruleEvents: ['onPageChanged'],
+    constructors: ['PageStateMatcher', 'RequestContentScript', 'SetIcon', 'ShowAction', 'ShowPageAction']
+  },
+  declarativeWebRequest: {
+    ruleEvents: ['onMessage', 'onRequest'],
+    constructors: [
+      'AddRequestCookie',
+      'AddResponseCookie',
+      'AddResponseHeader',
+      'CancelRequest',
+      'EditRequestCookie',
+      'EditResponseCookie',
+      'IgnoreRules',
+      'RedirectByRegEx',
+      'RedirectRequest',
+      'RedirectToEmptyDocument',
+      'RedirectToTransparentImage',
+      'RemoveRequestCookie',
+      'RemoveRequestHeader',
+      'RemoveResponseCookie',
+      'RemoveResponseHeader',
+      'RequestMatcher',
+      'SendMessageToExtension',
+      'SetRequestHeader'
+    ],
+    constants: {
+      Stage: {
+        onBeforeRequest: 'onBeforeRequest',
+        onBeforeSendHeaders: 'onBeforeSendHeaders',
+        onHeadersReceived: 'onHeadersReceived',
+        onAuthRequired: 'onAuthRequired'
       }
     }
   },

@@ -984,7 +984,7 @@ const installExtensionApi = function installExtensionApi(
   const bridgedListenerIds = new WeakMap<(...args: any[]) => void, string>()
   let nextListenerId = 0
   const eventKey = (path: string[], event: string): string => `${path.join('.')}.${event}`
-  const makeEvent = (key: string, bridged = false): any => {
+  const makeEvent = (key: string, bridged = false, rules = false): any => {
     let event = events.get(key)
     if (event) return event
     const registered = new Set<(...args: any[]) => void>()
@@ -1030,6 +1030,12 @@ const installExtensionApi = function installExtensionApi(
         if (bridged) notify('hasListeners', [])
         return registered.size > 0
       }
+    }
+    if (rules) {
+      const path = key.split('.')
+      define(event, 'addRules', makeMethod(path, 'addRules', undefined))
+      define(event, 'removeRules', makeMethod(path, 'removeRules', undefined))
+      define(event, 'getRules', makeMethod(path, 'getRules', []))
     }
     events.set(key, event)
     return event
@@ -1114,6 +1120,15 @@ const installExtensionApi = function installExtensionApi(
     }
     for (const event of node.bridgedEvents ?? []) {
       if (fill(event)) define(current, event, makeEvent(eventKey(fullPath, event), true))
+    }
+    for (const event of node.ruleEvents ?? []) {
+      if (fill(event)) define(current, event, makeEvent(eventKey(fullPath, event), false, true))
+    }
+    for (const name of node.constructors ?? []) {
+      if (!fill(name)) continue
+      define(current, name, function (value?: unknown) {
+        return value && typeof value === 'object' ? { ...(value as Record<string, unknown>) } : {}
+      })
     }
     for (const [key, value] of Object.entries(node.constants ?? {})) {
       if (fill(key)) define(current, key, value)
