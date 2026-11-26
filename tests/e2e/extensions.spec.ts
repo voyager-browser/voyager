@@ -21,6 +21,7 @@ import {
 
 const EXTENSIONS_DIR = join(process.cwd(), 'tests', 'e2e', 'fixtures', 'extensions')
 const EXTENSION_PATH = join(EXTENSIONS_DIR, 'password-filler')
+const LOCALIZED_EXTENSION_PATH = join(EXTENSIONS_DIR, 'localized')
 const MV2_NATIVE_EXTENSION_PATH = join(EXTENSIONS_DIR, 'native-messaging-mv2')
 const WORKER_EXTENSION_PATH = join(EXTENSIONS_DIR, 'worker-permissions')
 const WEB_NAVIGATION_EXTENSION_PATH = join(EXTENSIONS_DIR, 'web-navigation')
@@ -171,6 +172,22 @@ test('confirms Settings installs in the browser window with plain-language acces
   await secondPrompt.getByRole('button', { name: 'Install extension' }).click()
   expect(await accepted).toEqual([
     expect.objectContaining({ name: 'Voyager E2E Password Filler', loaded: true })
+  ])
+})
+
+test('resolves a localized manifest name in the install prompt', async ({ launchVoyager }) => {
+  const voyager = await launchVoyager()
+  const settings = await openSettings(voyager)
+  const installing = settings.evaluate(
+    (path) => window.voyager.extensions.install(path),
+    LOCALIZED_EXTENSION_PATH
+  )
+
+  const prompt = voyager.chrome.getByRole('dialog')
+  await expect(prompt).toContainText('Add Localized Test Extension?')
+  await prompt.getByRole('button', { name: 'Install extension' }).click()
+  expect(await installing).toEqual([
+    expect.objectContaining({ name: 'Localized Test Extension', loaded: true })
   ])
 })
 

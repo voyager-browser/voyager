@@ -11,6 +11,7 @@ import type {
 } from '../../shared/types'
 import { getSettings, setSettings } from '../store'
 import { installAccessForManifest } from './extensionPermissions'
+import { localizedManifestString } from './manifestI18n'
 import {
   downloadWebStoreCrx,
   readCrxSigningIdentity,
@@ -176,7 +177,7 @@ function manifestSummary(path: string): {
 } {
   const manifest = extensionManifest(path)
   return {
-    name: manifest.name as string,
+    name: localizedManifestString(manifest.name, manifest, path),
     version: manifest.version as string,
     action: readAction(manifest)
   }
@@ -237,7 +238,7 @@ export function currentExtensionsState(ses: Session, profileId: string): Extensi
       const iconUrl = action?.icon ? actionIconDataUrl(extension, action.icon) : null
       return {
         id: extension.id,
-        name: extension.name,
+        name: localizedManifestString(manifest.name, manifest, extension.path) || extension.name,
         version: extension.version,
         path,
         loaded: true,
@@ -312,7 +313,7 @@ export async function installExtension(
   if (options.confirm) {
     const access = installAccessForManifest(manifest)
     const approved = await options.confirm({
-      name: manifest.name as string,
+      name: localizedManifestString(manifest.name, manifest, absolute),
       version: manifest.version as string,
       ...access
     })
