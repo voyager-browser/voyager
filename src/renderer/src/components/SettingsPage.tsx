@@ -249,7 +249,8 @@ export function SettingsPage(): React.JSX.Element {
       window.voyager.history.onStateChanged(history.applyState),
       window.voyager.downloads.onStateChanged(downloads.applyState),
       window.voyager.autofill.onStateChanged(setAutofill),
-      window.voyager.extensions.onStateChanged(setExtensions)
+      window.voyager.extensions.onStateChanged(setExtensions),
+      window.voyager.settings.onChanged(setPreferences)
     ]
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe())
   }, [])

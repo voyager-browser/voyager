@@ -20,6 +20,8 @@ export interface LaunchOptions {
   seed?: Record<string, unknown>
   args?: string[]
   env?: Record<string, string>
+  /** Notified right after Electron spawns, before setup steps can fail. */
+  onApp?: (app: ElectronApplication) => void
 }
 
 export interface VoyagerApp {

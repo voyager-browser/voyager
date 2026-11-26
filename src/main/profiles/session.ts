@@ -113,5 +113,30 @@ function attachSessionPolicies(
   attachExtensionCompatibility(ses, profileId)
   migrateInstalledThemeExtension(profileId)
   void attachExtensions(ses, profileId)
+}
+
+/**
+ * Attach protocol, permission, download and content-blocking integrations to a
+ * profile's session exactly once. Named profiles get a persistent partition;
+ * the default profile uses Electron's default session.
+ */
+export function ensureProfileSession(profileId: string): Session {
+  const ses = sessionForProfile(profileId)
+  attachSessionPolicies(ses, profileId)
+  return ses
+}
+
+/**
+ * Give an incognito partition its owner's network and content policies. The
+ * session itself is in-memory (no `persist:` prefix), and the setup guard makes
+ * repeated toggles safe instead of registering handlers twice.
+ */
+export function configureIncognitoSession(
+  ses: Session,
+  profileId: string,
+  onDownloadsState?: (state: DownloadsState) => void,
+  statsKey?: string
+): Session {
+  attachSessionPolicies(ses, profileId, { persist: false, onDownloadsState, statsKey })
   return ses
 }

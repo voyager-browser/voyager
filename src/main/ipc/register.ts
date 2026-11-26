@@ -132,6 +132,7 @@ import {
 } from '../profiles/profiles'
 import {
   broadcastProfiles,
+  broadcastToAll,
   broadcastToProfile,
   ensureProfileSession,
   sessionForProfile
@@ -236,6 +237,8 @@ import {
   registerExtensionApis
 } from '../extensions/api'
 import type { ExtensionApiCall } from '../extensions/api/types'
+import { createEphemeralAutofillStore } from '../autofill/ephemeral'
+import { createAutofillScopeResolver, type AutofillScope } from '../autofill/scope'
 
 import { isDefaultBrowser, setDefaultBrowser } from '../defaultBrowser'
 import {
@@ -403,7 +406,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     activeWindow()?.profile ??
     DEFAULT_PROFILE_ID
 
-  const profileForSender = (sender: WebContents): string =>
+  const profileForSender = (sender: Electron.WebContents): string =>
     windowForWebContents(sender)?.profile ??
     settingsProfileFor(sender) ??
     activeWindow()?.profile ??
@@ -1483,7 +1486,9 @@ export function registerIpcHandlers(context: IpcContext): void {
   handleBrowser(IpcChannels.NavForward, (event) =>
     context.getWindow(event as any)?.tabs.goForward()
   )
-  handleBrowser(IpcChannels.NavReload, (event) => context.getWindow(event as any)?.tabs.reload())
+  handleBrowser(IpcChannels.NavReload, (event, id?: string) =>
+    context.getWindow(event as any)?.tabs.reload(id)
+  )
   handleBrowser(IpcChannels.NavStop, (event) => context.getWindow(event as any)?.tabs.stop())
   handleBrowser(IpcChannels.NavGo, (event, url: string) =>
     context.getWindow(event as any)?.tabs.navigate(url)
@@ -1842,9 +1847,10 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   /* ---- autofill -------------------------------------------------------- */
 
-  handleBrowser(IpcChannels.AutofillGetState, (event) =>
-    currentAutofillState(profileFor(event as any))
-  )
+  ipcMain.handle(IpcChannels.AutofillGetState, (event) => {
+    const scope = scopeForAutofillEvent(event as any)
+    return currentAutofillState(scope.profileId, scope.store)
+  })
 
   handleBrowser(IpcChannels.AutofillSaveAddress, (event, input) => {
     if (!input || typeof input !== 'object') throw new Error('Invalid address')
@@ -1888,9 +1894,10 @@ export function registerIpcHandlers(context: IpcContext): void {
     return publishAutofill(scope)
   })
 
-  handleBrowser(IpcChannels.AutofillClearFormHistory, (event) => {
-    clearFormHistory(profileFor(event as any))
-    return publishAutofill(profileFor(event as any))
+  ipcMain.handle(IpcChannels.AutofillClearFormHistory, (event) => {
+    const scope = scopeForAutofillEvent(event as any)
+    clearFormHistory(scope.profileId, scope.store)
+    return publishAutofill(scope)
   })
 
   handleBrowser(IpcChannels.AutofillDeleteFormHistoryEntry, (event, id: string) => {
@@ -1923,8 +1930,8 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  handleBrowser(IpcChannels.AutofillGetFillData, (event, payload: { kind?: unknown }) => {
-    const profileId = profileForSender(event.sender)
+  ipcMain.handle(IpcChannels.AutofillGetFillData, (event, payload: { kind?: unknown }) => {
+    const scope = scopeForAutofillEvent(event as any)
     const kind = payload?.kind
     if (kind !== 'address' && kind !== 'contact' && kind !== 'payment') return []
     return getAutofillProfileSuggestions(scope.profileId, kind, scope.store)
