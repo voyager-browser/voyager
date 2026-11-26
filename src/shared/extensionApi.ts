@@ -180,6 +180,45 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       }
     }
   },
+  desktopCapture: {
+    methods: {
+      cancelChooseDesktopMedia: {},
+      chooseDesktopMedia: { fallback: '' }
+    },
+    constants: {
+      DesktopCaptureSourceType: { screen: 'screen', window: 'window', tab: 'tab', audio: 'audio' },
+      SelfCapturePreferenceEnum: { include: 'include', exclude: 'exclude' },
+      SystemAudioPreferenceEnum: { include: 'include', exclude: 'exclude' },
+      WindowAudioPreferenceEnum: { system: 'system', window: 'window', exclude: 'exclude' }
+    }
+  },
+  dom: {
+    preserveNative: true,
+    methods: {
+      openOrClosedShadowRoot: { fallback: null }
+    }
+  },
+  pageCapture: {
+    methods: {
+      saveAsMHTML: { fallback: '' }
+    }
+  },
+  tabCapture: {
+    methods: {
+      capture: { fallback: null },
+      getCapturedTabs: { fallback: [] },
+      getMediaStreamId: { fallback: '' }
+    },
+    events: ['onStatusChanged'],
+    constants: {
+      TabCaptureState: {
+        pending: 'pending',
+        active: 'active',
+        stopped: 'stopped',
+        error: 'error'
+      }
+    }
+  },
   runtime: {
     // Electron owns messaging and ports; only fill lifecycle gaps so the
     // worker can register listeners that it would otherwise crash on.

@@ -15,7 +15,11 @@ const STUBS: Mv2Stub[] = [
   { path: 'pageAction' },
   { path: 'debugger', permissions: ['debugger'] },
   { path: 'declarativeContent', permissions: ['declarativeContent'] },
-  { path: 'declarativeWebRequest', permissions: ['declarativeWebRequest'] }
+  { path: 'declarativeWebRequest', permissions: ['declarativeWebRequest'] },
+  { path: 'desktopCapture', permissions: ['desktopCapture'] },
+  { path: 'dom' },
+  { path: 'pageCapture', permissions: ['pageCapture'] },
+  { path: 'tabCapture', permissions: ['tabCapture'] }
 ]
 
 export function registerMv2Stubs(): void {
