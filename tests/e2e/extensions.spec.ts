@@ -1090,16 +1090,17 @@ test('reopens an action popup after Escape dismisses it', async ({ launchVoyager
   await open()
   await expect.poll(async () => Boolean(await liveExtensionPage(voyager.app))).toBe(true)
   await pollUntil(async () => {
+    if (!(await popupOpen())) return true
     const popup = await liveExtensionPage(voyager.app)
     if (!popup) return undefined
     try {
       await popup.bringToFront()
       await popup.keyboard.press('Escape')
-      return true
     } catch {
-      // The popup can be disposed between resolving it and sending the key.
-      return undefined
+      // Dismissing the panel can close the target while Playwright is still
+      // dispatching the key; the popup state below decides whether it worked.
     }
+    return (await popupOpen()) ? undefined : true
   })
   await expect.poll(popupOpen).toBe(false)
 
