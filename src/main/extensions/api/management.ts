@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { Extension, Session } from 'electron'
+import { extensionPermissionLabels } from '../../../shared/permissions'
 import type { ExtensionInfo } from '../../../shared/types'
 import { sessionForProfile } from '../../profiles/session'
 import { allWindows, windowForAnyWebContents } from '../../window/windowRegistry'
@@ -173,30 +174,11 @@ function permissionParts(manifest: Record<string, unknown>): {
   }
 }
 
-const PERMISSION_WARNINGS: Record<string, string> = {
-  '<all_urls>': 'Read and change all your data on the websites you visit',
-  bookmarks: 'Read and change your bookmarks',
-  cookies: 'Read and change your cookies',
-  downloads: 'Manage your downloads',
-  history: 'Read and change your browsing history',
-  management: 'Manage your apps, extensions, and themes',
-  nativeMessaging: 'cooperate with native apps',
-  privacy: 'Change your privacy-related settings',
-  proxy: 'Change your proxy settings',
-  tabs: 'Read your browsing history',
-  webRequest: 'Read and change all your data on the websites you visit'
-}
-
 function warningsForManifest(manifest: Record<string, unknown>): string[] {
   const { permissions, hostPermissions } = permissionParts(manifest)
   const warnings = new Set<string>()
-  for (const permission of permissions) {
-    const warning = PERMISSION_WARNINGS[permission]
-    if (warning) warnings.add(warning)
-  }
-  for (const host of hostPermissions) {
-    if (host === '<all_urls>') warnings.add(PERMISSION_WARNINGS[host])
-    else warnings.add(`Read and change your data on ${host}`)
+  for (const permission of [...permissions, ...hostPermissions]) {
+    for (const warning of extensionPermissionLabels(permission)) warnings.add(warning)
   }
   return [...warnings]
 }

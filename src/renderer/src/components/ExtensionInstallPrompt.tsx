@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Puzzle, X } from 'lucide-react'
-import { extensionPermissionLabel } from '../../../shared/permissions'
+import { extensionPermissionLabels } from '../../../shared/permissions'
 import type { ExtensionInstallChoice, ExtensionInstallRequest } from '../../../shared/types'
 import { useOverlaySignal } from '../lib/overlay'
 
@@ -38,8 +38,10 @@ export function ExtensionInstallPrompt(): React.JSX.Element | null {
   }
 
   const labels = [
-    ...request.permissions.map((permission) => extensionPermissionLabel(permission)),
-    ...request.origins.map((origin) => extensionPermissionLabel(`origin:${origin}`))
+    ...new Set([
+      ...request.permissions.flatMap((permission) => extensionPermissionLabels(permission)),
+      ...request.origins.flatMap((origin) => extensionPermissionLabels(`origin:${origin}`))
+    ])
   ]
 
   return (
