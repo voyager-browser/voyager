@@ -62,6 +62,23 @@ export async function pollUntil<T>(
   throw new Error(`Timed out after ${timeout}ms waiting for condition`)
 }
 
+/**
+ * Playwright keeps Page objects for destroyed WebContentsViews, so resolve a
+ * fresh extension page and discard stale handles before driving them.
+ */
+export async function liveExtensionPage(app: ElectronApplication): Promise<Page | undefined> {
+  for (const page of app.windows()) {
+    if (page.isClosed()) continue
+    try {
+      const url = await page.evaluate(() => location.href)
+      if (url.startsWith('chrome-extension://')) return page
+    } catch {
+      // The page was disposed after windows() was sampled.
+    }
+  }
+  return undefined
+}
+
 const closedApps = new WeakMap<ElectronApplication, Promise<void>>()
 const GRACEFUL_QUIT_WAIT_MS = 5_000
 

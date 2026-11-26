@@ -11,7 +11,13 @@ import {
   storedZip64,
   testCrxSigner
 } from './helpers/crx'
-import { openSettings, pollUntil, windowCount, type VoyagerApp } from './helpers/voyager'
+import {
+  liveExtensionPage,
+  openSettings,
+  pollUntil,
+  windowCount,
+  type VoyagerApp
+} from './helpers/voyager'
 
 const EXTENSIONS_DIR = join(process.cwd(), 'tests', 'e2e', 'fixtures', 'extensions')
 const EXTENSION_PATH = join(EXTENSIONS_DIR, 'password-filler')
@@ -508,10 +514,8 @@ test('opens its action popup when an extension calls chrome.action.openPopup', a
     void window.voyager.extensions.openPopup(extensionId, 'popup.html', 100, 100)
   }, id)
 
-  await expect
-    .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
-    .toBe(true)
-  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+  await expect.poll(async () => Boolean(await liveExtensionPage(voyager.app))).toBe(true)
+  const popup = await liveExtensionPage(voyager.app)
   const shims = await popup!.evaluate(() => ({
     action: typeof (globalThis as any).chrome.action?.openPopup,
     browserAction: typeof (globalThis as any).chrome.browserAction?.openPopup
@@ -520,14 +524,25 @@ test('opens its action popup when an extension calls chrome.action.openPopup', a
   expect(shims.browserAction).toBe('function')
 
   const initialCount = Number(await popup!.locator('#popup-open-count').textContent())
-  await popup!.getByRole('button', { name: 'Request popup' }).click()
+  await pollUntil(async () => {
+    const live = await liveExtensionPage(voyager.app)
+    if (!live) return undefined
+    try {
+      await live.getByRole('button', { name: 'Request popup' }).click()
+      return true
+    } catch {
+      return undefined
+    }
+  })
   await expect
     .poll(async () => {
-      const reopened = voyager.app
-        .windows()
-        .find((page) => page.url().startsWith('chrome-extension://'))
+      const reopened = await liveExtensionPage(voyager.app)
       if (!reopened) return null
-      return Number(await reopened.locator('#popup-open-count').textContent())
+      try {
+        return Number(await reopened.locator('#popup-open-count').textContent())
+      } catch {
+        return null
+      }
     })
     .toBe(initialCount + 1)
 })
@@ -1072,27 +1087,20 @@ test('reopens an action popup after Escape dismisses it', async ({ launchVoyager
             !contents.isDestroyed() && contents.getURL().startsWith('chrome-extension://')
         )
     )
-  // ElectronApplication keeps Page objects for destroyed WebContentsViews.
-  // Resolve a fresh, live page immediately before driving it, and ignore any
-  // stale handle that fails an execution-context check.
-  const livePopup = async (): Promise<Page | undefined> => {
-    for (const page of voyager.app.windows()) {
-      if (page.isClosed()) continue
-      try {
-        const url = await page.evaluate(() => location.href)
-        if (url.startsWith('chrome-extension://')) return page
-      } catch {
-        // The page was disposed after windows() was sampled.
-      }
-    }
-    return undefined
-  }
-
   await open()
-  await expect.poll(async () => Boolean(await livePopup())).toBe(true)
-  const popup = await livePopup()
-  await popup!.bringToFront()
-  await popup!.keyboard.press('Escape')
+  await expect.poll(async () => Boolean(await liveExtensionPage(voyager.app))).toBe(true)
+  await pollUntil(async () => {
+    const popup = await liveExtensionPage(voyager.app)
+    if (!popup) return undefined
+    try {
+      await popup.bringToFront()
+      await popup.keyboard.press('Escape')
+      return true
+    } catch {
+      // The popup can be disposed between resolving it and sending the key.
+      return undefined
+    }
+  })
   await expect.poll(popupOpen).toBe(false)
 
   await open()
