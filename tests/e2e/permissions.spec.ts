@@ -153,15 +153,7 @@ test('incognito site-wide permission choices do not leak into the normal profile
     (url) => window.voyager.navigation.go(url),
     server.url('/permissions')
   )
-  await expect
-    .poll(
-      async () => {
-        const state = await incognitoChrome.evaluate(() => window.voyager.tabs.getState())
-        return state.tabs[0]?.url
-      },
-      { timeout: 20_000 }
-    )
-    .toContain('/permissions')
+  await expect(incognitoTab).toHaveURL(/\/permissions/, { timeout: 20_000 })
   await incognitoTab.getByRole('button', { name: 'Ask for notifications' }).click()
 
   const prompt = incognitoChrome.getByRole('dialog')
