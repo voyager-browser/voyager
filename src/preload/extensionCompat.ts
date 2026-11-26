@@ -3,6 +3,7 @@ import {
   EXTENSION_API_SCHEMA,
   type ExtensionApiCallRequest,
   type ExtensionApiEventPayload,
+  type ExtensionApiMethodDefinition,
   type ExtensionApiNode
 } from '../shared/extensionApi'
 import type { ExtensionTabsEventDetails } from '../shared/extensionTabEvents'
@@ -1035,7 +1036,7 @@ const installExtensionApi = function installExtensionApi(
       const path = key.split('.')
       define(event, 'addRules', makeMethod(path, 'addRules', undefined))
       define(event, 'removeRules', makeMethod(path, 'removeRules', undefined))
-      define(event, 'getRules', makeMethod(path, 'getRules', []))
+      define(event, 'getRules', makeMethod(path, 'getRules', { fallback: [] }))
     }
     events.set(key, event)
     return event
@@ -1079,12 +1080,17 @@ const installExtensionApi = function installExtensionApi(
 
   const callBridge = (globalThis as any).__voyagerExtensionApiCall
   const makeMethod =
-    (path: string[], method: string, fallback: unknown) =>
-    (...args: any[]): Promise<any> => {
+    (path: string[], method: string, definition?: ExtensionApiMethodDefinition) =>
+    (...args: any[]): any => {
       clearLastError()
       const callback = args.find(
         (value): value is (...values: any[]) => void => typeof value === 'function'
       )
+      const fallback = definition?.fallback
+      if (definition?.synchronous) {
+        if (callback) callback(fallback)
+        return fallback
+      }
       const payload: ExtensionApiCallRequest = {
         path,
         method,
@@ -1117,7 +1123,7 @@ const installExtensionApi = function installExtensionApi(
     const preserve = node.preserveNative === true
     const fill = (key: string): boolean => !preserve || typeof current[key] === 'undefined'
     for (const [method, definition] of Object.entries(node.methods ?? {})) {
-      if (fill(method)) define(current, method, makeMethod(fullPath, method, definition?.fallback))
+      if (fill(method)) define(current, method, makeMethod(fullPath, method, definition))
     }
     for (const event of node.events ?? []) {
       if (fill(event)) define(current, event, makeEvent(eventKey(fullPath, event)))

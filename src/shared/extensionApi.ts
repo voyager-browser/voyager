@@ -2,6 +2,8 @@
 export interface ExtensionApiMethodDefinition {
   /** Value returned to callbacks/promises when the bridge is unavailable. */
   fallback?: unknown
+  /** Return the fallback directly because callers expect a synchronous value. */
+  synchronous?: boolean
 }
 
 export interface ExtensionApiNode {
@@ -664,11 +666,14 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     events: ['onInstalled', 'onUninstalled', 'onEnabled', 'onDisabled']
   },
   i18n: {
+    // Electron usually provides these bindings. When it does not, extension
+    // bootstrap code still expects Chrome's synchronous return values.
+    preserveNative: true,
     methods: {
-      getMessage: { fallback: '' },
-      getLanguage: { fallback: 'en' },
-      getUILanguage: { fallback: 'en' },
-      getAcceptLanguages: { fallback: ['en'] }
+      getMessage: { fallback: '', synchronous: true },
+      getLanguage: { fallback: 'en', synchronous: true },
+      getUILanguage: { fallback: 'en-US', synchronous: true },
+      getAcceptLanguages: { fallback: ['en'], synchronous: true }
     }
   },
   commands: {

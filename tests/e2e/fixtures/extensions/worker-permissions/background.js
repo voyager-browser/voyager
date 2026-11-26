@@ -1,5 +1,11 @@
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
+// Bitwarden's bootstrap calls .replace() on this value. Chrome returns it
+// synchronously, so a Promise-shaped compatibility shim breaks worker startup.
+for (const api of [chrome, browser]) {
+  api.i18n.getUILanguage().replace('_', '-')
+}
+
 const reportPermission = async () => {
   // Extension-owned URLs do not need site access, so this probe remains valid
   // even before a user grants the extension access to web content.
