@@ -8,10 +8,11 @@ import {
 } from 'electron'
 import { listProfiles } from '../../profiles/profiles'
 import { sessionForProfile } from '../../profiles/session'
-import { broadcastExtensionApiEvent, isExtensionApiShuttingDown, onceCallback } from './events'
+import { broadcastExtensionApiEvent, isExtensionApiShuttingDown } from './events'
 import { hasApiPermission } from './permissions'
 import { registerExtensionApiHandler } from './registry'
 import { getApiSetting, listApiSettingKeys, setApiSetting } from './storage'
+import { registerWebRequestHandler } from '../../webRequest/multiplexer'
 import type { ExtensionApiContext, ExtensionApiHandlerSpec } from './types'
 
 type WebRequestEventName =
@@ -498,12 +499,12 @@ export function attachWebRequest(ses: Session, profileId: string): void {
   if (attached.has(ses)) return
   attached.add(ses)
 
-  ses.webRequest.onBeforeRequest(
-    REQUEST_FILTER,
+  registerWebRequestHandler(
+    ses,
+    'onBeforeRequest',
     (details, callback: (response: CallbackResponse) => void) => {
-      const done = onceCallback(callback)
       if (isExtensionApiShuttingDown()) {
-        done({ cancel: false })
+        callback({ cancel: false })
         return
       }
       try {
@@ -514,25 +515,25 @@ export function attachWebRequest(ses: Session, profileId: string): void {
         })
         const owners = blockingOwners(ses, profileId, 'onBeforeRequest', info)
         if (owners.size === 0) {
-          done({ cancel: false })
+          callback({ cancel: false })
           return
         }
         void requestDecision(profileId, String(details.id), 'onBeforeRequest', owners).then(
-          (response) => beforeRequestDecision(response, done),
-          () => done({ cancel: false })
+          (response) => beforeRequestDecision(response, callback),
+          () => callback({ cancel: false })
         )
       } catch {
-        done({ cancel: false })
+        callback({ cancel: false })
       }
     }
   )
 
-  ses.webRequest.onBeforeSendHeaders(
-    REQUEST_FILTER,
+  registerWebRequestHandler(
+    ses,
+    'onBeforeSendHeaders',
     (details, callback: (response: BeforeSendResponse) => void) => {
-      const done = onceCallback(callback)
       if (isExtensionApiShuttingDown()) {
-        done({})
+        callback({})
         return
       }
       try {
@@ -543,15 +544,15 @@ export function attachWebRequest(ses: Session, profileId: string): void {
         })
         const owners = blockingOwners(ses, profileId, 'onBeforeSendHeaders', info)
         if (owners.size === 0) {
-          done({})
+          callback({})
           return
         }
         void requestDecision(profileId, String(details.id), 'onBeforeSendHeaders', owners).then(
-          (response) => beforeSendHeadersDecision(response, done),
-          () => done({})
+          (response) => beforeSendHeadersDecision(response, callback),
+          () => callback({})
         )
       } catch {
-        done({})
+        callback({})
       }
     }
   )
@@ -564,12 +565,12 @@ export function attachWebRequest(ses: Session, profileId: string): void {
     })
   })
 
-  ses.webRequest.onHeadersReceived(
-    REQUEST_FILTER,
+  registerWebRequestHandler(
+    ses,
+    'onHeadersReceived',
     (details, callback: (response: HeadersReceivedResponse) => void) => {
-      const done = onceCallback(callback)
       const passthrough = (): void => {
-        done({
+        callback({
           responseHeaders: { ...(details.responseHeaders ?? {}) },
           statusLine: details.statusLine
         })
@@ -593,7 +594,12 @@ export function attachWebRequest(ses: Session, profileId: string): void {
         }
         void requestDecision(profileId, String(details.id), 'onHeadersReceived', owners).then(
           (response) =>
-            headersReceivedDecision(response, details.responseHeaders, details.statusLine, done),
+            headersReceivedDecision(
+              response,
+              details.responseHeaders,
+              details.statusLine,
+              callback
+            ),
           passthrough
         )
       } catch {

@@ -398,7 +398,7 @@ test('Image start-page radio opens the picker when no image is saved', async ({ 
 
   const [chooser] = await Promise.all([
     settings.waitForEvent('filechooser'),
-    theme.getByRole('radio', { name: 'Image' }).check()
+    theme.getByRole('radio', { name: 'Image' }).click()
   ])
   await chooser.setFiles({
     name: 'start.png',

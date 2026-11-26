@@ -13,8 +13,9 @@ import type {
   ContentBlockingStats,
   CustomFilterFile
 } from '../../shared/types'
-import { isExtensionApiShuttingDown, onceCallback } from '../extensions/api/events'
+import { isExtensionApiShuttingDown } from '../extensions/api/events'
 import { getSettings, profileDataDir, setSettings } from '../store'
+import { registerWebRequestHandler } from '../webRequest/multiplexer'
 import { readJsonFile, writeJsonFile } from '../store/jsonFile'
 
 /**
@@ -679,9 +680,8 @@ export function attachContentBlocking(
   const statsKey = options.statsKey ?? profileId
   sessionStatsKeys.set(ses, statsKey)
 
-  ses.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
-    const done = onceCallback(callback)
-    const passthrough = (): void => done({ cancel: false })
+  registerWebRequestHandler(ses, 'onBeforeRequest', (details, callback) => {
+    const passthrough = (): void => callback({ cancel: false })
     if (isExtensionApiShuttingDown()) {
       passthrough()
       return
@@ -713,7 +713,7 @@ export function attachContentBlocking(
         return
       }
       recordBlockedRequest(statsKey, webContentsId, hostname)
-      done({ cancel: true })
+      callback({ cancel: true })
     } catch {
       passthrough()
     }

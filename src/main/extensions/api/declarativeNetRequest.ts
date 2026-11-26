@@ -1,13 +1,13 @@
 import { app, type BeforeSendResponse, type HeadersReceivedResponse, type Session } from 'electron'
 import { listProfiles } from '../../profiles/profiles'
 import { sessionForProfile } from '../../profiles/session'
-import { broadcastExtensionApiEvent, isExtensionApiShuttingDown, onceCallback } from './events'
+import { broadcastExtensionApiEvent, isExtensionApiShuttingDown } from './events'
 import { hasApiPermission } from './permissions'
 import { registerExtensionApiHandler } from './registry'
 import { getApiSetting, listApiSettingKeys, setApiSetting } from './storage'
+import { registerWebRequestHandler } from '../../webRequest/multiplexer'
 
 const RULES_KEY_PREFIX = 'declarativeNetRequest:rules:'
-const REQUEST_FILTER = { urls: ['http://*/*', 'https://*/*'] }
 const MAX_MATCH_RECORDS = 500
 const DNR_PERMISSIONS = ['declarativeNetRequest', 'declarativeNetRequestWithHostAccess'] as const
 
@@ -467,10 +467,9 @@ export function attachDeclarativeNetRequest(ses: Session, profileId: string): vo
   if (attached.has(ses)) return
   attached.add(ses)
 
-  ses.webRequest.onBeforeRequest(REQUEST_FILTER, (details, callback) => {
-    const done = onceCallback(callback)
+  registerWebRequestHandler(ses, 'onBeforeRequest', (details, callback) => {
     if (isExtensionApiShuttingDown()) {
-      done({ cancel: false })
+      callback({ cancel: false })
       return
     }
     try {
@@ -480,22 +479,22 @@ export function attachDeclarativeNetRequest(ses: Session, profileId: string): vo
       const selected = selectRule(matches)
       const action = selected?.rule.action
       if (action?.type === 'block') {
-        done({ cancel: true })
+        callback({ cancel: true })
         return
       }
       const redirect = action?.type === 'redirect' ? safeRedirectUrl(action.redirectUrl) : null
-      done(redirect ? { redirectURL: redirect } : { cancel: false })
+      callback(redirect ? { redirectURL: redirect } : { cancel: false })
     } catch {
-      done({ cancel: false })
+      callback({ cancel: false })
     }
   })
 
-  ses.webRequest.onBeforeSendHeaders(
-    REQUEST_FILTER,
+  registerWebRequestHandler(
+    ses,
+    'onBeforeSendHeaders',
     (details, callback: (response: BeforeSendResponse) => void) => {
-      const done = onceCallback(callback)
       if (isExtensionApiShuttingDown()) {
-        done({})
+        callback({})
         return
       }
       try {
@@ -505,19 +504,19 @@ export function attachDeclarativeNetRequest(ses: Session, profileId: string): vo
           headers,
           headerOperations(matchedRules(ses, profileId, info), 'requestHeaders')
         )
-        done(Object.keys(headers).length > 0 ? { requestHeaders: headers } : {})
+        callback(Object.keys(headers).length > 0 ? { requestHeaders: headers } : {})
       } catch {
-        done({})
+        callback({})
       }
     }
   )
 
-  ses.webRequest.onHeadersReceived(
-    REQUEST_FILTER,
+  registerWebRequestHandler(
+    ses,
+    'onHeadersReceived',
     (details, callback: (response: HeadersReceivedResponse) => void) => {
-      const done = onceCallback(callback)
       const passthrough = (): void => {
-        done({
+        callback({
           responseHeaders: { ...(details.responseHeaders ?? {}) },
           statusLine: details.statusLine
         })
@@ -533,7 +532,7 @@ export function attachDeclarativeNetRequest(ses: Session, profileId: string): vo
           headers,
           headerOperations(matchedRules(ses, profileId, info), 'responseHeaders')
         )
-        done({ responseHeaders: headers, statusLine: details.statusLine })
+        callback({ responseHeaders: headers, statusLine: details.statusLine })
       } catch {
         passthrough()
       }

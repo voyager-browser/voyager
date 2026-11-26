@@ -11,7 +11,7 @@ import {
   storedZip64,
   testCrxSigner
 } from './helpers/crx'
-import { openSettings, windowCount, type VoyagerApp } from './helpers/voyager'
+import { openSettings, pollUntil, windowCount, type VoyagerApp } from './helpers/voyager'
 
 const EXTENSIONS_DIR = join(process.cwd(), 'tests', 'e2e', 'fixtures', 'extensions')
 const EXTENSION_PATH = join(EXTENSIONS_DIR, 'password-filler')
@@ -1067,6 +1067,7 @@ test('reopens an action popup after Escape dismisses it', async ({ launchVoyager
     .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
     .toBe(true)
   const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+  await popup!.bringToFront()
   await popup!.keyboard.press('Escape')
   await expect
     .poll(() => voyager.app.windows().some((page) => page.url().startsWith('chrome-extension://')))
@@ -1084,11 +1085,15 @@ test('service workers only create tabs in their own profile', async ({ launchVoy
     window.voyager.profiles.create({ name: 'Worker profile' })
   )
   await voyager.chrome.evaluate((id) => window.voyager.profiles.openWindow(id), profileB.id)
-  await expect.poll(async () => voyager.app.windows().length).toBeGreaterThanOrEqual(2)
-  const profileBChrome = voyager.app
-    .windows()
-    .find((page) => page !== voyager.chrome && /\/renderer\/index\.html(?:[?#]|$)/.test(page.url()))
-  if (!profileBChrome) throw new Error('Second browser window not found')
+  // Window count can become two before the second chrome renderer has loaded;
+  // wait for the actual page we are about to drive.
+  const profileBChrome = await pollUntil(() =>
+    voyager.app
+      .windows()
+      .find(
+        (page) => page !== voyager.chrome && /\/renderer\/index\.html(?:[?#]|$)/.test(page.url())
+      )
+  )
   await profileBChrome.bringToFront()
   await profileBChrome.evaluate(
     (path) => window.voyager.extensions.install(path),
