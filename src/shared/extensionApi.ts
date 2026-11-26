@@ -532,6 +532,13 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       }
     }
   },
+  power: {
+    methods: {
+      releaseKeepAwake: {},
+      requestKeepAwake: {}
+    },
+    constants: { Level: { system: 'system', display: 'display' } }
+  },
   runtime: {
     // Electron owns messaging and ports; only fill lifecycle gaps so the
     // worker can register listeners that it would otherwise crash on.

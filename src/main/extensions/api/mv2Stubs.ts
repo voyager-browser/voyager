@@ -30,7 +30,8 @@ const STUBS: Mv2Stub[] = [
   { path: 'identity', permissions: ['identity'] },
   { path: 'instanceID', permissions: ['gcm'] },
   { path: 'mimeHandler' },
-  { path: 'omnibox' }
+  { path: 'omnibox' },
+  { path: 'power', permissions: ['power'] }
 ]
 
 export function registerMv2Stubs(): void {
