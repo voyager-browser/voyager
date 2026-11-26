@@ -131,9 +131,14 @@ function discover(controller: WindowController): void {
   if (controller.window.isDestroyed()) return
   if (!hooked.has(controller)) {
     hooked.add(controller)
+    // The `closed` event fires after Electron has destroyed the native window.
+    // Resolve and remember both ids now; reading controller.window.id in the
+    // callback throws "Object has been destroyed" during shutdown.
+    const nativeId = controller.window.id
+    const windowId = chromeWindowId(controller.profile, controller)
     controller.onDestroyed(() => {
-      emit(controller.profile, 'onRemoved', [chromeWindowId(controller.profile, controller)])
-      forgetWindow(controller.profile, controller.window.id)
+      emit(controller.profile, 'onRemoved', [windowId])
+      forgetWindow(controller.profile, nativeId)
     })
   }
   if (discovered.has(controller)) return
