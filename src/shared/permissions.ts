@@ -142,7 +142,7 @@ function hostPatternLabel(value: string): string {
   if (ALL_SITES_PATTERNS.has(value)) {
     return 'Read and change all your data on the websites you visit'
   }
-  let host = value
+  let host: string
   try {
     host = new URL(value).host || value
   } catch {
