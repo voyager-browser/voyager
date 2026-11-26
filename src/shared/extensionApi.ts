@@ -492,6 +492,16 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     events: ['onSignInChanged'],
     constants: { AccountStatus: { SYNC: 'SYNC', ANY: 'ANY' } }
   },
+  instanceID: {
+    methods: {
+      deleteID: {},
+      deleteToken: {},
+      getCreationTime: { fallback: 0 },
+      getID: { fallback: '' },
+      getToken: { fallback: '' }
+    },
+    events: ['onTokenRefresh']
+  },
   runtime: {
     // Electron owns messaging and ports; only fill lifecycle gaps so the
     // worker can register listeners that it would otherwise crash on.
