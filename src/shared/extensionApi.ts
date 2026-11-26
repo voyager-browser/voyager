@@ -840,6 +840,23 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
         methods: {
           getInfo: { fallback: { capacity: 0, availableCapacity: 0 } }
         }
+      },
+      storage: {
+        methods: {
+          ejectDevice: { fallback: 'failure' },
+          getAvailableCapacity: { fallback: { capacity: 0, availableCapacity: 0 } },
+          getInfo: { fallback: {} }
+        },
+        events: ['onAttached', 'onDetached'],
+        constants: {
+          EjectDeviceResultCode: {
+            success: 'success',
+            in_use: 'in_use',
+            no_such_device: 'no_such_device',
+            failure: 'failure'
+          },
+          StorageUnitType: { fixed: 'fixed', removable: 'removable', unknown: 'unknown' }
+        }
       }
     }
   },
