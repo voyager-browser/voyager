@@ -32,7 +32,8 @@ const STUBS: Mv2Stub[] = [
   { path: 'mimeHandler' },
   { path: 'omnibox' },
   { path: 'power', permissions: ['power'] },
-  { path: 'printerProvider', permissions: ['printerProvider'] }
+  { path: 'printerProvider', permissions: ['printerProvider'] },
+  { path: 'publicSuffix', permissions: ['publicSuffix'] }
 ]
 
 export function registerMv2Stubs(): void {

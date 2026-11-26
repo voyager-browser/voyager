@@ -555,6 +555,14 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       }
     }
   },
+  publicSuffix: {
+    methods: {
+      getDomain: { fallback: '' },
+      getKnownSuffix: { fallback: '' },
+      isKnownSuffix: { fallback: false }
+    },
+    constants: { DomainEncoding: { punycode: 'punycode', display: 'display' } }
+  },
   runtime: {
     // Electron owns messaging and ports; only fill lifecycle gaps so the
     // worker can register listeners that it would otherwise crash on.
