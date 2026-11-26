@@ -4,10 +4,10 @@ export default defineConfig({
   testDir: './tests/e2e',
   globalSetup: './tests/e2e/global-setup.ts',
   fullyParallel: true,
-  workers: 6,
+  workers: 4,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  timeout: 120_000,
+  timeout: 60_000,
   expect: { timeout: 10_000 },
   outputDir: 'test-results',
   reporter: process.env.CI
