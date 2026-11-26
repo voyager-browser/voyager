@@ -471,6 +471,14 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       ScriptCode: Object.fromEntries(SCRIPT_CODES.map((code) => [code, code]))
     }
   },
+  gcm: {
+    methods: {
+      register: { fallback: '' },
+      send: { fallback: '' },
+      unregister: {}
+    },
+    events: ['onMessage', 'onMessagesDeleted', 'onSendError']
+  },
   runtime: {
     // Electron owns messaging and ports; only fill lifecycle gaps so the
     // worker can register listeners that it would otherwise crash on.
