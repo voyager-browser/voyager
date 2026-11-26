@@ -1072,10 +1072,25 @@ test('reopens an action popup after Escape dismisses it', async ({ launchVoyager
             !contents.isDestroyed() && contents.getURL().startsWith('chrome-extension://')
         )
     )
+  // ElectronApplication keeps Page objects for destroyed WebContentsViews.
+  // Resolve a fresh, live page immediately before driving it, and ignore any
+  // stale handle that fails an execution-context check.
+  const livePopup = async (): Promise<Page | undefined> => {
+    for (const page of voyager.app.windows()) {
+      if (page.isClosed()) continue
+      try {
+        const url = await page.evaluate(() => location.href)
+        if (url.startsWith('chrome-extension://')) return page
+      } catch {
+        // The page was disposed after windows() was sampled.
+      }
+    }
+    return undefined
+  }
 
   await open()
-  await expect.poll(popupOpen).toBe(true)
-  const popup = voyager.app.windows().find((page) => page.url().startsWith('chrome-extension://'))
+  await expect.poll(async () => Boolean(await livePopup())).toBe(true)
+  const popup = await livePopup()
   await popup!.bringToFront()
   await popup!.keyboard.press('Escape')
   await expect.poll(popupOpen).toBe(false)
