@@ -219,6 +219,55 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
       }
     }
   },
+  devtools: {
+    properties: {
+      inspectedWindow: {
+        methods: {
+          eval: { fallback: null },
+          getResources: { fallback: [] },
+          reload: {}
+        },
+        events: ['onResourceAdded', 'onResourceContentCommitted']
+      },
+      network: {
+        methods: {
+          getHAR: { fallback: '' }
+        },
+        events: ['onNavigated', 'onRequestFinished']
+      },
+      panels: {
+        methods: {
+          create: { fallback: null },
+          openResource: {},
+          setOpenResourceHandler: {},
+          setThemeChangeHandler: {}
+        },
+        constants: {
+          Theme: { default: 'default', dark: 'dark' },
+          themeName: 'default'
+        },
+        properties: {
+          elements: {
+            methods: { createSidebarPane: { fallback: null } },
+            events: ['onSelectionChanged']
+          },
+          sources: {
+            methods: { createSidebarPane: { fallback: null } },
+            events: ['onSelectionChanged']
+          }
+        }
+      },
+      performance: {
+        events: ['onProfilingStarted', 'onProfilingStopped']
+      },
+      recorder: {
+        methods: {
+          createView: { fallback: null },
+          registerRecorderExtensionPlugin: {}
+        }
+      }
+    }
+  },
   runtime: {
     // Electron owns messaging and ports; only fill lifecycle gaps so the
     // worker can register listeners that it would otherwise crash on.

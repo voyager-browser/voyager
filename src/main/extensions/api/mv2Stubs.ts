@@ -19,7 +19,12 @@ const STUBS: Mv2Stub[] = [
   { path: 'desktopCapture', permissions: ['desktopCapture'] },
   { path: 'dom' },
   { path: 'pageCapture', permissions: ['pageCapture'] },
-  { path: 'tabCapture', permissions: ['tabCapture'] }
+  { path: 'tabCapture', permissions: ['tabCapture'] },
+  { path: 'devtools.inspectedWindow' },
+  { path: 'devtools.network' },
+  { path: 'devtools.panels' },
+  { path: 'devtools.performance' },
+  { path: 'devtools.recorder' }
 ]
 
 export function registerMv2Stubs(): void {
