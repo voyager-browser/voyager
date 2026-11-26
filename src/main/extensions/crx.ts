@@ -263,15 +263,38 @@ export function unpackedExtensionsRoot(profileId: string): string {
   return join(app.getPath('userData'), 'unpacked-extensions', safeProfile)
 }
 
+/**
+ * Chromium derives a signed extension's id from the CRX public key. Electron
+ * loads directories, so the extracted manifest needs that key to keep the
+ * Web Store id; otherwise native host allowlists and update feeds stop matching.
+ */
+function restoreManifestKey(directory: string, publicKeyBase64: string): void {
+  const manifestPath = join(directory, 'manifest.json')
+  if (!existsSync(manifestPath)) return
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return
+    const manifest = parsed as Record<string, unknown>
+    if (manifest.key === publicKeyBase64) return
+    manifest.key = publicKeyBase64
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2))
+  } catch {
+    // A corrupt manifest is reported by the normal extension loader.
+  }
+}
+
 /** Unpack a CRX file once and return the directory containing its manifest. */
 export function unpackCrx(filePath: string, profileId: string): string {
   const file = readFileSync(resolve(filePath))
   const archive = crxArchive(file)
+  const identity = crxSigningIdentity(file)
   const hash = createHash('sha256').update(file).digest('hex').slice(0, 24)
   const destination = join(unpackedExtensionsRoot(profileId), hash)
   if (existsSync(join(destination, 'manifest.json'))) {
-    // Repair unpacks created before illegal metadata files were filtered.
+    // Repair unpacks created before illegal metadata files were filtered or
+    // before the signed CRX key was restored into the manifest.
     removeIllegalExtensionFiles(destination)
+    if (identity?.publicKeyBase64) restoreManifestKey(destination, identity.publicKeyBase64)
     return destination
   }
 
@@ -279,6 +302,7 @@ export function unpackCrx(filePath: string, profileId: string): string {
   try {
     extractArchive(archive, destination)
     removeIllegalExtensionFiles(destination)
+    if (identity?.publicKeyBase64) restoreManifestKey(destination, identity.publicKeyBase64)
     return destination
   } catch (error) {
     rmSync(destination, { recursive: true, force: true })

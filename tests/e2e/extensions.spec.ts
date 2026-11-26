@@ -274,7 +274,11 @@ test('unpacks and installs a signed CRX3 extension', async ({ voyager, downloadD
     crxPath
   )
   expect(installed).toEqual([
-    expect.objectContaining({ name: 'Signed CRX3 Extension', loaded: true })
+    expect.objectContaining({
+      name: 'Signed CRX3 Extension',
+      id: signer.extensionId,
+      loaded: true
+    })
   ])
 
   const removed = await voyager.chrome.evaluate(

@@ -16,6 +16,8 @@ export interface CrxSigningIdentity {
   publicKeyHash: string
   /** Extension id derived from the public key (32 letters a-p). */
   extensionId: string
+  /** Base64 DER public key; preserves the signed id when loading an unpacked CRX. */
+  publicKeyBase64?: string
 }
 
 export interface VerifiedCrx3 extends CrxSigningIdentity {
@@ -190,6 +192,7 @@ export function verifyCrx3Signature(file: Buffer, expectedId?: string): Verified
       developer = {
         publicKeyHash: createHash('sha256').update(proof.publicKey).digest('hex'),
         extensionId,
+        publicKeyBase64: proof.publicKey.toString('base64'),
         signedId: signedId.toString('hex')
       }
     }
