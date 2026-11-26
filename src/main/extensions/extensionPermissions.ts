@@ -36,6 +36,27 @@ export function requiredManifestKeys(manifest: Record<string, unknown>): string[
   return [...keys]
 }
 
+function isManifestHostPattern(value: string): boolean {
+  return value === '<all_urls>' || value.includes('://')
+}
+
+/**
+ * Required access for the install prompt. MV2 keeps hosts in `permissions`;
+ * MV3 adds `host_permissions`, so both fields are split the same way.
+ */
+export function installAccessForManifest(manifest: Record<string, unknown>): {
+  permissions: string[]
+  origins: string[]
+} {
+  const permissions: string[] = []
+  const origins: string[] = []
+  for (const key of requiredManifestKeys(manifest)) {
+    if (isManifestHostPattern(key)) origins.push(key)
+    else permissions.push(key)
+  }
+  return { permissions, origins }
+}
+
 /**
  * Every permission or host pattern declared by a manifest. MV2 puts hosts in
  * `permissions`; MV3 adds the two `host_permissions` fields.

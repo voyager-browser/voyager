@@ -7,6 +7,7 @@ import { MainMenu } from './components/MainMenu'
 import { FindBar } from './components/FindBar'
 import { HistoryPanel } from './components/HistoryPanel'
 import { NameWindowDialog } from './components/NameWindowDialog'
+import { ExtensionInstallPrompt } from './components/ExtensionInstallPrompt'
 import { ExtensionPermissionPrompt } from './components/ExtensionPermissionPrompt'
 import { PermissionPrompt } from './components/PermissionPrompt'
 import { PromptDialog } from './components/PromptDialog'
@@ -202,6 +203,7 @@ export default function App(): React.JSX.Element {
       <FindBar open={findOpen} onClose={() => setFindOpen(false)} />
       <PermissionPrompt />
       <ExtensionPermissionPrompt />
+      <ExtensionInstallPrompt />
       <PromptDialog />
       <QrCodeDialog />
       <NameWindowDialog open={nameWindowOpen} onClose={() => setNameWindowOpen(false)} />

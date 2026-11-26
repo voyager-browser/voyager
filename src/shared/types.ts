@@ -210,6 +210,20 @@ export interface ExtensionPermissionRequest {
   origins: string[]
 }
 
+export type ExtensionInstallChoice = 'install' | 'cancel'
+
+/** Manifest-derived access summary shown before an extension is installed. */
+export interface ExtensionInstallDetails {
+  name: string
+  version: string
+  permissions: string[]
+  origins: string[]
+}
+
+export interface ExtensionInstallRequest extends ExtensionInstallDetails {
+  id: string
+}
+
 /** A native application that an extension is allowed to exchange messages with. */
 export interface NativeMessagingHost {
   name: string

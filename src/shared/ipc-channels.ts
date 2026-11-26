@@ -139,6 +139,8 @@ export const IpcChannels = {
   ExtensionsChooseCrx: 'extensions:choose-crx',
   ExtensionsInstall: 'extensions:install',
   ExtensionsInstallFromStore: 'extensions:install-from-store',
+  ExtensionInstallRequest: 'extension:install-request',
+  ExtensionInstallRespond: 'extension:install-respond',
   ExtensionsUninstall: 'extensions:uninstall',
   ExtensionsCheckUpdates: 'extensions:check-updates',
   ExtensionsOpenPopup: 'extensions:open-popup',

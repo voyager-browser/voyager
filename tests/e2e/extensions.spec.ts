@@ -142,6 +142,38 @@ test('installs and removes an unpacked extension for the profile', async ({ voya
   expect(removed).toEqual([])
 })
 
+test('confirms Settings installs in the browser window with plain-language access', async ({
+  launchVoyager
+}) => {
+  const voyager = await launchVoyager()
+  const settings = await openSettings(voyager)
+
+  const cancelled = settings.evaluate(
+    (path) => window.voyager.extensions.install(path),
+    EXTENSION_PATH
+  )
+  const prompt = voyager.chrome.getByRole('dialog')
+  await expect(prompt).toBeVisible()
+  await expect(prompt).toContainText('Add Voyager E2E Password Filler?')
+  await expect(prompt).toContainText('See your browsing tabs and activity')
+  await expect(prompt).toContainText('cooperate with native apps')
+  await expect(prompt).toContainText('Access https://example.test/*')
+  await prompt.getByRole('button', { name: 'Cancel' }).click()
+  expect(await cancelled).toEqual([])
+  await expect(voyager.chrome.getByRole('dialog')).toHaveCount(0)
+
+  const accepted = settings.evaluate(
+    (path) => window.voyager.extensions.install(path),
+    EXTENSION_PATH
+  )
+  const secondPrompt = voyager.chrome.getByRole('dialog')
+  await expect(secondPrompt).toBeVisible()
+  await secondPrompt.getByRole('button', { name: 'Install extension' }).click()
+  expect(await accepted).toEqual([
+    expect.objectContaining({ name: 'Voyager E2E Password Filler', loaded: true })
+  ])
+})
+
 test('unpacks and installs a CRX extension', async ({ voyager }) => {
   const installed = await voyager.chrome.evaluate(
     (path) => window.voyager.extensions.install(path),

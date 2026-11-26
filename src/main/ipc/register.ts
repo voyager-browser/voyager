@@ -41,6 +41,7 @@ import type {
   CertificateExportFormat,
   ClearBrowsingDataOptions,
   ExtensionInfo,
+  ExtensionInstallDetails,
   NewBookmarkFolderInput,
   NewBookmarkInput,
   NewTabRequest,
@@ -188,6 +189,10 @@ import {
   type ExtensionInvokeHandler
 } from '../extensions/serviceWorkerIpc'
 import { checkProfileExtensionUpdates } from '../extensions/updates'
+import {
+  requestExtensionInstallConfirmation,
+  respondToExtensionInstall
+} from '../extensions/installPrompt'
 import {
   autoGrantDeclaredPermissions,
   declaredManifestKeys,
@@ -411,6 +416,23 @@ export function registerIpcHandlers(context: IpcContext): void {
     settingsProfileFor(sender) ??
     activeWindow()?.profile ??
     DEFAULT_PROFILE_ID
+
+  /**
+   * Settings owns the file picker, but Chrome shows install consent on the main
+   * browser window. Programmatic calls from the trusted chrome UI keep their
+   * existing behavior; only user-facing Settings installs need confirmation.
+   */
+  const installConfirmationFor = (event: SenderEvent, profileId: string) => {
+    if (!event.sender || settingsProfileFor(event.sender) === null) return undefined
+    return async (details: ExtensionInstallDetails): Promise<boolean> => {
+      const window =
+        allWindows().find(
+          (candidate) => candidate.profile === profileId && !candidate.window.isDestroyed()
+        ) ?? activeWindow()
+      if (!window) throw new Error('Open a browser window to confirm the extension install.')
+      return requestExtensionInstallConfirmation(window, details)
+    }
+  }
 
   const profileForSession = (ses: Session): string | null => {
     for (const profile of listProfiles()) {
@@ -1996,7 +2018,9 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
     const profileId = profileFor(event as any)
     const ses = sessionForProfile(profileId)
-    const state = await installExtension(ses, profileId, path)
+    const state = await installExtension(ses, profileId, path, {
+      confirm: installConfirmationFor(event as any, profileId)
+    })
     refreshCommandShortcuts(ses, profileId)
     return publishExtensions(profileId, state)
   })
@@ -2007,9 +2031,18 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
     const profileId = profileFor(event as any)
     const ses = sessionForProfile(profileId)
-    const state = await installExtensionFromStore(ses, profileId, input)
+    const state = await installExtensionFromStore(ses, profileId, input, {
+      confirm: installConfirmationFor(event as any, profileId)
+    })
     refreshCommandShortcuts(ses, profileId)
     return publishExtensions(profileId, state)
+  })
+
+  handleBrowser(IpcChannels.ExtensionInstallRespond, (_event, id: unknown, choice: unknown) => {
+    if (typeof id !== 'string' || (choice !== 'install' && choice !== 'cancel')) {
+      throw new Error('Invalid extension install response')
+    }
+    return respondToExtensionInstall(id, choice)
   })
 
   handleBrowser(IpcChannels.ExtensionsUninstall, (event, path: unknown) => {

@@ -6,9 +6,11 @@ import type {
   ExtensionActionInfo,
   ExtensionHostAccess,
   ExtensionInfo,
+  ExtensionInstallDetails,
   ExtensionSiteAccess
 } from '../../shared/types'
 import { getSettings, setSettings } from '../store'
+import { installAccessForManifest } from './extensionPermissions'
 import {
   downloadWebStoreCrx,
   readCrxSigningIdentity,
@@ -286,18 +288,42 @@ function prepareExtensionPath(path: string, profileId: string): string {
   throw new Error('Choose an unpacked extension folder or a CRX file.')
 }
 
+/** Ask the user to approve a manifest before loading any extension code. */
+export type ConfirmExtensionInstall = (details: ExtensionInstallDetails) => Promise<boolean>
+
 /** Validate, load, and remember an unpacked extension or CRX for a profile. */
 export async function installExtension(
   ses: Session,
   profileId: string,
   path: string,
-  options: { storeId?: string } = {}
+  options: { storeId?: string; confirm?: ConfirmExtensionInstall } = {}
 ): Promise<ExtensionInfo[]> {
   // A user-selected folder or unsigned CRX is still installable; only signed
   // packages get an identity that future automatic updates must preserve.
   const signingIdentity = readCrxSigningIdentity(path)
+  let sourceIsFile = false
+  try {
+    sourceIsFile = statSync(resolve(path)).isFile()
+  } catch {
+    // prepareExtensionPath reports missing paths with a friendlier message.
+  }
   const absolute = prepareExtensionPath(path, profileId)
   const manifest = extensionManifest(absolute)
+  if (options.confirm) {
+    const access = installAccessForManifest(manifest)
+    const approved = await options.confirm({
+      name: manifest.name as string,
+      version: manifest.version as string,
+      ...access
+    })
+    if (!approved) {
+      // A cancelled CRX install must not leave its unpacked staging directory.
+      if (sourceIsFile && isManagedExtensionPath(absolute, profileId)) {
+        rmSync(absolute, { recursive: true, force: true })
+      }
+      return currentExtensionsState(ses, profileId)
+    }
+  }
   const paths = installedExtensionPaths(profileId)
   const alreadyLoaded = ses.extensions
     .getAllExtensions()
@@ -334,12 +360,16 @@ export async function installExtension(
 export async function installExtensionFromStore(
   ses: Session,
   profileId: string,
-  input: string
+  input: string,
+  options: { confirm?: ConfirmExtensionInstall } = {}
 ): Promise<ExtensionInfo[]> {
   const id = webStoreId(input)
   const temporaryPath = await downloadWebStoreCrx(id)
   try {
-    return await installExtension(ses, profileId, temporaryPath, { storeId: id })
+    return await installExtension(ses, profileId, temporaryPath, {
+      storeId: id,
+      confirm: options.confirm
+    })
   } finally {
     rmSync(temporaryPath, { force: true })
   }

@@ -180,7 +180,7 @@ const PERMISSION_WARNINGS: Record<string, string> = {
   downloads: 'Manage your downloads',
   history: 'Read and change your browsing history',
   management: 'Manage your apps, extensions, and themes',
-  nativeMessaging: 'Exchange data with native applications',
+  nativeMessaging: 'cooperate with native apps',
   privacy: 'Change your privacy-related settings',
   proxy: 'Change your proxy settings',
   tabs: 'Read your browsing history',

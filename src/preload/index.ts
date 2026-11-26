@@ -19,6 +19,8 @@ import type {
   ContentBlockingStats,
   DownloadsState,
   ExtensionInfo,
+  ExtensionInstallChoice,
+  ExtensionInstallRequest,
   ExtensionPermissionChoice,
   ExtensionPermissionRequest,
   ExtensionUpdateResult,
@@ -119,6 +121,10 @@ const api = {
       ipcRenderer.invoke(IpcChannels.ExtensionsInstall, path),
     installFromStore: (url: string): Promise<ExtensionInfo[]> =>
       ipcRenderer.invoke(IpcChannels.ExtensionsInstallFromStore, url),
+    onInstallRequest: (listener: (request: ExtensionInstallRequest) => void): Unsubscribe =>
+      subscribe<ExtensionInstallRequest>(IpcChannels.ExtensionInstallRequest, listener),
+    respondInstall: (id: string, choice: ExtensionInstallChoice): Promise<boolean> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionInstallRespond, id, choice),
     uninstall: (path: string): Promise<ExtensionInfo[]> =>
       ipcRenderer.invoke(IpcChannels.ExtensionsUninstall, path),
     checkUpdates: (): Promise<ExtensionUpdateResult[]> =>

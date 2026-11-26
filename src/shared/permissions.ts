@@ -53,7 +53,7 @@ export const EXTENSION_PERMISSION_LABELS: Record<string, string> = {
   privacy: 'Change your privacy-related settings',
   'privacy.passwordSavingEnabled': "Turn off Voyager's password saving",
   tabs: 'See your browsing tabs and activity',
-  nativeMessaging: 'Communicate with cooperating native applications',
+  nativeMessaging: 'cooperate with native apps',
   downloads: 'Download files',
   bookmarks: 'Read and change your bookmarks',
   history: 'Read and change your browsing history',
@@ -64,9 +64,11 @@ export const EXTENSION_PERMISSION_LABELS: Record<string, string> = {
 }
 
 export function extensionPermissionLabel(permission: string): string {
-  if (permission.startsWith('origin:')) {
-    return `Access ${permission.slice('origin:'.length)}`
+  const value = permission.startsWith('origin:') ? permission.slice('origin:'.length) : permission
+  if (value === '<all_urls>' || value === '*://*/*') {
+    return 'Read and change all your data on websites you visit'
   }
+  if (permission.startsWith('origin:')) return `Access ${value}`
   return EXTENSION_PERMISSION_LABELS[permission] ?? `Use the ${permission} permission`
 }
 

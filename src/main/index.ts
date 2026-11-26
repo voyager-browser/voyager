@@ -17,6 +17,7 @@ import { DEFAULT_PROFILE_ID } from '../shared/profiles'
 import { lastProfileId } from './profiles/profiles'
 import { ensureProfileSession, sessionForProfile } from './profiles/session'
 import { cancelAllExtensionPermissions } from './extensions/extensionPermissions'
+import { cancelAllExtensionInstalls } from './extensions/installPrompt'
 import { attachExtensions } from './extensions/extensions'
 import { closeAllNativePorts } from './extensions/nativeMessaging'
 import { startExtensionUpdateScheduler, stopExtensionUpdateScheduler } from './extensions/updates'
@@ -106,6 +107,7 @@ registerIpcHandlers({
 app.on('will-quit', () => {
   stopExtensionUpdateScheduler()
   cancelAllExtensionPermissions()
+  cancelAllExtensionInstalls()
   closeAllNativePorts()
   flushAllStores()
 })
