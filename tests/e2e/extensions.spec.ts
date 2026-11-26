@@ -133,8 +133,11 @@ test('installs and removes an unpacked extension for the profile', async ({ voya
     EXTENSION_PATH
   )
   expect(installed).toEqual([
-    expect.objectContaining({ name: 'Voyager E2E Password Filler', loaded: true })
+    expect.objectContaining({ name: 'Voyager E2E Password Filler', loaded: true, pinned: true })
   ])
+  await expect(
+    voyager.chrome.getByRole('button', { name: 'Open Voyager E2E Password Filler' })
+  ).toBeVisible()
 
   const removed = await voyager.chrome.evaluate(
     (path) => window.voyager.extensions.uninstall(path),
@@ -172,8 +175,11 @@ test('confirms Settings installs in the browser window with plain-language acces
   await expect(secondPrompt).toBeVisible()
   await secondPrompt.getByRole('button', { name: 'Install extension' }).click()
   expect(await accepted).toEqual([
-    expect.objectContaining({ name: 'Voyager E2E Password Filler', loaded: true })
+    expect.objectContaining({ name: 'Voyager E2E Password Filler', loaded: true, pinned: true })
   ])
+  await expect(
+    voyager.chrome.getByRole('button', { name: 'Open Voyager E2E Password Filler' })
+  ).toBeVisible()
 })
 
 test('resolves a localized manifest name in the install prompt', async ({ launchVoyager }) => {

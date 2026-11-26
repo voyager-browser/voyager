@@ -328,12 +328,19 @@ export async function installExtension(
     }
   }
   const paths = installedExtensionPaths(profileId)
+  const alreadyInstalled = paths.some((stored) => isSamePath(stored, absolute))
   const alreadyLoaded = ses.extensions
     .getAllExtensions()
     .some((extension) => isSamePath(extension.path, absolute))
   if (!alreadyLoaded) await ses.extensions.loadExtension(absolute)
-  if (!paths.some((stored) => isSamePath(stored, absolute))) {
+  if (!alreadyInstalled) {
     persistPaths(profileId, [...paths, absolute])
+    // Chrome pins a newly installed action beside the omnibox. Without this,
+    // the extension is only reachable through the puzzle menu after install.
+    const loaded = ses.extensions
+      .getAllExtensions()
+      .find((extension) => isSamePath(extension.path, absolute))
+    if (loaded?.id) setExtensionPinned(profileId, loaded.id, true)
   }
 
   const manifestUpdateUrl =
