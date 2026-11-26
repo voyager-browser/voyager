@@ -401,11 +401,19 @@ export function pasteBookmarkNode(
 
       if (mode === 'cut') {
         const targetStore = storesFor(profileId).bookmarks
+        const previousItems = storedItems(profileId)
         targetStore.update('items', (items) => [...items, { ...item, folderId: parentId }])
         // Store.update only schedules a debounced write. Persist the destination
         // before deleting the source so a shutdown or failed destination write
-        // cannot leave the bookmark in neither profile.
-        targetStore.flush()
+        // cannot leave the bookmark in neither profile. If the write fails, undo
+        // the in-memory insertion too; otherwise a retry would append the same
+        // id a second time and both copies would be removed by one deletion.
+        try {
+          targetStore.flush()
+        } catch (error) {
+          targetStore.set('items', previousItems)
+          throw error
+        }
         storesFor(sourceProfile).bookmarks.update('items', (items) =>
           items.filter((candidate) => candidate.id !== id)
         )
@@ -436,6 +444,8 @@ export function pasteBookmarkNode(
         doomed.has(candidate.folderId ?? '')
       )
       const targetStore = storesFor(profileId).bookmarks
+      const previousFolders = storedFolders(profileId)
+      const previousItems = storedItems(profileId)
       targetStore.update('folders', (folders) => [
         ...(folders ?? []),
         ...movedFolders.map((candidate) =>
@@ -446,7 +456,15 @@ export function pasteBookmarkNode(
       // Write the full destination subtree before scheduling source deletion;
       // both Store writes are debounced, so ordering here determines which file
       // reaches disk first if the app exits or the destination write fails.
-      targetStore.flush()
+      // Restore both in-memory lists on failure so a retry cannot duplicate the
+      // subtree ids inside the destination.
+      try {
+        targetStore.flush()
+      } catch (error) {
+        targetStore.set('folders', previousFolders)
+        targetStore.set('items', previousItems)
+        throw error
+      }
       sourceStore.set(
         'folders',
         storedFolders(sourceProfile).filter((candidate) => !doomed.has(candidate.id))
