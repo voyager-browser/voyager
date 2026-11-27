@@ -109,6 +109,12 @@ window.addEventListener(
 
 /* ---- autofill/form history (best-effort MVP, #139) ---------------------- */
 
+// Voyager's native form history is browser management data, not extension API
+// data. Extension documents already have their own autofill implementation and
+// their browser IPC is intentionally restricted in the main process, so keep
+// these IPC calls out of chrome-extension: pages entirely.
+const isExtensionDocument = (): boolean => window.location.protocol === 'chrome-extension:'
+
 type TextControl = HTMLInputElement | HTMLTextAreaElement
 
 function isTextControl(el: Element | null): el is TextControl {
@@ -315,7 +321,7 @@ function addItem(list: HTMLDivElement, label: string, onPick: () => void): void 
 }
 
 async function refreshSuggestions(control: TextControl): Promise<void> {
-  if (!isTextControl(control)) {
+  if (isExtensionDocument() || !isTextControl(control)) {
     hideSuggestions()
     return
   }
@@ -387,7 +393,7 @@ function scheduleSuggestions(control: TextControl): void {
 }
 
 function recordControl(control: TextControl): void {
-  if (!isTextControl(control) || !shouldSaveHistory(control)) return
+  if (isExtensionDocument() || !isTextControl(control) || !shouldSaveHistory(control)) return
   const value = control.value?.trim()
   if (!value) return
   void ipcRenderer.invoke(IpcChannels.AutofillRecordFormField, { field: fieldKey(control), value })
