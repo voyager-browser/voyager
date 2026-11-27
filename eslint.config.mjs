@@ -61,6 +61,16 @@ const buildConfig = async () => {
         }
       },
       {
+        files: ['tests/e2e/fixtures/**/*.js'],
+        languageOptions: {
+          globals: {
+            ...globals.browser,
+            ...globals.webextensions,
+            ...globals.node
+          }
+        }
+      },
+      {
         files: ['tests/e2e/**/*.ts'],
         rules: {
           '@typescript-eslint/no-explicit-any': 'off',

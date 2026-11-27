@@ -29,9 +29,11 @@ test('opens the launch URL alongside restored tabs', async ({ launchVoyager, ser
 })
 
 test('opens URLs queued while no browser window is open', async ({ voyager, server }) => {
-  // Keep the app alive with only the Settings window, then close the browser.
-  await openSettings(voyager)
-  await voyager.chrome.evaluate(() => window.voyager.windows.close())
+  // Keep the app alive with only the Settings window, then close the browser
+  // from that surviving page. Closing the browser from its own renderer tears
+  // down the evaluate call before it can return its IPC result.
+  const settings = await openSettings(voyager)
+  await settings.evaluate(() => window.voyager.windows.close())
   // Wait until only the Settings window remains, so the registry no longer
   // reports an active browser window and the links below are queued.
   await expect.poll(async () => windowCount(voyager.app)).toBe(1)

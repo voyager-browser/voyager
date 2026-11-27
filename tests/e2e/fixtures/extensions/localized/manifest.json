@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_extName__",
+  "default_locale": "en",
+  "version": "2.0",
+  "permissions": [
+    "activeTab",
+    "alarms",
+    "clipboardRead",
+    "clipboardWrite",
+    "contextMenus",
+    "idle",
+    "offscreen",
+    "sidePanel",
+    "unlimitedStorage",
+    "webNavigation",
+    "webRequest",
+    "webRequestAuthProvider"
+  ],
+  "host_permissions": ["https://*/*", "http://*/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  }
+}

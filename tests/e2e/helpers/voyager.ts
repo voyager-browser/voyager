@@ -19,6 +19,7 @@ export interface LaunchOptions {
   downloadDir: string
   seed?: Record<string, unknown>
   args?: string[]
+  env?: Record<string, string>
   /** Notified right after Electron spawns, before setup steps can fail. */
   onApp?: (app: ElectronApplication) => void
 }
@@ -61,16 +62,92 @@ export async function pollUntil<T>(
   throw new Error(`Timed out after ${timeout}ms waiting for condition`)
 }
 
-const closedApps = new WeakSet<ElectronApplication>()
+/**
+ * Playwright keeps Page objects for destroyed WebContentsViews, so resolve a
+ * fresh extension page and discard stale handles before driving them.
+ */
+export async function liveExtensionPage(app: ElectronApplication): Promise<Page | undefined> {
+  for (const page of app.windows()) {
+    if (page.isClosed()) continue
+    try {
+      const url = await page.evaluate(() => location.href)
+      if (url.startsWith('chrome-extension://')) return page
+    } catch {
+      // The page was disposed after windows() was sampled.
+    }
+  }
+  return undefined
+}
+
+const closedApps = new WeakMap<ElectronApplication, Promise<void>>()
+const GRACEFUL_QUIT_WAIT_MS = 5_000
+
+type ElectronChild = ReturnType<ElectronApplication['process']>
+
+/**
+ * Stubbed apps in unit-like E2E cases may not expose a child process. Treat a
+ * missing or already-exited child as a no-op instead of masking setup failures.
+ */
+function runningElectronChild(app: ElectronApplication): ElectronChild | null {
+  if (typeof app.process !== 'function') return null
+  try {
+    const child = app.process()
+    return child && child.exitCode === null && child.signalCode === null ? child : null
+  } catch {
+    return null
+  }
+}
+
+/** Resolve when the Electron process exits, or after a short grace period. */
+function waitForElectronExit(app: ElectronApplication, child: ElectronChild): Promise<void> {
+  return new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolve()
+      return
+    }
+    const finish = (): void => {
+      clearTimeout(timer)
+      app.off('close', finish)
+      resolve()
+    }
+    const timer = setTimeout(finish, GRACEFUL_QUIT_WAIT_MS)
+    timer.unref?.()
+    app.once('close', finish)
+  })
+}
 
 /**
  * Close an Electron app at most once. A failed setup and fixture teardown can
  * both try to close the same raw app, so the cleanup path stays idempotent.
+ *
+ * Ask the main process to quit before Playwright closes its Node connection.
+ * ElectronApplication.close() flushes trace and screencast state first; when a
+ * CI worker is busy that can delay the quit request long enough to exhaust the
+ * test timeout. Quitting first lets the normal before-quit/will-quit handlers
+ * run while the connection is still open, then app.close() only collects the
+ * already-exiting process.
  */
 export async function closeElectronApp(app: ElectronApplication): Promise<void> {
-  if (closedApps.has(app)) return
-  closedApps.add(app)
-  await app.close().catch(() => undefined)
+  const active = closedApps.get(app)
+  if (active) return active
+  const task = (async (): Promise<void> => {
+    const child = runningElectronChild(app)
+    if (child) {
+      const exited = waitForElectronExit(app, child)
+      await Promise.race([
+        app
+          .evaluate(({ app }) => {
+            app.quit()
+          })
+          .catch(() => undefined),
+        exited
+      ])
+      await exited
+    }
+    await app.close().catch(() => undefined)
+  })()
+  closedApps.set(app, task)
+  return task
 }
 
 export interface AppRegistry {
@@ -102,7 +179,12 @@ function isSettingsPage(page: Page): boolean {
 }
 
 function isTabPage(page: Page): boolean {
-  return !isChromePage(page) && !isSettingsPage(page) && !page.url().startsWith('devtools://')
+  return (
+    !isChromePage(page) &&
+    !isSettingsPage(page) &&
+    !page.url().startsWith('devtools://') &&
+    !page.url().startsWith('chrome-extension://')
+  )
 }
 
 async function waitForChrome(app: ElectronApplication): Promise<Page> {
@@ -195,7 +277,8 @@ export async function launchVoyager(options: LaunchOptions): Promise<VoyagerApp>
   const env = {
     ...process.env,
     VOYAGER_E2E: '1',
-    ELECTRON_DISABLE_SECURITY_WARNINGS: '1'
+    ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
+    ...options.env
   } as Record<string, string>
 
   const app = await launchWithRetry({

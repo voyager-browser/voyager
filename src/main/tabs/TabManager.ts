@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { WebContentsView, type WebContents, type Input } from 'electron'
+import { nativeTheme, WebContentsView, type WebContents, type Input } from 'electron'
 import { DEFAULT_NEW_TAB_URL, SETTINGS_URL } from '../../shared/constants'
 import { VOYAGER_FAVICON } from '../../shared/favicons'
 import { IpcChannels } from '../../shared/ipc-channels'
 import { matchShortcut, type BrowserAction } from '../../shared/keyboard'
 import type { BrowserState, NewTabRequest, TabState } from '../../shared/types'
-import { isNewTab, isVoyagerInternalUrl, startPageUrl } from '../../shared/url'
+import { isNewTab, isVoyagerInternalUrl, startPageQuery, startPageUrl } from '../../shared/url'
 import { currentHistoryState, recordVisit, updateHistoryTitle } from '../history/history'
 import {
   clearContentBlockingPage,
@@ -14,6 +14,7 @@ import {
   trackContentBlockingPage
 } from '../contentBlocking/contentBlocking'
 import { openSettingsWindow } from '../window/settingsWindow'
+import { startPageAppearance } from '../theme/theme'
 import { getSettings } from '../store'
 import type { WindowController } from '../window/WindowController'
 
@@ -64,15 +65,25 @@ export class TabManager {
 
   /** Resolve the tab that owns a WebContents, used for permission scoping. */
   tabIdForWebContents(webContents: WebContents): string | null {
+    if (webContents.isDestroyed()) return null
     for (const [id, entry] of this.entries) {
-      if (entry.view.webContents.id === webContents.id) return id
+      const candidate = entry.view.webContents
+      if (!candidate.isDestroyed() && candidate.id === webContents.id) return id
     }
     return null
   }
 
-  /** Numeric WebContents id for the active tab, when there is one. */
+  /** Numeric WebContents id used by Chrome's extension tab API. */
+  webContentsIdForTab(id: string): number | null {
+    const contents = this.entries.get(id)?.view.webContents
+    if (!contents || contents.isDestroyed()) return null
+    return contents.id
+  }
+
   activeWebContentsId(): number | null {
-    return this.activeWebContents()?.id ?? null
+    const contents = this.activeWebContents()
+    if (!contents || contents.isDestroyed()) return null
+    return contents.id
   }
 
   /** Keep internal pages on the Voyager favicon without shadowing site icons. */
@@ -90,6 +101,7 @@ export class TabManager {
       const entry = this.entries.get(id)
       if (!entry) continue
       const wc = entry.view.webContents
+      if (wc.isDestroyed()) continue
       tabs.push({
         id,
         title: isNewTab(entry.url) ? 'New Tab' : entry.title,
@@ -300,6 +312,14 @@ export class TabManager {
     this.broadcast()
   }
 
+  /** Discard a tab on demand, independent of the Memory Saver setting. */
+  discard(id: string): void {
+    const entry = this.entries.get(id)
+    if (!entry || entry.discarded) return
+    this.discardTab(entry)
+    this.broadcast()
+  }
+
   duplicate(id: string): void {
     const entry = this.entries.get(id)
     if (!entry) return
@@ -334,8 +354,13 @@ export class TabManager {
 
   /** Refresh every open page, e.g. after an explicit theme-mode change. */
   reloadAll(): void {
+    // Start pages derive their colors from the URL, so reloading the old URL
+    // would preserve the previous theme. Rebuild them and reload other pages.
+    this.refreshStartPages()
     for (const entry of this.entries.values()) {
-      if (!entry.view.webContents.isDestroyed()) entry.view.webContents.reload()
+      if (!isNewTab(entry.url) && !entry.view.webContents.isDestroyed()) {
+        entry.view.webContents.reload()
+      }
     }
   }
 
@@ -490,13 +515,17 @@ export class TabManager {
 
   /** Resolve the internal start page for this window's profile. */
   private startUrl(): string {
+    const appearance = startPageAppearance(
+      this.window.profile,
+      nativeTheme.shouldUseDarkColors,
+      this.window.isIncognito
+    )
     const devServerUrl = process.env['ELECTRON_RENDERER_URL']
     if (devServerUrl) {
-      const params = new URLSearchParams({ engine: this.window.searchEngine })
-      if (this.window.isIncognito) params.set('incognito', '1')
-      return `${devServerUrl}/start.html?${params.toString()}`
+      const query = startPageQuery(this.window.searchEngine, this.window.isIncognito, appearance)
+      return `${devServerUrl}/start.html?${query.toString()}`
     }
-    return startPageUrl(this.window.searchEngine, this.window.isIncognito)
+    return startPageUrl(this.window.searchEngine, this.window.isIncognito, appearance)
   }
 
   /** Pinned tabs always win the leftmost block, in their relative order. */
@@ -570,7 +599,10 @@ export class TabManager {
         // stayed open. Real navigations are recorded by did-navigate / did-navigate-in-page.
         if (updateHistoryTitle(profileId, entry.url, newTitle)) {
           try {
-            this.window.sendToChrome(IpcChannels.HistoryStateChanged, currentHistoryState(profileId))
+            this.window.sendToChrome(
+              IpcChannels.HistoryStateChanged,
+              currentHistoryState(profileId)
+            )
           } catch {
             // Ignore.
           }
@@ -667,6 +699,7 @@ export class TabManager {
   }
 
   private broadcast(): void {
+    if (this.window.window.isDestroyed()) return
     this.onStateChanged(this.snapshot())
   }
 
@@ -773,6 +806,8 @@ export class TabManager {
 
   private activeWebContents(): WebContents | null {
     if (this.activeId === null) return null
-    return this.entries.get(this.activeId)?.view.webContents ?? null
+    const contents = this.entries.get(this.activeId)?.view.webContents
+    if (!contents || contents.isDestroyed()) return null
+    return contents
   }
 }

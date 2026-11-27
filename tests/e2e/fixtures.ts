@@ -38,6 +38,7 @@ interface LaunchOverrides {
   userDataDir?: string
   seed?: Record<string, unknown>
   args?: string[]
+  env?: Record<string, string>
 }
 
 interface Fixtures {
@@ -52,13 +53,15 @@ export const test = base.extend<Fixtures>({
   userDataDir: async ({}, provide) => {
     const directory = mkdtempSync(join(tmpdir(), 'voyager-e2e-'))
     await provide(directory)
-    rmSync(directory, { recursive: true, force: true })
+    // Electron can still be flushing profile files as the app exits. Node's
+    // retries cover the brief ENOTEMPTY/EBUSY window without failing the test.
+    rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   },
 
   downloadDir: async ({}, provide) => {
     const directory = mkdtempSync(join(tmpdir(), 'voyager-downloads-'))
     await provide(directory)
-    rmSync(directory, { recursive: true, force: true })
+    rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   },
 
   server: async ({}, provide) => {
@@ -76,6 +79,7 @@ export const test = base.extend<Fixtures>({
         downloadDir,
         seed: overrides.seed,
         args: overrides.args,
+        env: overrides.env,
         // Register the raw app before setup can fail so teardown still sees it.
         onApp: (app) => apps.register(app)
       })

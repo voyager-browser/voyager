@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Voyager E2E Password Filler",
+  "version": "1.0.0",
+  "description": "Minimal unpacked extension used to verify extension API support.",
+  "permissions": ["tabs", "nativeMessaging"],
+  "optional_permissions": ["privacy"],
+  "host_permissions": ["https://example.test/*"],
+  "action": {
+    "default_title": "Voyager E2E Password Filler",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.png"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

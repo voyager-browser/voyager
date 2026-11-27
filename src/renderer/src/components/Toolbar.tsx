@@ -10,6 +10,7 @@ import {
   X
 } from 'lucide-react'
 import { useEffect, useState, type MouseEvent } from 'react'
+import type { ExtensionInfo } from '../../../shared/types'
 import { cn } from '../lib/cn'
 import { menuAnchorFromElement, type MenuAnchor } from '../lib/menuAnchor'
 import {
@@ -20,6 +21,7 @@ import { isNewTab } from '../../../shared/url'
 import { useActiveTab, useBrowserStore } from '../state/browserStore'
 import { useBookmarksStore, useIsBookmarked } from '../state/bookmarksStore'
 import { useDownloadsStore } from '../state/downloadsStore'
+import { ExtensionMenu } from './ExtensionMenu'
 import { IconButton } from './ui/IconButton'
 import { LeadingWindowControlsSeparator, WindowControls } from './ui/WindowControls'
 import { Omnibox } from './Omnibox'
@@ -75,6 +77,7 @@ export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element
   const activeTab = useActiveTab()
   const incognito = useBrowserStore((state) => state.incognito)
   const [devBuild, setDevBuild] = useState(false)
+  const [extensions, setExtensions] = useState<ExtensionInfo[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -84,6 +87,11 @@ export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element
     return () => {
       cancelled = true
     }
+  }, [])
+
+  useEffect(() => {
+    void window.voyager.extensions.getState().then(setExtensions)
+    return window.voyager.extensions.onStateChanged(setExtensions)
   }, [])
   const goBack = useBrowserStore((state) => state.goBack)
   const goForward = useBrowserStore((state) => state.goForward)
@@ -136,6 +144,7 @@ export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element
 
   return (
     <div
+      data-chrome-surface
       className={cn(
         'relative flex h-[44px] shrink-0 items-center gap-1 border-b border-border bg-bg',
         dragHandle && 'drag'
@@ -178,7 +187,7 @@ export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element
 
       {devBuild && (
         <span
-          className="no-drag ml-1 rounded border border-amber-400/30 bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-500 dark:text-amber-300"
+          className="no-drag ml-1 rounded border border-amber-600 bg-amber-300 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-neutral-950 shadow-sm shadow-black/20"
           title="Developer build"
           aria-label="Developer build"
         >
@@ -220,6 +229,7 @@ export function Toolbar({ dragHandle = false }: ToolbarProps): React.JSX.Element
           <Download className="h-4 w-4" />
         )}
       </IconButton>
+      <ExtensionMenu extensions={incognito ? [] : extensions} />
       <IconButton label="Menu" onClick={openMainMenu}>
         <EllipsisVertical className="h-4 w-4" />
       </IconButton>

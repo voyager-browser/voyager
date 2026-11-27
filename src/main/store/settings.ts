@@ -1,8 +1,14 @@
 /** Persisted user preferences; new settings extend this shape over time. */
+import type { NativeMessagingHost } from '../../shared/types'
 import type { SearchEngineId } from '../../shared/search'
+import type { BrowserTheme, StartPageBackground } from '../../shared/types'
 
 export interface SettingsShape {
   themeMode?: 'system' | 'light' | 'dark'
+  browserTheme?: BrowserTheme
+  startPageBackground?: StartPageBackground
+  /** One-time migration flag for themes installed before Voyager had theme state. */
+  installedThemeMigrated?: boolean
   bookmarksBarVisible?: boolean
   clearHistory?: boolean
   clearDownloads?: boolean
@@ -38,4 +44,19 @@ export interface SettingsShape {
   autofillProfiles?: boolean
   autofillPayments?: boolean
   saveFormHistory?: boolean
+  installedExtensions?: string[]
+  extensionUpdateInfo?: Record<
+    string,
+    {
+      storeId?: string
+      updateUrl?: string
+      version?: string
+      lastCheckedAt?: number
+    }
+  >
+  extensionPermissionDecisions?: Record<string, Record<string, 'allow' | 'block'>>
+  passwordSavingEnabled?: boolean
+  nativeMessagingHosts?: NativeMessagingHost[]
+  /** Values persisted by emulated Chrome extension APIs, keyed by API path. */
+  extensionApiSettings?: Record<string, unknown>
 }

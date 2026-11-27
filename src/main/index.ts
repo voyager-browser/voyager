@@ -15,9 +15,22 @@ import { findLaunchUrl } from './launch/urlArgument'
 import { queuePendingUrls, takePendingUrls } from './launch/pendingUrls'
 import { DEFAULT_PROFILE_ID } from '../shared/profiles'
 import { lastProfileId } from './profiles/profiles'
-import { ensureProfileSession } from './profiles/session'
+import { ensureProfileSession, sessionForProfile } from './profiles/session'
+import { cancelAllExtensionPermissions } from './extensions/extensionPermissions'
+import { cancelAllExtensionInstalls } from './extensions/installPrompt'
+import { attachExtensions } from './extensions/extensions'
+import { closeAllNativePorts } from './extensions/nativeMessaging'
+import { startExtensionUpdateScheduler, stopExtensionUpdateScheduler } from './extensions/updates'
 
 app.setName('Voyager')
+
+// Electron only initializes the service-worker preload realm through its
+// sandboxed renderer client. First-party windows request that client in their
+// web preferences, but extension background workers are launched without a
+// WebContents and inherit this process-wide switch instead. Do not remove a
+// caller-supplied --no-sandbox: CI containers use it to avoid needing the
+// platform sandbox helper, while the renderer client still honors this switch.
+app.commandLine.appendSwitch('enable-sandbox')
 
 // Must run before the app is ready. Registering the settings scheme as
 // standard + secure lets relative asset URLs resolve and CORS-enabled module
@@ -92,6 +105,10 @@ registerIpcHandlers({
 
 // Persist any debounced store writes before the process goes away.
 app.on('will-quit', () => {
+  stopExtensionUpdateScheduler()
+  cancelAllExtensionPermissions()
+  cancelAllExtensionInstalls()
+  closeAllNativePorts()
   flushAllStores()
 })
 
@@ -105,6 +122,10 @@ app.whenReady().then(async (): Promise<void> => {
   ensureProfileSession(DEFAULT_PROFILE_ID)
   const startupProfileId = lastProfileId()
   ensureProfileSession(startupProfileId)
+  // Have extension content scripts ready before the first page loads, so a
+  // password manager can act on the start page immediately.
+  await attachExtensions(sessionForProfile(DEFAULT_PROFILE_ID), DEFAULT_PROFILE_ID)
+  await attachExtensions(sessionForProfile(startupProfileId), startupProfileId)
 
   controller = new WindowController({
     profileId: startupProfileId,
@@ -119,6 +140,8 @@ app.whenReady().then(async (): Promise<void> => {
   const startupUrls = takePendingUrls()
   await controller.show(startupUrls[0])
   for (const url of startupUrls.slice(1)) controller.openUrl(url)
+  // Non-blocking: a failed update check must never delay browser startup.
+  startExtensionUpdateScheduler()
   starting = false
   // Links delivered during startup were queued rather than opened against a
   // half-initialized window; open them now, in arrival order.

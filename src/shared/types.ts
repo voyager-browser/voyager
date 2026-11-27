@@ -10,10 +10,57 @@ import type { FilterListId } from './filter-lists'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 
-/** Resolved theme: `mode` is the user preference, `dark` the effective scheme. */
+/** Colors the chrome renderer exposes as CSS variables. */
+export type ThemeColorKey = 'background' | 'foreground' | 'accent' | 'border' | 'muted' | 'surface'
+
+export type BrowserThemeColors = Record<ThemeColorKey, string>
+
+/** Where a browser theme came from, used by Settings and reset behavior. */
+export type BrowserThemeSource =
+  'default' | 'custom' | 'chrome-crx' | 'chrome-manifest' | 'chrome-store' | 'chrome-extension'
+
+/** Per-profile chrome theme. Images are URLs served from the profile's theme directory. */
+export interface BrowserTheme {
+  id: string
+  name: string
+  source: BrowserThemeSource
+  colors: BrowserThemeColors
+  backgroundImage?: string
+  version?: string
+  importedAt?: number
+}
+
+export type StartPageBackgroundKind = 'default' | 'color' | 'image'
+
+/** Per-profile New Tab background, independent from the chrome palette. */
+export interface StartPageBackground {
+  kind: StartPageBackgroundKind
+  color?: string
+  image?: string
+}
+
+/** A file selected in Settings and forwarded to the main process for import. */
+export interface ThemeFileInput {
+  name: string
+  mimeType: string
+  /** Base64-encoded file contents (without a data URL prefix). */
+  data: string
+}
+
+export type ThemeColorPatch = Partial<BrowserThemeColors>
+
+export interface ThemeStartPageInput {
+  kind: StartPageBackgroundKind
+  color?: string
+  image?: ThemeFileInput
+}
+
+/** Resolved theme: `mode` is app-wide, chrome/start-page data is per profile. */
 export interface ThemeState {
   mode: ThemeMode
   dark: boolean
+  chrome: BrowserTheme
+  startPage: StartPageBackground
 }
 
 export interface AppVersionInfo {
@@ -151,6 +198,51 @@ export interface PermissionPromptRequest {
 
 export interface PermissionPromptCancelled {
   id: string
+}
+
+export type ExtensionPermissionChoice = 'allow' | 'block' | 'dismiss'
+
+export interface ExtensionPermissionRequest {
+  id: string
+  extensionId: string
+  extensionName: string
+  permissions: string[]
+  origins: string[]
+}
+
+export type ExtensionInstallChoice = 'install' | 'cancel'
+
+/** Manifest-derived access summary shown before an extension is installed. */
+export interface ExtensionInstallDetails {
+  name: string
+  version: string
+  permissions: string[]
+  origins: string[]
+  /** Manifest action icon, inlined so the chrome renderer can display it. */
+  iconUrl?: string | null
+}
+
+export interface ExtensionInstallRequest extends ExtensionInstallDetails {
+  id: string
+}
+
+/** A native application that an extension is allowed to exchange messages with. */
+export interface NativeMessagingHost {
+  name: string
+  /** Absolute path to an executable that speaks the native messaging protocol. */
+  path: string
+  /** Chrome-style extension origins, e.g. `chrome-extension://abcdef/`. */
+  allowedOrigins: string[]
+  description?: string
+}
+
+export interface ExtensionNativeMessage {
+  portId: string
+  message: unknown
+}
+
+export interface ExtensionNativeDisconnect {
+  portId: string
 }
 
 /** A synchronous `window.prompt()` waiting for a value in the chrome UI. */
@@ -291,6 +383,49 @@ export interface ContentBlockingStats {
   siteEnabled: boolean
   /** Hostnames where tracker blocking is turned off. */
   exceptions: string[]
+}
+
+/** How an extension can currently interact with the active site. */
+export type ExtensionHostAccess = 'full' | 'request' | 'none'
+
+/** User's per-extension site-access choice, mirroring Chrome's menu. */
+export type ExtensionSiteAccess = 'click' | 'site' | 'all'
+
+/** Toolbar action declared by an extension manifest. */
+export interface ExtensionActionInfo {
+  /** Manifest-relative popup document, when the action has one. */
+  popup: string | null
+  title: string
+  /** Manifest-relative icon path, when one is declared. */
+  icon: string | null
+  /** Absolute chrome-extension URL for the icon, ready for an <img>. */
+  iconUrl: string | null
+}
+
+/** An unpacked extension loaded for a profile. */
+export interface ExtensionInfo {
+  /** Chrome-assigned id; null when the stored path failed to load. */
+  id: string | null
+  name: string
+  version: string
+  path: string
+  loaded: boolean
+  action: ExtensionActionInfo | null
+  /** Category used to group this extension in the action menu. */
+  hostAccess: ExtensionHostAccess
+  /** Whether the extension's action is pinned to the toolbar. */
+  pinned: boolean
+  /** Current site-access choice for this extension. */
+  siteAccess: ExtensionSiteAccess
+}
+
+/** Outcome of an automatic or manual extension update check. */
+export interface ExtensionUpdateResult {
+  name: string
+  fromVersion: string
+  toVersion?: string
+  status: 'updated' | 'up-to-date' | 'skipped' | 'failed'
+  message?: string
 }
 
 export interface UserPreferences {

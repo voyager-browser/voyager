@@ -18,7 +18,14 @@ import type {
   ClearBrowsingDataOptions,
   ContentBlockingStats,
   DownloadsState,
+  ExtensionInfo,
+  ExtensionInstallChoice,
+  ExtensionInstallRequest,
+  ExtensionPermissionChoice,
+  ExtensionPermissionRequest,
+  ExtensionUpdateResult,
   HistoryState,
+  NativeMessagingHost,
   NewBookmarkFolderInput,
   NewBookmarkInput,
   NewTabRequest,
@@ -29,7 +36,10 @@ import type {
   PromptRequest,
   SettingsTarget,
   SitePermissionsState,
+  ThemeColorPatch,
+  ThemeFileInput,
   ThemeMode,
+  ThemeStartPageInput,
   ThemeState,
   Unsubscribe,
   UserPreferences,
@@ -102,6 +112,59 @@ const api = {
       ipcRenderer.invoke(IpcChannels.ContentBlockingSetSiteEnabled, site, enabled)
   },
 
+  extensions: {
+    getState: (): Promise<ExtensionInfo[]> => ipcRenderer.invoke(IpcChannels.ExtensionsGetState),
+    chooseDirectory: (): Promise<string | null> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsChooseDirectory),
+    chooseCrx: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.ExtensionsChooseCrx),
+    install: (path: string): Promise<ExtensionInfo[]> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsInstall, path),
+    installFromStore: (url: string): Promise<ExtensionInfo[]> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsInstallFromStore, url),
+    onInstallRequest: (listener: (request: ExtensionInstallRequest) => void): Unsubscribe =>
+      subscribe<ExtensionInstallRequest>(IpcChannels.ExtensionInstallRequest, listener),
+    respondInstall: (id: string, choice: ExtensionInstallChoice): Promise<boolean> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionInstallRespond, id, choice),
+    uninstall: (path: string): Promise<ExtensionInfo[]> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsUninstall, path),
+    checkUpdates: (): Promise<ExtensionUpdateResult[]> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsCheckUpdates),
+    openPopup: (id: string, resource: string, x: number, y: number): Promise<boolean> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsOpenPopup, { id, resource, x, y }),
+    showActionMenu: (x: number, y: number): Promise<boolean> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsShowActionMenu, { x, y }),
+    showContextMenu: (id: string, x: number, y: number): Promise<boolean> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsShowContextMenu, { id, x, y }),
+    closePanel: (): Promise<void> => ipcRenderer.invoke(IpcChannels.ExtensionsClosePanel),
+    setPinned: (id: string, pinned: boolean): Promise<ExtensionInfo[]> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsSetPinned, { id, pinned }),
+    setSiteAccess: (
+      id: string,
+      access: 'click' | 'site' | 'all',
+      site?: string | null
+    ): Promise<ExtensionInfo[]> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionsSetSiteAccess, { id, access, site }),
+    onMenuOpen: (
+      listener: (payload: { site: string | null; profileId: string }) => void
+    ): Unsubscribe =>
+      subscribe<{ site: string | null; profileId: string }>(
+        IpcChannels.ExtensionsMenuOpen,
+        listener
+      ),
+    onStateChanged: (listener: (extensions: ExtensionInfo[]) => void): Unsubscribe =>
+      subscribe<ExtensionInfo[]>(IpcChannels.ExtensionsStateChanged, listener),
+    onPermissionRequest: (listener: (request: ExtensionPermissionRequest) => void): Unsubscribe =>
+      subscribe<ExtensionPermissionRequest>(IpcChannels.ExtensionPermissionRequest, listener),
+    onPermissionRequestCancelled: (listener: (payload: { id: string }) => void): Unsubscribe =>
+      subscribe<{ id: string }>(IpcChannels.ExtensionPermissionRequestCancelled, listener),
+    respondPermission: (id: string, choice: ExtensionPermissionChoice): Promise<boolean> =>
+      ipcRenderer.invoke(IpcChannels.ExtensionPermissionRespond, id, choice),
+    getNativeHosts: (): Promise<NativeMessagingHost[]> =>
+      ipcRenderer.invoke(IpcChannels.NativeMessagingHostsGet),
+    setNativeHosts: (hosts: NativeMessagingHost[]): Promise<NativeMessagingHost[]> =>
+      ipcRenderer.invoke(IpcChannels.NativeMessagingHostsSet, hosts)
+  },
+
   browsingData: {
     clear: (options: ClearBrowsingDataOptions): Promise<void> =>
       ipcRenderer.invoke(IpcChannels.BrowsingDataClear, options)
@@ -110,6 +173,15 @@ const api = {
   theme: {
     get: (): Promise<ThemeState> => ipcRenderer.invoke(IpcChannels.ThemeGet),
     set: (mode: ThemeMode): Promise<ThemeState> => ipcRenderer.invoke(IpcChannels.ThemeSet, mode),
+    setColors: (patch: ThemeColorPatch): Promise<ThemeState> =>
+      ipcRenderer.invoke(IpcChannels.ThemeSetColors, patch),
+    setStartPage: (input: ThemeStartPageInput): Promise<ThemeState> =>
+      ipcRenderer.invoke(IpcChannels.ThemeSetStartPage, input),
+    importFiles: (files: ThemeFileInput[]): Promise<ThemeState> =>
+      ipcRenderer.invoke(IpcChannels.ThemeImport, files),
+    importStore: (url: string): Promise<ThemeState> =>
+      ipcRenderer.invoke(IpcChannels.ThemeImportStore, url),
+    reset: (): Promise<ThemeState> => ipcRenderer.invoke(IpcChannels.ThemeReset),
     onChanged: (listener: (state: ThemeState) => void): Unsubscribe =>
       subscribe<ThemeState>(IpcChannels.ThemeChanged, listener)
   },

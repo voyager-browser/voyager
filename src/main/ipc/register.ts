@@ -1,6 +1,30 @@
-import { app, clipboard, ipcMain, nativeTheme, type WebContents } from 'electron'
+import {
+  app,
+  clipboard,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  webContents as electronWebContents,
+  type Extension,
+  type IpcMainInvokeEvent,
+  type IpcMainServiceWorkerInvokeEvent,
+  type ServiceWorkerMain,
+  type Session,
+  type WebContents
+} from 'electron'
+import { resolve } from 'node:path'
+import type {
+  ExtensionTabsCall,
+  ExtensionTabsCreateProperties,
+  ExtensionZoomSettings
+} from '../../shared/extensionTabs'
 import { IpcChannels } from '../../shared/ipc-channels'
-import { isPermissionKind, isPermissionRequestChoice } from '../../shared/permissions'
+import {
+  isExtensionPermissionChoice,
+  isPermissionKind,
+  isPermissionRequestChoice
+} from '../../shared/permissions'
 import {
   DEFAULT_PROFILE_ID,
   type CreateProfileInput,
@@ -16,6 +40,8 @@ import type {
   BookmarksState,
   CertificateExportFormat,
   ClearBrowsingDataOptions,
+  ExtensionInfo,
+  ExtensionInstallDetails,
   NewBookmarkFolderInput,
   NewBookmarkInput,
   NewTabRequest,
@@ -23,7 +49,10 @@ import type {
   PermissionRequestChoice,
   SettingsTarget,
   SitePermissionsState,
+  ThemeColorPatch,
+  ThemeFileInput,
   ThemeMode,
+  ThemeStartPageInput,
   ThemeState,
   UserPreferences,
   WindowState
@@ -138,6 +167,81 @@ import {
   saveContact,
   savePaymentMethod
 } from '../autofill/autofill'
+import {
+  currentExtensionsState,
+  extensionOptionsPage,
+  extensionResourceUrl,
+  hostAccessForManifest,
+  installExtension,
+  installExtensionFromStore,
+  setExtensionPinned,
+  uninstallExtension
+} from '../extensions/extensions'
+import {
+  extensionCanAccessSite,
+  siteAccessRules,
+  siteKeyForUrl,
+  setExtensionSiteAccess as setExtensionSiteAccessRule
+} from '../extensions/siteAccess'
+import {
+  registerExtensionInvokeHandlers,
+  serviceWorkerSender,
+  type ExtensionInvokeHandler
+} from '../extensions/serviceWorkerIpc'
+import { checkProfileExtensionUpdates } from '../extensions/updates'
+import {
+  requestExtensionInstallConfirmation,
+  respondToExtensionInstall
+} from '../extensions/installPrompt'
+import {
+  autoGrantDeclaredPermissions,
+  declaredManifestKeys,
+  extensionOriginKey,
+  requiredManifestKeys,
+  extensionPermissionGrants,
+  hasAllExtensionPermissions,
+  removeExtensionPermissions,
+  requestExtensionPermissions,
+  respondToExtensionPermission,
+  webContentsPermissionSender,
+  type ExtensionPermissionSender
+} from '../extensions/extensionPermissions'
+import {
+  connectNative,
+  disconnectNative,
+  getNativeHosts,
+  postToNative,
+  sendNativeMessage,
+  setNativeHosts,
+  webContentsNativeSender,
+  type NativeMessagingSender
+} from '../extensions/nativeMessaging'
+import {
+  asExtensionTab,
+  entriesForWindow,
+  extensionTabEntries,
+  extensionWindowId,
+  queryExtensionTabs,
+  type ExtensionTabEntry
+} from '../extensions/tabProjection'
+import { emitTabUpdated, emitZoomChange, emitTabsEvent } from '../extensions/tabEvents'
+import {
+  getZoomSettings,
+  groupTabs,
+  setAutoDiscardable,
+  setTabMutedBy,
+  setTabOpener,
+  setZoomSettings,
+  splitTabs,
+  ungroupTabs,
+  unsplitView
+} from '../extensions/tabMetadata'
+import {
+  invokeExtensionApi,
+  refreshCommandShortcuts,
+  registerExtensionApis
+} from '../extensions/api'
+import type { ExtensionApiCall } from '../extensions/api/types'
 import { createEphemeralAutofillStore } from '../autofill/ephemeral'
 import { createAutofillScopeResolver, type AutofillScope } from '../autofill/scope'
 
@@ -154,9 +258,21 @@ import {
   resumeDownload
 } from '../downloads/downloads'
 import { requestPrompt, respondToPrompt } from '../prompt/prompt'
+import {
+  broadcastThemeState,
+  importChromeStoreTheme,
+  importChromeTheme,
+  resetTheme,
+  setChromeColors,
+  setStartPage,
+  themeStateFor
+} from '../theme/theme'
 
 type SenderEvent =
   { sender?: Electron.WebContents } | Electron.IpcMainInvokeEvent | Electron.IpcMainEvent
+
+type ExtensionInvokeEvent = IpcMainInvokeEvent | IpcMainServiceWorkerInvokeEvent
+type ExtensionSender = WebContents | ServiceWorkerMain
 
 /** Outbound channel + access to the live window so handlers can act on it. */
 export interface IpcContext {
@@ -166,21 +282,61 @@ export interface IpcContext {
   openIncognitoWindow?(url?: string, profileId?: string): void
 }
 
-function currentThemeState(): ThemeState {
+function currentThemeState(profileId = DEFAULT_PROFILE_ID, incognito = false): ThemeState {
   const mode = getThemeMode()
   nativeTheme.themeSource = mode
-  return { mode, dark: nativeTheme.shouldUseDarkColors }
+  return themeStateFor(profileId, nativeTheme.shouldUseDarkColors, incognito)
 }
 
-function applyThemeMode(mode: ThemeMode): ThemeState {
-  setThemeMode(mode)
-  if (nativeTheme.themeSource !== mode) {
-    nativeTheme.themeSource = mode
-    // Sites often cache theme-dependent assets such as favicons and media
-    // queries, so an explicit mode change refreshes every open page.
-    for (const window of allWindows()) window.tabs.reloadAll()
+let lastThemeDark = nativeTheme.shouldUseDarkColors
+
+/**
+ * Reload windows only when the effective light/dark mode changed. Start pages
+ * rebuild their appearance-bearing URL; other sites reload cached assets.
+ */
+function refreshThemeWindowsIfDarknessChanged(): boolean {
+  const dark = nativeTheme.shouldUseDarkColors
+  if (dark === lastThemeDark) return false
+  lastThemeDark = dark
+  for (const window of allWindows()) window.tabs.reloadAll()
+  return true
+}
+
+function applyThemeMode(mode: ThemeMode): void {
+  if (mode !== 'system' && mode !== 'light' && mode !== 'dark') {
+    throw new Error(`Unsupported theme mode: ${String(mode)}`)
   }
-  return { mode, dark: nativeTheme.shouldUseDarkColors }
+  setThemeMode(mode)
+  if (nativeTheme.themeSource !== mode) nativeTheme.themeSource = mode
+  refreshThemeWindowsIfDarknessChanged()
+}
+
+function matchesHostPattern(pattern: string, origin: string): boolean {
+  if (pattern === '<all_urls>' || pattern === '*://*/*' || pattern === '*://*') return true
+  const match = pattern.match(/^([^:]+):\/\/([^/]*)\/?(.*)$/)
+  if (!match) return false
+  const [, scheme, host, path] = match
+  let target: URL
+  try {
+    target = new URL(origin)
+  } catch {
+    return false
+  }
+  if (scheme !== '*' && scheme !== target.protocol.replace(':', '')) return false
+  if (path && path !== '*' && path !== '/*' && path !== '/') return false
+  if (host === '*') return true
+  if (host.startsWith('*.')) {
+    const suffix = host.slice(2)
+    return target.hostname === suffix || target.hostname.endsWith(`.${suffix}`)
+  }
+  return target.hostname === host
+}
+
+/** True when a requested API permission or host origin is declared by a manifest. */
+function isDeclaredPermissionKey(key: string, declared: Set<string>): boolean {
+  if (!key.startsWith('origin:')) return declared.has(key)
+  const origin = key.slice('origin:'.length)
+  return [...declared].some((value) => value === origin || matchesHostPattern(value, origin))
 }
 
 function userPreferences(profileId: string): UserPreferences {
@@ -241,8 +397,11 @@ function userPreferences(profileId: string): UserPreferences {
 }
 
 export function registerIpcHandlers(context: IpcContext): void {
+  registerExtensionApis()
+
   // Apply the persisted theme before any renderer starts.
   nativeTheme.themeSource = getThemeMode()
+  lastThemeDark = nativeTheme.shouldUseDarkColors
 
   // Use the sender's browser window first: context.getWindow() falls back to
   // the active window for settings IPC, which would misroute profile actions.
@@ -257,6 +416,154 @@ export function registerIpcHandlers(context: IpcContext): void {
     settingsProfileFor(sender) ??
     activeWindow()?.profile ??
     DEFAULT_PROFILE_ID
+
+  /**
+   * Settings owns the file picker, but Chrome shows install consent on the main
+   * browser window. Programmatic calls from the trusted chrome UI keep their
+   * existing behavior; only user-facing Settings installs need confirmation.
+   */
+  const installConfirmationFor = (event: SenderEvent, profileId: string) => {
+    if (!event.sender || settingsProfileFor(event.sender) === null) return undefined
+    return async (details: ExtensionInstallDetails): Promise<boolean> => {
+      const window =
+        allWindows().find(
+          (candidate) => candidate.profile === profileId && !candidate.window.isDestroyed()
+        ) ?? activeWindow()
+      if (!window) throw new Error('Open a browser window to confirm the extension install.')
+      return requestExtensionInstallConfirmation(window, details)
+    }
+  }
+
+  const profileForSession = (ses: Session): string | null => {
+    for (const profile of listProfiles()) {
+      try {
+        if (sessionForProfile(profile.id) === ses) return profile.id
+      } catch {
+        /* ignore sessions that failed to initialize */
+      }
+    }
+    return null
+  }
+
+  const isWorkerEvent = (event: ExtensionInvokeEvent): event is IpcMainServiceWorkerInvokeEvent =>
+    event.type === 'service-worker'
+
+  const extensionSenderFor = (event: ExtensionInvokeEvent): ExtensionSender =>
+    isWorkerEvent(event) ? event.serviceWorker : event.sender
+
+  const extensionIdFromUrl = (value: string | undefined): string | null => {
+    try {
+      const url = new URL(value ?? '')
+      return url.protocol === 'chrome-extension:' ? url.host : null
+    } catch {
+      return null
+    }
+  }
+
+  const extensionIdForEvent = (event: ExtensionInvokeEvent): string | null => {
+    if (isWorkerEvent(event)) {
+      return (
+        extensionIdFromUrl(event.serviceWorker.scriptURL) ??
+        extensionIdFromUrl(event.serviceWorker.scope)
+      )
+    }
+    return extensionIdFromUrl(event.sender.getURL())
+  }
+
+  const profileForExtensionEvent = (event: ExtensionInvokeEvent): string | null =>
+    isWorkerEvent(event) ? profileForSession(event.session) : profileFor(event as any)
+
+  const extensionOwnerFor = (event: ExtensionInvokeEvent, profileId: string | null) => {
+    if (!profileId) return null
+    const sender = extensionSenderFor(event)
+    const owner = 'getURL' in sender ? windowForAnyWebContents(sender) : null
+    if (owner?.profile === profileId) return owner
+    return (
+      allWindows().find((window) => window.profile === profileId && !window.window.isDestroyed()) ??
+      null
+    )
+  }
+
+  const extensionContextFor = (event: ExtensionInvokeEvent) => {
+    const extensionId = extensionIdForEvent(event)
+    const profileId = profileForExtensionEvent(event)
+    if (!extensionId || !profileId) return null
+    const extension = sessionForProfile(profileId)
+      .extensions.getAllExtensions()
+      .find((candidate) => candidate.id === extensionId)
+    if (!extension) return null
+    return {
+      extensionId,
+      profileId,
+      extension,
+      manifest: (extension.manifest ?? {}) as Record<string, unknown>
+    }
+  }
+
+  const extensionHasGrant = (
+    profileId: string,
+    extensionId: string,
+    manifest: Record<string, unknown>,
+    permission: string
+  ): boolean => {
+    autoGrantDeclaredPermissions(profileId, extensionId, manifest)
+    return hasAllExtensionPermissions(profileId, extensionId, [permission])
+  }
+
+  const nativeAllowed = (context: NonNullable<ReturnType<typeof extensionContextFor>>): boolean =>
+    declaredManifestKeys(context.manifest).includes('nativeMessaging') &&
+    extensionHasGrant(context.profileId, context.extensionId, context.manifest, 'nativeMessaging')
+
+  const sendToExtensionSender = (
+    event: ExtensionInvokeEvent,
+    channel: string,
+    payload: unknown
+  ): void => {
+    const sender = extensionSenderFor(event)
+    if (!sender.isDestroyed()) sender.send(channel, payload)
+  }
+
+  const permissionSenderFor = (event: ExtensionInvokeEvent): ExtensionPermissionSender =>
+    isWorkerEvent(event)
+      ? serviceWorkerSender(event.serviceWorker, event.session)
+      : webContentsPermissionSender(event.sender)
+
+  const nativeSenderFor = (event: ExtensionInvokeEvent): NativeMessagingSender => {
+    if (!isWorkerEvent(event)) return webContentsNativeSender(event.sender)
+    const sender = serviceWorkerSender(event.serviceWorker, event.session)
+    return {
+      id: `worker:${event.serviceWorker.versionId}`,
+      ...sender
+    }
+  }
+
+  /**
+   * Browser-facing handlers are default-denied for extension documents. The
+   * extension bridge registers its own channels through `handleExtension`.
+   */
+  const handleBrowser = (channel: string, listener: Parameters<typeof ipcMain.handle>[1]): void => {
+    ipcMain.handle(channel, (event, ...args) => {
+      if (extensionIdFromUrl(event.sender.getURL())) {
+        throw new Error('Browser management IPC is not available to extension pages.')
+      }
+      return listener(event, ...args)
+    })
+  }
+
+  const extensionIpcHandlers = new Map<string, ExtensionInvokeHandler>()
+  const handleExtension = (channel: string, handler: ExtensionInvokeHandler): void => {
+    // Worker IPC uses the same handler map, so validate once here rather than
+    // trusting every individual bridge to check its caller.
+    const validated: ExtensionInvokeHandler = (event, ...args) => {
+      const extensionEvent = event as ExtensionInvokeEvent
+      if (!extensionIdForEvent(extensionEvent)) {
+        throw new Error('Extension IPC is only available to extension pages and workers.')
+      }
+      return handler(extensionEvent, ...args)
+    }
+    ipcMain.handle(channel, validated as Parameters<typeof ipcMain.handle>[1])
+    extensionIpcHandlers.set(channel, validated)
+  }
 
   const autofillScopeFor = createAutofillScopeResolver(createEphemeralAutofillStore)
   const scopeForAutofillEvent = (event: SenderEvent): AutofillScope =>
@@ -303,7 +610,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   })
 
-  ipcMain.handle(IpcChannels.AppGetInfo, (): AppVersionInfo => ({
+  handleBrowser(IpcChannels.AppGetInfo, (): AppVersionInfo => ({
     app: app.getVersion(),
     electron: process.versions.electron ?? '',
     chrome: process.versions.chrome ?? '',
@@ -311,12 +618,12 @@ export function registerIpcHandlers(context: IpcContext): void {
     dev: !app.isPackaged
   }))
 
-  ipcMain.handle(IpcChannels.CertificateGet, (event, url: string) => {
+  handleBrowser(IpcChannels.CertificateGet, (event, url: string) => {
     void event
     return getCertificate(url)
   })
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.CertificateExport,
     (event, url: string, format: CertificateExportFormat) => {
       void event
@@ -324,14 +631,14 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(IpcChannels.DefaultBrowserGet, (event) => (void event, isDefaultBrowser()))
-  ipcMain.handle(IpcChannels.DefaultBrowserSet, (event) => (void event, setDefaultBrowser()))
+  handleBrowser(IpcChannels.DefaultBrowserGet, (event) => (void event, isDefaultBrowser()))
+  handleBrowser(IpcChannels.DefaultBrowserSet, (event) => (void event, setDefaultBrowser()))
 
-  ipcMain.handle(IpcChannels.SettingsOpen, (event, target?: SettingsTarget) => {
+  handleBrowser(IpcChannels.SettingsOpen, (event, target?: SettingsTarget) => {
     return openSettingsWindow(target, profileFor(event as any))
   })
 
-  ipcMain.handle(IpcChannels.SettingsGet, (event) => userPreferences(profileFor(event as any)))
+  handleBrowser(IpcChannels.SettingsGet, (event) => userPreferences(profileFor(event as any)))
 
   const supportedSettings = new Set<keyof UserPreferences>([
     'clearHistory',
@@ -368,7 +675,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     'saveFormHistory'
   ])
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.SettingsSet,
     async (
       _event,
@@ -528,7 +835,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.ContentBlockingImportFile,
     (event, input: { name?: unknown; content?: unknown }) => {
       const profileId = profileFor(event)
@@ -544,7 +851,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(IpcChannels.ContentBlockingRemoveFile, (event, id: string) => {
+  handleBrowser(IpcChannels.ContentBlockingRemoveFile, (event, id: string) => {
     const profileId = profileFor(event)
     if (typeof id !== 'string') throw new Error('Invalid filter file id')
     removeCustomFilterFile(profileId, id)
@@ -559,7 +866,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return prefs
   })
 
-  ipcMain.handle(IpcChannels.ContentBlockingGetStats, (event) => {
+  handleBrowser(IpcChannels.ContentBlockingGetStats, (event) => {
     const profileId =
       windowForAnyWebContents(event.sender)?.profile ??
       settingsProfileFor(event.sender) ??
@@ -568,7 +875,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return contentBlockingStats(profileId, pageContentsId, blockingStatsKey(event.sender))
   })
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.ContentBlockingSetSiteEnabled,
     (event, site: string, enabled: boolean) => {
       const profileId =
@@ -587,64 +894,598 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   /* ---- theme ----------------------------------------------------------- */
 
-  ipcMain.handle(IpcChannels.ThemeGet, (): ThemeState => currentThemeState())
-
-  ipcMain.handle(IpcChannels.ThemeSet, (event, mode: ThemeMode): ThemeState => {
-    void event
-    const state = applyThemeMode(mode)
-    broadcastToAll(IpcChannels.ThemeChanged, state)
-    return state
+  handleBrowser(IpcChannels.ThemeGet, (event): ThemeState => {
+    const window = windowForAnyWebContents(event.sender)
+    return currentThemeState(
+      window?.profile ?? profileFor(event as any),
+      window?.isIncognito ?? false
+    )
   })
+
+  handleBrowser(IpcChannels.ThemeSet, (event, mode: ThemeMode): ThemeState => {
+    applyThemeMode(mode)
+    broadcastThemeState()
+    const window = windowForAnyWebContents(event.sender)
+    return currentThemeState(
+      window?.profile ?? profileFor(event as any),
+      window?.isIncognito ?? false
+    )
+  })
+
+  handleBrowser(IpcChannels.ThemeSetColors, (event, patch: ThemeColorPatch): ThemeState =>
+    setChromeColors(profileFor(event as any), patch, nativeTheme.shouldUseDarkColors)
+  )
+
+  handleBrowser(IpcChannels.ThemeSetStartPage, (event, input: ThemeStartPageInput): ThemeState =>
+    setStartPage(profileFor(event as any), input, nativeTheme.shouldUseDarkColors)
+  )
+
+  handleBrowser(IpcChannels.ThemeImport, (event, files: ThemeFileInput[]): ThemeState =>
+    importChromeTheme(profileFor(event as any), files, nativeTheme.shouldUseDarkColors)
+  )
+
+  handleBrowser(
+    IpcChannels.ThemeImportStore,
+    async (event, input: unknown): Promise<ThemeState> => {
+      if (typeof input !== 'string' || input.trim() === '') {
+        throw new Error('Enter a Chrome Web Store theme URL first.')
+      }
+      return importChromeStoreTheme(
+        profileFor(event as any),
+        input,
+        nativeTheme.shouldUseDarkColors
+      )
+    }
+  )
+
+  handleBrowser(IpcChannels.ThemeReset, (event): ThemeState =>
+    resetTheme(profileFor(event as any), nativeTheme.shouldUseDarkColors)
+  )
 
   // Push live updates when 'system' changes as the OS theme flips.
   nativeTheme.on('updated', () => {
-    broadcastToAll(IpcChannels.ThemeChanged, currentThemeState())
+    refreshThemeWindowsIfDarknessChanged()
+    broadcastThemeState()
   })
 
   /* ---- tabs ------------------------------------------------------------ */
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.TabsGetState,
     (event) => context.getWindow(event as any)?.tabs.snapshot() ?? null
   )
 
-  ipcMain.handle(IpcChannels.TabsCreate, (event, request: NewTabRequest) =>
+  handleBrowser(IpcChannels.TabsCreate, (event, request: NewTabRequest) =>
     context.getWindow(event as any)?.tabs.create(request)
   )
 
-  ipcMain.handle(IpcChannels.TabsClose, (event, id: string) =>
+  handleExtension(
+    IpcChannels.ExtensionTabsCreate,
+    (event, details: ExtensionTabsCreateProperties | undefined): number | null => {
+      const context = extensionContextFor(event)
+      if (!context) return null
+      const sender = extensionSenderFor(event)
+      const baseUrl = 'getURL' in sender ? sender.getURL() : sender.scope
+      let url: string | undefined
+      const rawUrl = typeof details?.url === 'string' ? details.url : ''
+      if (rawUrl) {
+        try {
+          const resolved = new URL(rawUrl, baseUrl)
+          if (
+            resolved.protocol !== 'http:' &&
+            resolved.protocol !== 'https:' &&
+            resolved.protocol !== 'file:' &&
+            resolved.protocol !== 'chrome-extension:'
+          ) {
+            return null
+          }
+          if (resolved.protocol === 'chrome-extension:') {
+            if (resolved.host !== context.extensionId) return null
+          } else if (
+            !extensionCanAccessSite(context.profileId, context.extensionId, resolved.toString())
+          ) {
+            return null
+          }
+          url = resolved.toString()
+        } catch {
+          return null
+        }
+      }
+
+      // Extension service workers are not attached to a browser window, so use
+      // a window from the same profile when the sender cannot resolve one.
+      const owner = extensionOwnerFor(event, context.profileId)
+      if (!owner) return null
+      const requestedWindowId = extensionWindowId(owner, details?.windowId)
+      const target =
+        requestedWindowId === null
+          ? null
+          : allWindows().find(
+              (window) =>
+                window.window.id === requestedWindowId &&
+                window.profile === context.profileId &&
+                !window.window.isDestroyed()
+            )
+      if (!target) return null
+
+      const active = details?.active ?? details?.selected ?? true
+      const internalId = target.tabs.create({
+        url,
+        active,
+        index: typeof details?.index === 'number' ? details.index : undefined
+      })
+      const tabId = target.tabs.webContentsIdForTab(internalId)
+      if (tabId === null) return null
+      if (details?.pinned === true) target.tabs.pinToggle(internalId)
+      if (typeof details?.openerTabId === 'number') {
+        setTabOpener(tabId, details.openerTabId)
+      }
+      if (typeof details?.splitWithTabId === 'number') {
+        const state = target.tabs.snapshot()
+        const sibling = entriesForWindow(target, state).find(
+          (entry) => entry.webContentsId === details?.splitWithTabId
+        )
+        if (sibling) target.tabs.openSplit(internalId, sibling.internalId)
+      }
+      return tabId
+    }
+  )
+
+  type ExtensionTabEntryWithContents = ExtensionTabEntry
+
+  handleExtension(
+    IpcChannels.ExtensionTabsCall,
+    async (event, call: ExtensionTabsCall | undefined): Promise<unknown> => {
+      const context = extensionContextFor(event)
+      if (!context || !call?.operation) return null
+      const owner = extensionOwnerFor(event, context.profileId)
+      const sender = extensionSenderFor(event)
+      const baseUrl = 'getURL' in sender ? sender.getURL() : sender.scope
+      const entries = extensionTabEntries(context.profileId).filter((entry) =>
+        extensionCanAccessSite(context.profileId, context.extensionId, entry.tab.url)
+      )
+      const refreshed = (entry: ExtensionTabEntryWithContents): ExtensionTabEntryWithContents =>
+        extensionTabEntries(context.profileId).find(
+          (candidate) =>
+            candidate.internalId === entry.internalId && candidate.window === entry.window
+        ) ?? entry
+      const activeTab = (): ExtensionTabEntryWithContents | null => {
+        const windowId = extensionWindowId(owner)
+        return (
+          entries.find(
+            (entry) =>
+              entry.window.window.id === windowId && entry.tab.id === entry.state.activeTabId
+          ) ?? null
+        )
+      }
+      const findTab = (tabId?: number): ExtensionTabEntryWithContents | null => {
+        if (tabId === -1) return activeTab()
+        return typeof tabId === 'number'
+          ? (entries.find((entry) => entry.webContentsId === tabId) ?? null)
+          : null
+      }
+      const windowEntries = (windowId: number | null): ExtensionTabEntryWithContents[] =>
+        windowId === null ? [] : entries.filter((entry) => entry.window.window.id === windowId)
+      const contentsFor = (entry: ExtensionTabEntryWithContents) =>
+        electronWebContents.fromId(entry.webContentsId)
+      const resolveUrl = (raw: string): string | null => {
+        try {
+          const resolved = new URL(raw, baseUrl)
+          if (
+            resolved.protocol !== 'http:' &&
+            resolved.protocol !== 'https:' &&
+            resolved.protocol !== 'file:' &&
+            resolved.protocol !== 'chrome-extension:'
+          ) {
+            return null
+          }
+          if (resolved.protocol === 'chrome-extension:' && resolved.host !== context.extensionId) {
+            return null
+          }
+          if (
+            resolved.protocol !== 'chrome-extension:' &&
+            !extensionCanAccessSite(context.profileId, context.extensionId, resolved.toString())
+          ) {
+            return null
+          }
+          return resolved.toString()
+        } catch {
+          return null
+        }
+      }
+
+      switch (call.operation) {
+        case 'query':
+          return queryExtensionTabs(entries, call.queryInfo, owner).map(asExtensionTab)
+        case 'get': {
+          const entry = findTab(call.tabId)
+          return entry ? asExtensionTab(entry) : null
+        }
+        case 'getCurrent': {
+          const entry = activeTab()
+          return entry ? asExtensionTab(entry) : null
+        }
+        case 'getSelected': {
+          const windowId = extensionWindowId(owner, call.windowId)
+          const entry = windowEntries(windowId).find(
+            (candidate) => candidate.tab.id === candidate.state.activeTabId
+          )
+          return entry ? asExtensionTab(entry) : null
+        }
+        case 'getAllInWindow':
+          return windowEntries(extensionWindowId(owner, call.windowId)).map(asExtensionTab)
+        case 'remove': {
+          const targets = call.tabIds ?? (typeof call.tabId === 'number' ? [call.tabId] : [])
+          let removed = false
+          for (const target of targets) {
+            const entry = findTab(target)
+            if (!entry) continue
+            entry.window.tabs.close(entry.internalId)
+            removed = true
+          }
+          return removed
+        }
+        case 'update': {
+          const entry = findTab(call.tabId)
+          if (!entry) return null
+          const properties = call.updateProperties ?? {}
+          if (
+            properties.active === true ||
+            properties.highlighted === true ||
+            properties.selected === true
+          ) {
+            entry.window.tabs.activate(entry.internalId)
+          }
+          if (properties.pinned === true && !entry.tab.pinned) {
+            entry.window.tabs.pinToggle(entry.internalId)
+          }
+          if (properties.pinned === false && entry.tab.pinned) {
+            entry.window.tabs.pinToggle(entry.internalId)
+          }
+          if (properties.muted !== undefined && properties.muted !== entry.tab.muted) {
+            entry.window.tabs.muteToggle(entry.internalId)
+            setTabMutedBy(
+              entry.webContentsId,
+              properties.muted ? context.extensionId : null,
+              properties.muted
+            )
+          }
+          if (typeof properties.url === 'string') {
+            const url = resolveUrl(properties.url)
+            if (!url) return null
+            const contents = contentsFor(entry)
+            if (!contents || contents.isDestroyed()) return null
+            void contents.loadURL(url)
+          }
+          const changes: Record<string, unknown> = {}
+          if (properties.autoDiscardable !== undefined) {
+            setAutoDiscardable(entry.webContentsId, properties.autoDiscardable)
+            changes.autoDiscardable = properties.autoDiscardable
+          }
+          if (typeof properties.openerTabId === 'number') {
+            setTabOpener(entry.webContentsId, properties.openerTabId)
+          }
+          const updated = refreshed(entry)
+          emitTabUpdated(context.profileId, updated, changes as any)
+          return asExtensionTab(updated)
+        }
+        case 'move': {
+          const targetIds = call.tabIds ?? (typeof call.tabId === 'number' ? [call.tabId] : [])
+          const requestedWindow = extensionWindowId(owner, call.moveProperties?.windowId)
+          const moved: ExtensionTabEntryWithContents[] = []
+          for (const targetId of targetIds) {
+            const entry = findTab(targetId)
+            if (!entry) continue
+            const index = call.moveProperties?.index ?? entry.state.tabs.length
+            const destination =
+              requestedWindow === null || requestedWindow === entry.window.window.id
+                ? entry.window
+                : allWindows().find(
+                    (window) =>
+                      window.window.id === requestedWindow &&
+                      window.profile === context.profileId &&
+                      !window.window.isDestroyed()
+                  )
+            if (!destination) continue
+            if (destination === entry.window) {
+              const order = entry.state.tabs.map((tab) => tab.id)
+              const without = order.filter((id) => id !== entry.internalId)
+              const insertion = Math.max(
+                0,
+                Math.min(index < 0 ? without.length : index, without.length)
+              )
+              without.splice(insertion, 0, entry.internalId)
+              entry.window.tabs.reorder(without)
+              moved.push(refreshed(entry))
+              continue
+            }
+
+            // Moving between windows recreates the tab because Voyager owns its
+            // WebContentsView per window. The new tab keeps the URL and pinned
+            // state but receives a new Chrome-visible tab id.
+            const oldIndex = entry.state.tabs.findIndex((tab) => tab.id === entry.internalId)
+            const newInternalId = destination.tabs.create({ url: entry.tab.url, active: false })
+            const newTabId = destination.tabs.webContentsIdForTab(newInternalId)
+            if (newTabId === null) continue
+            const newState = destination.tabs.snapshot()
+            const newEntry = entriesForWindow(destination, newState).find(
+              (candidate) => candidate.internalId === newInternalId
+            )
+            const insertion = Math.max(
+              0,
+              Math.min(index < 0 ? newState.tabs.length : index, newState.tabs.length)
+            )
+            const order = newState.tabs.map((tab) => tab.id).filter((id) => id !== newInternalId)
+            order.splice(insertion, 0, newInternalId)
+            destination.tabs.reorder(order)
+            if (entry.tab.pinned) destination.tabs.pinToggle(newInternalId)
+            emitTabsEvent(context.profileId, 'onDetached', [
+              entry.webContentsId,
+              { windowId: entry.window.window.id, position: oldIndex }
+            ])
+            emitTabsEvent(context.profileId, 'onAttached', [
+              newTabId,
+              { windowId: destination.window.id, position: insertion }
+            ])
+            entry.window.tabs.close(entry.internalId)
+            if (newEntry) moved.push(refreshed(newEntry))
+          }
+          if (targetIds.length === 1) return moved[0] ? asExtensionTab(moved[0]) : null
+          return moved.map(asExtensionTab)
+        }
+        case 'duplicate': {
+          const entry = findTab(call.tabId)
+          if (!entry) return null
+          const before = new Set(entry.state.tabs.map((tab) => tab.id))
+          entry.window.tabs.duplicate(entry.internalId)
+          const created = extensionTabEntries(context.profileId).find(
+            (candidate) =>
+              candidate.window === entry.window &&
+              !before.has(candidate.internalId) &&
+              candidate.tab.url === entry.tab.url
+          )
+          return created ? asExtensionTab(created) : null
+        }
+        case 'reload': {
+          const entry = findTab(call.tabId) ?? activeTab()
+          if (!entry) return null
+          const contents = contentsFor(entry)
+          if (call.bypassCache && contents && !contents.isDestroyed()) {
+            contents.reloadIgnoringCache()
+          } else {
+            entry.window.tabs.reload(entry.internalId)
+          }
+          return true
+        }
+        case 'goBack':
+        case 'goForward': {
+          const entry = findTab(call.tabId) ?? activeTab()
+          if (!entry) return false
+          const contents = contentsFor(entry)
+          if (!contents || contents.isDestroyed()) return false
+          const history = contents.navigationHistory
+          if (call.operation === 'goBack') {
+            if (!history.canGoBack()) return false
+            history.goBack()
+          } else {
+            if (!history.canGoForward()) return false
+            history.goForward()
+          }
+          return true
+        }
+        case 'getZoom': {
+          const entry = findTab(call.tabId) ?? activeTab()
+          if (!entry) return null
+          const contents = contentsFor(entry)
+          return contents && !contents.isDestroyed() ? contents.getZoomFactor() : null
+        }
+        case 'setZoom': {
+          const entry = findTab(call.tabId) ?? activeTab()
+          const zoom = call.zoom
+          if (!entry || typeof zoom !== 'number' || !Number.isFinite(zoom)) return false
+          const contents = contentsFor(entry)
+          if (!contents || contents.isDestroyed()) return false
+          const oldZoom = contents.getZoomFactor()
+          const nextZoom = Math.max(0.25, Math.min(zoom, 5))
+          contents.setZoomFactor(nextZoom)
+          emitZoomChange(context.profileId, entry.webContentsId, oldZoom, nextZoom)
+          return true
+        }
+        case 'getZoomSettings': {
+          const entry = findTab(call.tabId) ?? activeTab()
+          return entry ? getZoomSettings(entry.webContentsId) : null
+        }
+        case 'setZoomSettings': {
+          const entry = findTab(call.tabId) ?? activeTab()
+          if (!entry || !call.zoomSettings) return false
+          const settings: ExtensionZoomSettings = {
+            defaultZoomFactor:
+              typeof call.zoomSettings.defaultZoomFactor === 'number'
+                ? call.zoomSettings.defaultZoomFactor
+                : undefined,
+            mode: call.zoomSettings.mode,
+            scope: call.zoomSettings.scope
+          }
+          setZoomSettings(entry.webContentsId, settings)
+          const contents = contentsFor(entry)
+          if (contents && !contents.isDestroyed() && settings.defaultZoomFactor !== undefined) {
+            const oldZoom = contents.getZoomFactor()
+            const nextZoom = Math.max(0.25, Math.min(settings.defaultZoomFactor, 5))
+            contents.setZoomFactor(nextZoom)
+            emitZoomChange(context.profileId, entry.webContentsId, oldZoom, nextZoom)
+          }
+          return true
+        }
+        case 'discard': {
+          const entry = findTab(call.tabId) ?? activeTab()
+          if (!entry) return null
+          entry.window.tabs.discard(entry.internalId)
+          return asExtensionTab(refreshed(entry))
+        }
+        case 'detectLanguage': {
+          const entry = findTab(call.tabId) ?? activeTab()
+          if (!entry) return 'und'
+          const contents = contentsFor(entry)
+          if (!contents || contents.isDestroyed()) return 'und'
+          try {
+            const detected = await contents.executeJavaScript(
+              `String(document.documentElement.lang || navigator.language || 'und')`
+            )
+            const language = String(detected || 'und').split('-')[0]
+            return language || 'und'
+          } catch {
+            return 'und'
+          }
+        }
+        case 'captureVisibleTab': {
+          const windowId = extensionWindowId(owner, call.windowId)
+          const entry =
+            windowEntries(windowId).find(
+              (candidate) => candidate.tab.id === candidate.state.activeTabId
+            ) ?? activeTab()
+          if (!entry) return ''
+          const contents = contentsFor(entry)
+          if (!contents || contents.isDestroyed()) return ''
+          const format = call.imageDetails?.format === 'jpeg' ? 'jpeg' : 'png'
+          const quality =
+            typeof call.imageDetails?.quality === 'number'
+              ? Math.max(0, Math.min(call.imageDetails.quality, 100))
+              : undefined
+          const image = await contents.capturePage()
+          if (format === 'jpeg') {
+            const jpeg = image.toJPEG(quality ?? 80).toString('base64')
+            return `data:image/jpeg;base64,${jpeg}`
+          }
+          const png = image.toPNG().toString('base64')
+          return `data:image/png;base64,${png}`
+        }
+        case 'group': {
+          const targets = (call.tabIds ?? [])
+            .map((tabId) => findTab(tabId))
+            .filter((entry): entry is ExtensionTabEntryWithContents => entry !== null)
+          if (targets.length === 0) return -1
+          const groupId = groupTabs(
+            targets.map((entry) => entry.webContentsId),
+            call.groupId
+          )
+          for (const entry of targets) {
+            emitTabUpdated(context.profileId, refreshed(entry), { groupId })
+          }
+          return groupId
+        }
+        case 'ungroup': {
+          const targets = (call.tabIds ?? [])
+            .map((tabId) => findTab(tabId))
+            .filter((entry): entry is ExtensionTabEntryWithContents => entry !== null)
+          ungroupTabs(targets.map((entry) => entry.webContentsId))
+          for (const entry of targets) {
+            emitTabUpdated(context.profileId, refreshed(entry), { groupId: -1 })
+          }
+          return undefined
+        }
+        case 'createSplit': {
+          const [firstId, secondId] = call.tabIds ?? []
+          const first = findTab(firstId)
+          const second = findTab(secondId)
+          if (!first || !second || first.window !== second.window) return -1
+          first.window.tabs.openSplit(first.internalId, second.internalId)
+          const splitViewId = splitTabs([first.webContentsId, second.webContentsId])
+          for (const entry of [first, second]) {
+            emitTabUpdated(context.profileId, refreshed(entry), { splitViewId })
+          }
+          return splitViewId
+        }
+        case 'unsplit': {
+          const affected = unsplitView(call.splitViewId ?? -1)
+          for (const tabId of affected) {
+            const entry = findTab(tabId)
+            if (!entry) continue
+            entry.window.tabs.closeSplit()
+            emitTabUpdated(context.profileId, refreshed(entry), { splitViewId: -1 })
+          }
+          return undefined
+        }
+        case 'select': {
+          const entry = findTab(call.tabId)
+          if (!entry) return null
+          entry.window.tabs.activate(entry.internalId)
+          return asExtensionTab(entry)
+        }
+        case 'highlight': {
+          const selected = (call.tabIds ?? [])
+            .map((tabId) => findTab(tabId))
+            .filter((entry): entry is ExtensionTabEntryWithContents => entry !== null)
+          if (selected.length === 0 || new Set(selected.map((entry) => entry.window)).size !== 1) {
+            return null
+          }
+          for (const entry of selected) entry.window.tabs.activate(entry.internalId)
+          return selected.map((entry) => ({
+            ...asExtensionTab(entry),
+            highlighted: true,
+            selected: true
+          }))
+        }
+        default:
+          return null
+      }
+    }
+  )
+
+  handleExtension(IpcChannels.ExtensionOpenOptionsPage, (event): boolean => {
+    const extensionId = extensionIdForEvent(event)
+    const profileId = profileForExtensionEvent(event)
+    if (!extensionId || !profileId) return false
+    const extension = sessionForProfile(profileId)
+      .extensions.getAllExtensions()
+      .find((candidate) => candidate.id === extensionId)
+    if (!extension) return false
+    const optionsPage = extensionOptionsPage(extension)
+    if (!optionsPage) return false
+    let url: string
+    try {
+      url = extensionResourceUrl(extension, optionsPage)
+    } catch {
+      return false
+    }
+    const owner = extensionOwnerFor(event, profileId)
+    if (!owner) return false
+    owner.tabs.create({ url, active: true })
+    return true
+  })
+
+  handleBrowser(IpcChannels.TabsClose, (event, id: string) =>
     context.getWindow(event as any)?.tabs.close(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsActivate, (event, id: string) =>
+  handleBrowser(IpcChannels.TabsActivate, (event, id: string) =>
     context.getWindow(event as any)?.tabs.activate(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsReorder, (event, ids: string[]) =>
+  handleBrowser(IpcChannels.TabsReorder, (event, ids: string[]) =>
     context.getWindow(event as any)?.tabs.reorder(ids)
   )
 
-  ipcMain.handle(IpcChannels.TabsPinToggle, (event, id: string) =>
+  handleBrowser(IpcChannels.TabsPinToggle, (event, id: string) =>
     context.getWindow(event as any)?.tabs.pinToggle(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsDuplicate, (event, id: string) =>
+  handleBrowser(IpcChannels.TabsDuplicate, (event, id: string) =>
     context.getWindow(event as any)?.tabs.duplicate(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsMuteToggle, (event, id: string) =>
+  handleBrowser(IpcChannels.TabsMuteToggle, (event, id: string) =>
     context.getWindow(event as any)?.tabs.muteToggle(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsCloseOthers, (event, id: string) =>
+  handleBrowser(IpcChannels.TabsCloseOthers, (event, id: string) =>
     context.getWindow(event as any)?.tabs.closeOthers(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsCloseToRight, (event, id: string) =>
+  handleBrowser(IpcChannels.TabsCloseToRight, (event, id: string) =>
     context.getWindow(event as any)?.tabs.closeToRight(id)
   )
 
-  ipcMain.handle(IpcChannels.TabsCopyUrl, (event, id: string) => {
+  handleBrowser(IpcChannels.TabsCopyUrl, (event, id: string) => {
     const tab = context
       .getWindow(event as any)
       ?.tabs.snapshot()
@@ -653,51 +1494,51 @@ export function registerIpcHandlers(context: IpcContext): void {
     return tab?.url
   })
 
-  ipcMain.handle(IpcChannels.TabsOpenSplit, (event, firstId: string, secondId: string) =>
+  handleBrowser(IpcChannels.TabsOpenSplit, (event, firstId: string, secondId: string) =>
     context.getWindow(event as any)?.tabs.openSplit(firstId, secondId)
   )
 
-  ipcMain.handle(IpcChannels.TabsCloseSplit, (event) =>
+  handleBrowser(IpcChannels.TabsCloseSplit, (event) =>
     context.getWindow(event as any)?.tabs.closeSplit()
   )
 
   /* ---- navigation ------------------------------------------------------ */
 
-  ipcMain.handle(IpcChannels.NavBack, (event) => context.getWindow(event as any)?.tabs.goBack())
-  ipcMain.handle(IpcChannels.NavForward, (event) =>
+  handleBrowser(IpcChannels.NavBack, (event) => context.getWindow(event as any)?.tabs.goBack())
+  handleBrowser(IpcChannels.NavForward, (event) =>
     context.getWindow(event as any)?.tabs.goForward()
   )
-  ipcMain.handle(IpcChannels.NavReload, (event, id?: string) =>
+  handleBrowser(IpcChannels.NavReload, (event, id?: string) =>
     context.getWindow(event as any)?.tabs.reload(id)
   )
-  ipcMain.handle(IpcChannels.NavStop, (event) => context.getWindow(event as any)?.tabs.stop())
-  ipcMain.handle(IpcChannels.NavGo, (event, url: string) =>
+  handleBrowser(IpcChannels.NavStop, (event) => context.getWindow(event as any)?.tabs.stop())
+  handleBrowser(IpcChannels.NavGo, (event, url: string) =>
     context.getWindow(event as any)?.tabs.navigate(url)
   )
-  ipcMain.handle(IpcChannels.NavForceReload, (event) =>
+  handleBrowser(IpcChannels.NavForceReload, (event) =>
     context.getWindow(event as any)?.tabs.reloadIgnoringCache()
   )
-  ipcMain.handle(IpcChannels.NavFindInPage, (event, query: string, forward?: boolean) =>
+  handleBrowser(IpcChannels.NavFindInPage, (event, query: string, forward?: boolean) =>
     context.getWindow(event as any)?.tabs.findInPage(query, forward ?? true)
   )
-  ipcMain.handle(IpcChannels.NavStopFindInPage, (event) =>
+  handleBrowser(IpcChannels.NavStopFindInPage, (event) =>
     context.getWindow(event as any)?.tabs.stopFindInPage()
   )
-  ipcMain.handle(IpcChannels.NavZoomIn, (event) => context.getWindow(event as any)?.tabs.zoomIn())
-  ipcMain.handle(IpcChannels.NavZoomOut, (event) => context.getWindow(event as any)?.tabs.zoomOut())
-  ipcMain.handle(IpcChannels.NavZoomReset, (event) =>
+  handleBrowser(IpcChannels.NavZoomIn, (event) => context.getWindow(event as any)?.tabs.zoomIn())
+  handleBrowser(IpcChannels.NavZoomOut, (event) => context.getWindow(event as any)?.tabs.zoomOut())
+  handleBrowser(IpcChannels.NavZoomReset, (event) =>
     context.getWindow(event as any)?.tabs.zoomReset()
   )
-  ipcMain.handle(IpcChannels.NavPrint, (event) => context.getWindow(event as any)?.tabs.print())
-  ipcMain.handle(IpcChannels.NavPrintToPdf, async (event) => {
+  handleBrowser(IpcChannels.NavPrint, (event) => context.getWindow(event as any)?.tabs.print())
+  handleBrowser(IpcChannels.NavPrintToPdf, async (event) => {
     const buf = await context.getWindow(event as any)?.tabs.printToPdf()
     return buf ? buf.toString('base64') : null
   })
-  ipcMain.handle(IpcChannels.DevToolsToggle, (event) =>
+  handleBrowser(IpcChannels.DevToolsToggle, (event) =>
     context.getWindow(event as any)?.tabs.toggleDevTools()
   )
 
-  ipcMain.handle(IpcChannels.TabsReopenLastClosed, (event) =>
+  handleBrowser(IpcChannels.TabsReopenLastClosed, (event) =>
     context.getWindow(event as any)?.tabs.reopenLastClosed()
   )
 
@@ -713,30 +1554,30 @@ export function registerIpcHandlers(context: IpcContext): void {
   const broadcastBookmarkClipboard = (): void =>
     broadcastToAll(IpcChannels.BookmarksClipboardChanged, currentBookmarkClipboard())
 
-  ipcMain.handle(IpcChannels.BookmarksGetState, (event) =>
+  handleBrowser(IpcChannels.BookmarksGetState, (event) =>
     currentBookmarksState(profileFor(event as any))
   )
 
-  ipcMain.handle(IpcChannels.BookmarksAdd, (event, input: NewBookmarkInput) => {
+  handleBrowser(IpcChannels.BookmarksAdd, (event, input: NewBookmarkInput) => {
     const profileId = profileFor(event as any)
     return addBookmark(profileId, input, broadcastBookmarks(profileId), (visible) =>
       setBookmarksBarVisibleForProfile(profileId, visible)
     )
   })
 
-  ipcMain.handle(IpcChannels.BookmarksRemove, (event, id: string) => {
+  handleBrowser(IpcChannels.BookmarksRemove, (event, id: string) => {
     const profileId = profileFor(event as any)
     return removeBookmark(profileId, id, broadcastBookmarks(profileId), (visible) =>
       setBookmarksBarVisibleForProfile(profileId, visible)
     )
   })
 
-  ipcMain.handle(IpcChannels.BookmarksUpdate, (event, id: string, patch: BookmarkPatch) => {
+  handleBrowser(IpcChannels.BookmarksUpdate, (event, id: string, patch: BookmarkPatch) => {
     const profileId = profileFor(event as any)
     return updateBookmark(profileId, id, patch, broadcastBookmarks(profileId))
   })
 
-  ipcMain.handle(IpcChannels.BookmarksAddFolder, (event, input: NewBookmarkFolderInput) => {
+  handleBrowser(IpcChannels.BookmarksAddFolder, (event, input: NewBookmarkFolderInput) => {
     const profileId = profileFor(event as any)
     return addFolder(profileId, input, broadcastBookmarks(profileId), (visible) =>
       setBookmarksBarVisibleForProfile(profileId, visible)
@@ -751,18 +1592,18 @@ export function registerIpcHandlers(context: IpcContext): void {
     return state
   }
 
-  ipcMain.handle(IpcChannels.PermissionsGetState, (event) =>
+  handleBrowser(IpcChannels.PermissionsGetState, (event) =>
     currentSitePermissions(profileFor(event as any))
   )
 
-  ipcMain.handle(IpcChannels.PermissionsGetForOrigin, (event, origin: string) => {
+  handleBrowser(IpcChannels.PermissionsGetForOrigin, (event, origin: string) => {
     const profileId = profileFor(event as any)
     return typeof origin === 'string'
       ? sitePermissionsForOrigin(profileId, origin)
       : { decisions: [] }
   })
 
-  ipcMain.handle(IpcChannels.PermissionsRemove, (event, origin: string, kind?: PermissionKind) => {
+  handleBrowser(IpcChannels.PermissionsRemove, (event, origin: string, kind?: PermissionKind) => {
     const profileId = profileFor(event as any)
     if (typeof origin !== 'string') throw new Error('Invalid permission origin')
     if (kind !== undefined && !isPermissionKind(kind)) {
@@ -772,19 +1613,19 @@ export function registerIpcHandlers(context: IpcContext): void {
     return changed ? publishPermissions(profileId) : currentSitePermissions(profileId)
   })
 
-  ipcMain.handle(IpcChannels.PermissionsClear, (event) => {
+  handleBrowser(IpcChannels.PermissionsClear, (event) => {
     const profileId = profileFor(event as any)
     const changed = clearSitePermissions(profileId)
     return changed ? publishPermissions(profileId) : currentSitePermissions(profileId)
   })
 
-  ipcMain.handle(IpcChannels.PermissionsUndoAutoRemoval, (event) => {
+  handleBrowser(IpcChannels.PermissionsUndoAutoRemoval, (event) => {
     const profileId = profileFor(event as any)
     const changed = undoPermissionAutoRemoval(profileId)
     return changed ? publishPermissions(profileId) : currentSitePermissions(profileId)
   })
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.PermissionsRespond,
     (_event, id: string, choice: PermissionRequestChoice) => {
       if (typeof id !== 'string' || !isPermissionRequestChoice(choice)) {
@@ -800,7 +1641,7 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   type StorageKind = 'cookies' | 'localstorage' | 'indexdb'
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.BrowsingDataClear,
     async (_event, options: ClearBrowsingDataOptions): Promise<void> => {
       if (!options || typeof options !== 'object') {
@@ -835,7 +1676,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.BookmarksUpdateFolder,
     (event, id: string, patch: BookmarkFolderPatch) => {
       const profileId = profileFor(event as any)
@@ -843,7 +1684,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(IpcChannels.BookmarksRemoveFolder, (event, id: string) => {
+  handleBrowser(IpcChannels.BookmarksRemoveFolder, (event, id: string) => {
     const profileId = profileFor(event as any)
     const state = removeFolder(profileId, id, broadcastBookmarks(profileId), (visible) =>
       setBookmarksBarVisibleForProfile(profileId, visible)
@@ -852,26 +1693,26 @@ export function registerIpcHandlers(context: IpcContext): void {
     return state
   })
 
-  ipcMain.handle(IpcChannels.BookmarksMove, (event, input: BookmarkMoveInput) => {
+  handleBrowser(IpcChannels.BookmarksMove, (event, input: BookmarkMoveInput) => {
     const profileId = profileFor(event as any)
     return moveBookmarkNode(profileId, input, broadcastBookmarks(profileId))
   })
 
-  ipcMain.handle(IpcChannels.BookmarksCopy, (event, kind: BookmarkNodeKind, id: string) => {
+  handleBrowser(IpcChannels.BookmarksCopy, (event, kind: BookmarkNodeKind, id: string) => {
     const profileId = profileFor(event as any)
     const state = copyBookmarkNode(profileId, kind, id, broadcastBookmarks(profileId))
     broadcastBookmarkClipboard()
     return state
   })
 
-  ipcMain.handle(IpcChannels.BookmarksCut, (event, kind: BookmarkNodeKind, id: string) => {
+  handleBrowser(IpcChannels.BookmarksCut, (event, kind: BookmarkNodeKind, id: string) => {
     const profileId = profileFor(event as any)
     const state = cutBookmarkNode(profileId, kind, id, broadcastBookmarks(profileId))
     broadcastBookmarkClipboard()
     return state
   })
 
-  ipcMain.handle(IpcChannels.BookmarksPaste, (event, parentId: string | null) => {
+  handleBrowser(IpcChannels.BookmarksPaste, (event, parentId: string | null) => {
     const profileId = profileFor(event as any)
     const state = pasteBookmarkNode(
       profileId,
@@ -883,28 +1724,28 @@ export function registerIpcHandlers(context: IpcContext): void {
     return state
   })
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.BookmarksConsumeDragUrl,
     (event) => (void event, consumePendingDragUrl())
   )
 
-  ipcMain.handle(IpcChannels.BookmarksOpenWindow, (event, url: string) => {
+  handleBrowser(IpcChannels.BookmarksOpenWindow, (event, url: string) => {
     context.openWindow?.(url, profileFor(event as any))
   })
 
-  ipcMain.handle(IpcChannels.BookmarksOpenIncognitoWindow, (event, url: string) => {
+  handleBrowser(IpcChannels.BookmarksOpenIncognitoWindow, (event, url: string) => {
     context.openIncognitoWindow?.(url, profileFor(event as any))
   })
 
-  ipcMain.handle(IpcChannels.WindowsOpen, (event, url?: string) => {
+  handleBrowser(IpcChannels.WindowsOpen, (event, url?: string) => {
     context.openWindow?.(url, profileFor(event as any))
   })
 
-  ipcMain.handle(IpcChannels.WindowsOpenIncognito, (event, url?: string) => {
+  handleBrowser(IpcChannels.WindowsOpenIncognito, (event, url?: string) => {
     context.openIncognitoWindow?.(url, profileFor(event as any))
   })
 
-  ipcMain.handle(IpcChannels.WindowsGetState, (event): WindowState => {
+  handleBrowser(IpcChannels.WindowsGetState, (event): WindowState => {
     const window = context.getWindow(event as any)
     return {
       incognito: window?.isIncognito ?? false,
@@ -920,27 +1761,27 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   })
 
-  ipcMain.handle(IpcChannels.WindowsSetTitle, (event, title: string) => {
+  handleBrowser(IpcChannels.WindowsSetTitle, (event, title: string) => {
     context.getWindow(event as any)?.setWindowTitle(title)
   })
 
   // Resolve the sender's window so a control affects only the window that owns it.
-  ipcMain.handle(IpcChannels.WindowsMinimize, (event) => {
+  handleBrowser(IpcChannels.WindowsMinimize, (event) => {
     context.getWindow(event as any)?.window.minimize()
   })
 
-  ipcMain.handle(IpcChannels.WindowsToggleMaximize, (event) => {
+  handleBrowser(IpcChannels.WindowsToggleMaximize, (event) => {
     const window = context.getWindow(event as any)?.window
     if (!window) return
     if (window.isMaximized()) window.unmaximize()
     else window.maximize()
   })
 
-  ipcMain.handle(IpcChannels.WindowsClose, (event) => {
+  handleBrowser(IpcChannels.WindowsClose, (event) => {
     context.getWindow(event as any)?.window.close()
   })
 
-  ipcMain.handle(IpcChannels.BookmarksClear, (event) => {
+  handleBrowser(IpcChannels.BookmarksClear, (event) => {
     const profileId = profileFor(event as any)
     const state = clearBookmarks(profileId, broadcastBookmarks(profileId), (visible) =>
       setBookmarksBarVisibleForProfile(profileId, visible)
@@ -949,7 +1790,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return state
   })
 
-  ipcMain.handle(IpcChannels.BookmarksToggleBar, (event) => {
+  handleBrowser(IpcChannels.BookmarksToggleBar, (event) => {
     const profileId = profileFor(event as any)
     return toggleBookmarksBar(profileId, broadcastBookmarks(profileId), (visible) =>
       setBookmarksBarVisibleForProfile(profileId, visible)
@@ -989,7 +1830,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.PromptRespond,
     (_event, response: { id?: unknown; value?: unknown }) => {
       if (typeof response?.id !== 'string') return
@@ -998,11 +1839,11 @@ export function registerIpcHandlers(context: IpcContext): void {
   )
   /* ---- history --------------------------------------------------------- */
 
-  ipcMain.handle(IpcChannels.HistoryGetState, (event) =>
+  handleBrowser(IpcChannels.HistoryGetState, (event) =>
     currentHistoryState(profileFor(event as any))
   )
 
-  ipcMain.handle(IpcChannels.HistoryRecordVisit, (event, visit: { url: string; title: string }) => {
+  handleBrowser(IpcChannels.HistoryRecordVisit, (event, visit: { url: string; title: string }) => {
     const profileId = profileFor(event as any)
     recordVisit(profileId, visit)
     return publishHistory(profileId, (state) =>
@@ -1010,7 +1851,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     )
   })
 
-  ipcMain.handle(IpcChannels.HistoryRemove, (event, id: string) => {
+  handleBrowser(IpcChannels.HistoryRemove, (event, id: string) => {
     const profileId = profileFor(event as any)
     removeHistory(profileId, id)
     return publishHistory(profileId, (state) =>
@@ -1018,7 +1859,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     )
   })
 
-  ipcMain.handle(IpcChannels.HistoryClear, (event) => {
+  handleBrowser(IpcChannels.HistoryClear, (event) => {
     const profileId = profileFor(event as any)
     clearHistory(profileId)
     return publishHistory(profileId, (state) =>
@@ -1033,42 +1874,42 @@ export function registerIpcHandlers(context: IpcContext): void {
     return currentAutofillState(scope.profileId, scope.store)
   })
 
-  ipcMain.handle(IpcChannels.AutofillSaveAddress, (event, input) => {
+  handleBrowser(IpcChannels.AutofillSaveAddress, (event, input) => {
     if (!input || typeof input !== 'object') throw new Error('Invalid address')
     const scope = scopeForAutofillEvent(event as any)
     saveAddress(scope.profileId, input as any, scope.store)
     return publishAutofill(scope)
   })
 
-  ipcMain.handle(IpcChannels.AutofillDeleteAddress, (event, id: string) => {
+  handleBrowser(IpcChannels.AutofillDeleteAddress, (event, id: string) => {
     if (typeof id !== 'string') throw new Error('Invalid address id')
     const scope = scopeForAutofillEvent(event as any)
     deleteAddress(scope.profileId, id, scope.store)
     return publishAutofill(scope)
   })
 
-  ipcMain.handle(IpcChannels.AutofillSaveContact, (event, input) => {
+  handleBrowser(IpcChannels.AutofillSaveContact, (event, input) => {
     if (!input || typeof input !== 'object') throw new Error('Invalid contact')
     const scope = scopeForAutofillEvent(event as any)
     saveContact(scope.profileId, input as any, scope.store)
     return publishAutofill(scope)
   })
 
-  ipcMain.handle(IpcChannels.AutofillDeleteContact, (event, id: string) => {
+  handleBrowser(IpcChannels.AutofillDeleteContact, (event, id: string) => {
     if (typeof id !== 'string') throw new Error('Invalid contact id')
     const scope = scopeForAutofillEvent(event as any)
     deleteContact(scope.profileId, id, scope.store)
     return publishAutofill(scope)
   })
 
-  ipcMain.handle(IpcChannels.AutofillSavePayment, (event, input) => {
+  handleBrowser(IpcChannels.AutofillSavePayment, (event, input) => {
     if (!input || typeof input !== 'object') throw new Error('Invalid payment method')
     const scope = scopeForAutofillEvent(event as any)
     savePaymentMethod(scope.profileId, input as any, scope.store)
     return publishAutofill(scope)
   })
 
-  ipcMain.handle(IpcChannels.AutofillDeletePayment, (event, id: string) => {
+  handleBrowser(IpcChannels.AutofillDeletePayment, (event, id: string) => {
     if (typeof id !== 'string') throw new Error('Invalid payment method id')
     const scope = scopeForAutofillEvent(event as any)
     deletePaymentMethod(scope.profileId, id, scope.store)
@@ -1081,14 +1922,14 @@ export function registerIpcHandlers(context: IpcContext): void {
     return publishAutofill(scope)
   })
 
-  ipcMain.handle(IpcChannels.AutofillDeleteFormHistoryEntry, (event, id: string) => {
+  handleBrowser(IpcChannels.AutofillDeleteFormHistoryEntry, (event, id: string) => {
     if (typeof id !== 'string') throw new Error('Invalid form history id')
     const scope = scopeForAutofillEvent(event as any)
     removeFormHistoryEntry(scope.profileId, id, scope.store)
     return publishAutofill(scope)
   })
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.AutofillGetFormSuggestions,
     (event, payload: { field?: unknown; prefix?: unknown }) => {
       const scope = scopeForAutofillEvent(event as any)
@@ -1102,7 +1943,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(
+  handleBrowser(
     IpcChannels.AutofillRecordFormField,
     (event, payload: { field?: unknown; value?: unknown }) => {
       const scope = scopeForAutofillEvent(event as any)
@@ -1118,13 +1959,677 @@ export function registerIpcHandlers(context: IpcContext): void {
     return getAutofillProfileSuggestions(scope.profileId, kind, scope.store)
   })
 
+  /* ---- extensions ------------------------------------------------------ */
+
+  const publishExtensions = (profileId: string, state: ExtensionInfo[]): ExtensionInfo[] => {
+    sendToProfile(profileId, IpcChannels.ExtensionsStateChanged, state)
+    return state
+  }
+
+  /** Panel currently open in each window, so a second click acts as a toggle. */
+  const openExtensionPanels = new WeakMap<
+    WindowController,
+    { id: string; kind: string; anchor?: { x: number; y: number } }
+  >()
+
+  const watchedPanelOwners = new WeakSet<WindowController>()
+  const watchPanelOwner = (owner: WindowController): void => {
+    if (watchedPanelOwners.has(owner)) return
+    watchedPanelOwners.add(owner)
+    // Escape, navigation and tab switches close the view directly; keep toggle
+    // state in sync no matter which path dismissed it.
+    owner.onExtensionPanelClosed((closed) => openExtensionPanels.delete(closed))
+  }
+
+  const closePanelForOwner = (owner: WindowController): void => {
+    watchPanelOwner(owner)
+    if (!openExtensionPanels.has(owner)) return
+    owner.closeExtensionPanel()
+    openExtensionPanels.delete(owner)
+  }
+
+  handleBrowser(IpcChannels.ExtensionsGetState, (event) => {
+    const profileId = profileFor(event as any)
+    return currentExtensionsState(sessionForProfile(profileId), profileId)
+  })
+
+  handleBrowser(IpcChannels.ExtensionsChooseDirectory, async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Load unpacked extension',
+      properties: ['openDirectory']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
+  handleBrowser(IpcChannels.ExtensionsChooseCrx, async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Install CRX extension',
+      filters: [{ name: 'Chrome extensions', extensions: ['crx'] }],
+      properties: ['openFile']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
+  handleBrowser(IpcChannels.ExtensionsInstall, async (event, path: unknown) => {
+    if (typeof path !== 'string' || path.trim() === '') {
+      throw new Error('Choose an extension folder or CRX file first.')
+    }
+    const profileId = profileFor(event as any)
+    const ses = sessionForProfile(profileId)
+    const state = await installExtension(ses, profileId, path, {
+      confirm: installConfirmationFor(event as any, profileId)
+    })
+    refreshCommandShortcuts(ses, profileId)
+    return publishExtensions(profileId, state)
+  })
+
+  handleBrowser(IpcChannels.ExtensionsInstallFromStore, async (event, input: unknown) => {
+    if (typeof input !== 'string' || input.trim() === '') {
+      throw new Error('Enter a Chrome Web Store URL or extension id.')
+    }
+    const profileId = profileFor(event as any)
+    const ses = sessionForProfile(profileId)
+    const state = await installExtensionFromStore(ses, profileId, input, {
+      confirm: installConfirmationFor(event as any, profileId)
+    })
+    refreshCommandShortcuts(ses, profileId)
+    return publishExtensions(profileId, state)
+  })
+
+  handleBrowser(IpcChannels.ExtensionInstallRespond, (_event, id: unknown, choice: unknown) => {
+    if (typeof id !== 'string' || (choice !== 'install' && choice !== 'cancel')) {
+      throw new Error('Invalid extension install response')
+    }
+    return respondToExtensionInstall(id, choice)
+  })
+
+  handleBrowser(IpcChannels.ExtensionsUninstall, (event, path: unknown) => {
+    if (typeof path !== 'string' || path.trim() === '') {
+      throw new Error('No extension selected.')
+    }
+    const profileId = profileFor(event as any)
+    const ses = sessionForProfile(profileId)
+    const extension = ses.extensions
+      .getAllExtensions()
+      .find((candidate) => resolve(candidate.path) === resolve(path))
+    if (extension) {
+      for (const window of allWindows()) {
+        if (openExtensionPanels.get(window)?.id === extension.id) closePanelForOwner(window)
+      }
+    }
+    const state = uninstallExtension(ses, profileId, path)
+    refreshCommandShortcuts(ses, profileId)
+    return publishExtensions(profileId, state)
+  })
+
+  handleBrowser(IpcChannels.ExtensionsCheckUpdates, async (event) => {
+    const profileId = profileFor(event as any)
+    const results = await checkProfileExtensionUpdates(profileId)
+    publishExtensions(profileId, currentExtensionsState(sessionForProfile(profileId), profileId))
+    return results
+  })
+
+  /** Open an extension action popup inside the browser window, like Chrome. */
+  const openExtensionPopup = ({
+    extension,
+    session,
+    profileId,
+    resource,
+    x,
+    y,
+    owner,
+    toggle = true
+  }: {
+    extension: Extension
+    session: Electron.Session
+    profileId: string
+    resource: string
+    x: number
+    y: number
+    owner: WindowController | null
+    toggle?: boolean
+  }): boolean => {
+    if (!owner || owner.window.isDestroyed()) return false
+    const current = openExtensionPanels.get(owner)
+    if (toggle && current?.kind === 'popup' && current.id === extension.id) {
+      closePanelForOwner(owner)
+      return true
+    }
+    // Actions opened from the HTML menu should still appear to come from the
+    // puzzle button, not from the row that was clicked inside the menu.
+    const anchor = current?.kind === 'menu' && current.anchor ? current.anchor : { x, y }
+    closePanelForOwner(owner)
+
+    let url: string
+    try {
+      url = extensionResourceUrl(extension, resource)
+    } catch {
+      return false
+    }
+    const openExternal = (target: string): void => {
+      if (/^https?:\/\//i.test(target)) context.openWindow?.(target, profileId)
+    }
+    watchPanelOwner(owner)
+    owner.showExtensionPanel({
+      url,
+      session,
+      restricted: true,
+      x: Math.round(anchor.x),
+      y: Math.round(anchor.y),
+      width: 420,
+      height: 600,
+      allowedOrigin: extension.url,
+      onNavigateAway: openExternal
+    })
+    openExtensionPanels.set(owner, { id: extension.id, kind: 'popup' })
+    return true
+  }
+
+  handleBrowser(
+    IpcChannels.ExtensionsOpenPopup,
+    (
+      event,
+      payload: {
+        id?: unknown
+        resource?: unknown
+        x?: unknown
+        y?: unknown
+      }
+    ) => {
+      if (typeof payload?.id !== 'string' || typeof payload.resource !== 'string') {
+        throw new Error('The extension action is invalid.')
+      }
+      const profileId = profileFor(event as any)
+      const ses = sessionForProfile(profileId)
+      const extension = ses.extensions
+        .getAllExtensions()
+        .find((candidate) => candidate.id === payload.id)
+      if (!extension) throw new Error('That extension is no longer loaded.')
+
+      return openExtensionPopup({
+        extension,
+        session: ses,
+        profileId,
+        resource: payload.resource,
+        x: typeof payload.x === 'number' ? payload.x : 0,
+        y: typeof payload.y === 'number' ? payload.y : 0,
+        owner: windowForAnyWebContents(event.sender)
+      })
+    }
+  )
+
+  /**
+   * Show the Chrome-style HTML action menu in an in-window panel. The chrome
+   * view is never resized, so the tab strip and window dragging stay intact.
+   */
+  /** Called by `chrome.action.openPopup()` from an extension page or worker. */
+  handleExtension(IpcChannels.ExtensionActionOpenPopup, async (event): Promise<boolean> => {
+    const extensionId = extensionIdForEvent(event)
+    const profileId = profileForExtensionEvent(event)
+    if (!extensionId || !profileId) return false
+    const ses = sessionForProfile(profileId)
+    const extension = ses.extensions
+      .getAllExtensions()
+      .find((candidate) => candidate.id === extensionId)
+    if (!extension) return false
+    const resource = currentExtensionsState(ses, profileId).find(
+      (candidate) => candidate.id === extensionId
+    )?.action?.popup
+    if (!resource) return false
+
+    const owner = extensionOwnerFor(event, profileId)
+    if (!owner || owner.window.isDestroyed()) return false
+
+    let anchor = { x: 0, y: 0 }
+    try {
+      const script = `(() => {
+        const label = ${JSON.stringify(`Open ${extension.name}`)};
+        const buttons = [...document.querySelectorAll('button')];
+        const action = buttons.find((button) => button.getAttribute('aria-label') === label);
+        const target = action ?? buttons.find((button) => button.getAttribute('aria-label') === 'Extensions');
+        const rect = target?.getBoundingClientRect();
+        return rect ? { x: rect.right, y: rect.bottom } : { x: 0, y: 0 };
+      })()`
+      const measured = (await owner.chrome.webContents.executeJavaScript(script)) as {
+        x?: unknown
+        y?: unknown
+      } | null
+      if (typeof measured?.x === 'number' && typeof measured?.y === 'number') {
+        anchor = { x: measured.x, y: measured.y }
+      }
+    } catch {
+      // The toolbar may still be loading; the popup can still open unanchored.
+    }
+
+    return openExtensionPopup({
+      extension,
+      session: ses,
+      profileId,
+      resource,
+      x: anchor.x,
+      y: anchor.y,
+      owner,
+      toggle: false
+    })
+  })
+
+  handleBrowser(
+    IpcChannels.ExtensionsShowActionMenu,
+    (event, payload: { x?: unknown; y?: unknown }) => {
+      const owner = windowForAnyWebContents(event.sender)
+      if (!owner || owner.window.isDestroyed()) return false
+      const profileId = owner.profile
+      const extensions = currentExtensionsState(sessionForProfile(profileId), profileId)
+      if (extensions.length === 0) return false
+
+      const state = owner.tabs.snapshot()
+      const active = state.tabs.find((tab) => tab.id === state.activeTabId)
+      const x = Math.round(typeof payload?.x === 'number' ? payload.x : 0)
+      const y = Math.round(typeof payload?.y === 'number' ? payload.y : 0)
+      const devServerUrl = process.env['ELECTRON_RENDERER_URL']
+      const menuUrl = devServerUrl
+        ? `${devServerUrl.replace(/\/$/, '')}/extensionMenu.html`
+        : 'voyager://extension-menu'
+      closePanelForOwner(owner)
+      watchPanelOwner(owner)
+      owner.showExtensionPanel({
+        url: menuUrl,
+        x,
+        y,
+        width: 372,
+        height: 520,
+        menuPayload: { site: active?.url ?? null, profileId }
+      })
+      openExtensionPanels.set(owner, { id: '', kind: 'menu', anchor: { x, y } })
+      return true
+    }
+  )
+
+  handleBrowser(IpcChannels.ExtensionsClosePanel, (event) => {
+    const owner = windowForAnyWebContents(event.sender)
+    if (owner) closePanelForOwner(owner)
+  })
+
+  // Escape synthesized by automation reaches the panel renderer but not the
+  // native before-input-event hook. Only the panel itself may dismiss itself.
+  handleExtension(IpcChannels.ExtensionPanelDismiss, (event) => {
+    if (!('sender' in event)) return
+    const owner = allWindows().find((window) => window.isExtensionPanelWebContents(event.sender))
+    if (owner) closePanelForOwner(owner)
+  })
+
+  handleBrowser(
+    IpcChannels.ExtensionsSetPinned,
+    (event, payload: { id?: unknown; pinned?: unknown }) => {
+      if (typeof payload?.id !== 'string' || typeof payload.pinned !== 'boolean') {
+        throw new Error('The extension pin change is invalid.')
+      }
+      const profileId = profileFor(event as any)
+      setExtensionPinned(profileId, payload.id, payload.pinned)
+      return publishExtensions(
+        profileId,
+        currentExtensionsState(sessionForProfile(profileId), profileId)
+      )
+    }
+  )
+
+  handleBrowser(
+    IpcChannels.ExtensionsSetSiteAccess,
+    (event, payload: { id?: unknown; access?: unknown; site?: unknown }) => {
+      if (
+        typeof payload?.id !== 'string' ||
+        (payload.access !== 'click' && payload.access !== 'site' && payload.access !== 'all')
+      ) {
+        throw new Error('The site access choice is invalid.')
+      }
+      const profileId = profileFor(event as any)
+      const site = typeof payload.site === 'string' ? payload.site : null
+      setExtensionSiteAccessRule(profileId, payload.id, payload.access, site)
+      return publishExtensions(
+        profileId,
+        currentExtensionsState(sessionForProfile(profileId), profileId)
+      )
+    }
+  )
+
+  handleExtension(
+    IpcChannels.ExtensionPermissionRequest,
+    (
+      event: ExtensionInvokeEvent,
+      payload:
+        | {
+            permissions?: unknown
+            origins?: unknown
+            mode?: unknown
+            checkOnly?: unknown
+          }
+        | undefined
+    ): Promise<boolean | { permissions: string[]; origins: string[] }> => {
+      const profileId = profileForExtensionEvent(event)
+      const extensionId = extensionIdForEvent(event)
+      if (!profileId || !extensionId) return Promise.resolve(false)
+      const extension = sessionForProfile(profileId)
+        .extensions.getAllExtensions()
+        .find((candidate) => candidate.id === extensionId)
+      if (!extension) return Promise.resolve(false)
+
+      const manifest = (extension.manifest ?? {}) as Record<string, unknown>
+      const declared = new Set(declaredManifestKeys(manifest))
+      // Manifest-declared native messaging is supported directly, so grant it
+      // before any prompt logic. Host allow-lists are still enforced separately.
+      const autoGranted = new Set(autoGrantDeclaredPermissions(profileId, extensionId, manifest))
+      const stringArray = (value: unknown): string[] =>
+        Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+      const asked = [
+        ...new Set([
+          ...stringArray(payload?.permissions),
+          ...stringArray(payload?.origins).map(extensionOriginKey)
+        ])
+      ]
+      const requested = asked.filter((key) => isDeclaredPermissionKey(key, declared))
+      if (payload?.mode === 'getAll') {
+        return Promise.resolve(extensionPermissionGrants(profileId, extensionId))
+      }
+      if (payload?.mode === 'remove') {
+        const required = new Set(requiredManifestKeys(manifest))
+        const removable = requested.filter(
+          (key) => !autoGranted.has(key) && !isDeclaredPermissionKey(key, required)
+        )
+        removeExtensionPermissions(profileId, extensionId, removable)
+        return Promise.resolve(true)
+      }
+      // An undeclared request must not be reported as already granted.
+      if (asked.length > requested.length) return Promise.resolve(false)
+      if (payload?.mode === 'contains' || payload?.checkOnly === true) {
+        return Promise.resolve(
+          asked.length > 0 && hasAllExtensionPermissions(profileId, extensionId, requested)
+        )
+      }
+      if (asked.length === 0) return Promise.resolve(true)
+
+      const routeWindow = extensionOwnerFor(event, profileId)
+      if (!routeWindow) return Promise.resolve(false)
+
+      return requestExtensionPermissions({
+        profileId,
+        extensionId,
+        extensionName: extension.name,
+        keys: requested,
+        sender: permissionSenderFor(event),
+        sendPrompt: (request) =>
+          routeWindow.sendToChrome(IpcChannels.ExtensionPermissionRequest, request),
+        onCancelled: (id) =>
+          routeWindow.sendToChrome(IpcChannels.ExtensionPermissionRequestCancelled, { id })
+      })
+    }
+  )
+
+  handleBrowser(IpcChannels.ExtensionPermissionRespond, (_event, id: unknown, choice: unknown) => {
+    if (typeof id !== 'string' || !isExtensionPermissionChoice(choice)) {
+      throw new Error('Invalid extension permission response')
+    }
+    const result = respondToExtensionPermission(id, choice)
+    if (result.profileId) {
+      publishExtensions(
+        result.profileId,
+        currentExtensionsState(sessionForProfile(result.profileId), result.profileId)
+      )
+    }
+    return result.handled
+  })
+
+  handleBrowser(IpcChannels.NativeMessagingHostsGet, (event) =>
+    getNativeHosts(profileFor(event as any))
+  )
+
+  handleBrowser(IpcChannels.NativeMessagingHostsSet, (event, hosts: unknown) =>
+    setNativeHosts(profileFor(event as any), hosts)
+  )
+
+  handleExtension(
+    IpcChannels.ExtensionNativeConnect,
+    (event: ExtensionInvokeEvent, hostName: unknown, requestedPortId: unknown): string | null => {
+      if (typeof hostName !== 'string') return null
+      const portId =
+        typeof requestedPortId === 'string' && /^[a-zA-Z0-9-]{1,64}$/.test(requestedPortId)
+          ? requestedPortId
+          : undefined
+      const context = extensionContextFor(event)
+      if (!context || !nativeAllowed(context)) return null
+      const { extensionId, profileId } = context
+      const sendToSender = (channel: string, payload: unknown): void =>
+        sendToExtensionSender(event, channel, payload)
+      try {
+        return connectNative(
+          {
+            profileId,
+            hostName,
+            extensionId,
+            sender: nativeSenderFor(event),
+            onMessage: (message, id) =>
+              sendToSender(IpcChannels.ExtensionNativeMessageEvent, { portId: id, message }),
+            onDisconnect: (id) =>
+              sendToSender(IpcChannels.ExtensionNativeDisconnectEvent, { portId: id })
+          },
+          portId
+        )
+      } catch (error) {
+        console.warn('[nativeMessaging] Could not start host:', error)
+        return null
+      }
+    }
+  )
+
+  handleExtension(
+    IpcChannels.ExtensionNativePostMessage,
+    (event: ExtensionInvokeEvent, portId: unknown, message: unknown): boolean =>
+      typeof portId === 'string' ? postToNative(portId, nativeSenderFor(event), message) : false
+  )
+
+  handleExtension(
+    IpcChannels.ExtensionNativeDisconnect,
+    (event: ExtensionInvokeEvent, portId: unknown): boolean =>
+      typeof portId === 'string' ? disconnectNative(portId, nativeSenderFor(event)) : false
+  )
+
+  handleExtension(
+    IpcChannels.ExtensionNativeSendMessage,
+    async (event: ExtensionInvokeEvent, hostName: unknown, message: unknown): Promise<unknown> => {
+      if (typeof hostName !== 'string') return null
+      const context = extensionContextFor(event)
+      if (!context || !nativeAllowed(context)) return null
+      const { extensionId, profileId } = context
+      try {
+        return await sendNativeMessage(
+          {
+            profileId,
+            hostName,
+            extensionId,
+            sender: nativeSenderFor(event),
+            onMessage: () => {},
+            onDisconnect: () => {}
+          },
+          message
+        )
+      } catch (error) {
+        console.warn('[nativeMessaging] Message failed:', error)
+        return null
+      }
+    }
+  )
+
+  const PRIVACY_PASSWORD_SAVING_KEY = 'passwordSavingEnabled'
+
+  handleExtension(
+    IpcChannels.ExtensionPrivacyGet,
+    (event: ExtensionInvokeEvent, key: unknown): boolean => {
+      if (key !== PRIVACY_PASSWORD_SAVING_KEY) return true
+      const context = extensionContextFor(event)
+      if (!context) return true
+      if (!declaredManifestKeys(context.manifest).includes('privacy')) return true
+      if (!hasAllExtensionPermissions(context.profileId, context.extensionId, ['privacy'])) {
+        return true
+      }
+      return getSettings(context.profileId, PRIVACY_PASSWORD_SAVING_KEY, true) !== false
+    }
+  )
+
+  handleExtension(
+    IpcChannels.ExtensionPrivacySet,
+    async (event: ExtensionInvokeEvent, key: unknown, value: unknown): Promise<boolean> => {
+      if (key !== PRIVACY_PASSWORD_SAVING_KEY || typeof value !== 'boolean') return false
+      const context = extensionContextFor(event)
+      if (!context) return false
+      const { extensionId, profileId, extension, manifest } = context
+      if (!declaredManifestKeys(manifest).includes('privacy')) return false
+
+      if (!hasAllExtensionPermissions(profileId, extensionId, ['privacy'])) {
+        const routeWindow = extensionOwnerFor(event, profileId)
+        if (!routeWindow) return false
+        const granted = await requestExtensionPermissions({
+          profileId,
+          extensionId,
+          extensionName: extension.name,
+          keys: ['privacy'],
+          sender: permissionSenderFor(event),
+          sendPrompt: (request) =>
+            routeWindow.sendToChrome(IpcChannels.ExtensionPermissionRequest, request),
+          onCancelled: (id) =>
+            routeWindow.sendToChrome(IpcChannels.ExtensionPermissionRequestCancelled, { id })
+        })
+        if (!granted) return false
+      }
+
+      setSettings(profileId, PRIVACY_PASSWORD_SAVING_KEY, value)
+      sendToExtensionSender(event, IpcChannels.ExtensionPrivacyChangedEvent, { key, value })
+      return true
+    }
+  )
+
+  /** Three-dots menu for a single extension, using native menu items. */
+  handleBrowser(
+    IpcChannels.ExtensionsShowContextMenu,
+    (event, payload: { id?: unknown; x?: unknown; y?: unknown }) => {
+      if (typeof payload?.id !== 'string') throw new Error('The extension is invalid.')
+      const profileId = profileFor(event as any)
+      const ses = sessionForProfile(profileId)
+      const extension = ses.extensions
+        .getAllExtensions()
+        .find((candidate) => candidate.id === payload.id)
+      if (!extension) return false
+      const owner = windowForAnyWebContents(event.sender)
+      const manifest = (extension.manifest ?? {}) as Record<string, unknown>
+      const optionsPage = extensionOptionsPage(extension)
+      const current = currentExtensionsState(ses, profileId).find(
+        (item) => item.id === extension.id
+      )
+      const siteAccess = current?.siteAccess ?? 'click'
+      const hostAccess = hostAccessForManifest(manifest)
+      // The three-dots button lives in the panel view, so its coordinates are
+      // panel-relative; native menus need window-relative coordinates.
+      const panelOrigin = owner?.extensionPanelOrigin()
+      const x = Math.round((typeof payload.x === 'number' ? payload.x : 0) + (panelOrigin?.x ?? 0))
+      const y = Math.round((typeof payload.y === 'number' ? payload.y : 0) + (panelOrigin?.y ?? 0))
+      const closeAnd = (action: () => void): void => {
+        if (owner) closePanelForOwner(owner)
+        action()
+      }
+      const activeUrl = (() => {
+        if (!owner) return 'about:blank'
+        const snapshot = owner.tabs.snapshot()
+        const tab = snapshot.tabs.find((item) => item.id === snapshot.activeTabId)
+        return tab?.url ?? 'about:blank'
+      })()
+      const siteKey = siteKeyForUrl(activeUrl)
+      const domain = siteKey && siteKey !== 'file://' ? siteKey : 'this site'
+      const selectedSites = siteAccessRules(profileId)[extension.id]?.sites ?? []
+
+      const template: Electron.MenuItemConstructorOptions[] = [
+        { label: extension.name, enabled: false },
+        { type: 'separator' }
+      ]
+      if (optionsPage) {
+        template.push({
+          label: 'Options',
+          click: () =>
+            closeAnd(() => {
+              owner?.tabs.create({
+                url: extensionResourceUrl(extension, optionsPage),
+                active: true
+              })
+            })
+        })
+      }
+      if (hostAccess !== 'none') {
+        template.push({
+          label: 'This extension can read and change site data',
+          submenu: (
+            [
+              ['When you click the extension', 'click'],
+              [`On ${domain}`, 'site'],
+              ['On all sites', 'all']
+            ] as Array<[string, 'click' | 'site' | 'all']>
+          ).map(([label, value]) => ({
+            label,
+            type: 'radio' as const,
+            checked:
+              value === 'site'
+                ? siteAccess === 'site' && selectedSites.includes(siteKey ?? '')
+                : siteAccess === value,
+            click: () => {
+              setExtensionSiteAccessRule(profileId, extension.id, value, siteKey)
+              publishExtensions(profileId, currentExtensionsState(ses, profileId))
+            }
+          }))
+        })
+      }
+      template.push(
+        { type: 'separator' },
+        {
+          label: 'Remove from Voyager',
+          click: () => {
+            void dialog
+              .showMessageBox({
+                type: 'warning',
+                buttons: ['Cancel', 'Remove'],
+                defaultId: 0,
+                cancelId: 0,
+                message: `Remove ${extension.name} from Voyager?`,
+                detail: 'The extension will be uninstalled for this profile.'
+              })
+              .then(({ response }) => {
+                if (response !== 1) return
+                if (owner) closePanelForOwner(owner)
+                uninstallExtension(ses, profileId, extension.path)
+                publishExtensions(profileId, currentExtensionsState(ses, profileId))
+              })
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'View Web Permissions',
+          click: () =>
+            closeAnd(() =>
+              openSettingsWindow({ page: 'site-permissions', origin: extension.url }, profileId)
+            )
+        }
+      )
+      const menu = Menu.buildFromTemplate(template)
+      if (owner && !owner.window.isDestroyed()) menu.popup({ window: owner.window, x, y })
+      else menu.popup()
+      return true
+    }
+  )
+
   /* ---- downloads ------------------------------------------------------ */
 
-  ipcMain.handle(IpcChannels.DownloadsGetState, (event) =>
+  handleBrowser(IpcChannels.DownloadsGetState, (event) =>
     currentDownloadsState(profileFor(event as any))
   )
 
-  ipcMain.handle(IpcChannels.DownloadsClear, (event) => {
+  handleBrowser(IpcChannels.DownloadsClear, (event) => {
     const profileId = profileFor(event as any)
     clearDownloads(profileId)
     return publishDownloads(profileId, (state) =>
@@ -1137,31 +2642,31 @@ export function registerIpcHandlers(context: IpcContext): void {
       sendToProfile(profileId, IpcChannels.DownloadsStateChanged, state)
     )
 
-  ipcMain.handle(IpcChannels.DownloadsPause, (event, id: string) => {
+  handleBrowser(IpcChannels.DownloadsPause, (event, id: string) => {
     const profileId = profileFor(event as any)
     pauseDownload(id)
     return publishDownloadsState(profileId)
   })
 
-  ipcMain.handle(IpcChannels.DownloadsResume, (event, id: string) => {
+  handleBrowser(IpcChannels.DownloadsResume, (event, id: string) => {
     const profileId = profileFor(event as any)
     resumeDownload(id)
     return publishDownloadsState(profileId)
   })
 
-  ipcMain.handle(IpcChannels.DownloadsCancel, (event, id: string) => {
+  handleBrowser(IpcChannels.DownloadsCancel, (event, id: string) => {
     const profileId = profileFor(event as any)
     cancelDownload(id)
     return publishDownloadsState(profileId)
   })
 
-  ipcMain.handle(IpcChannels.DownloadsRemove, (event, id: string) => {
+  handleBrowser(IpcChannels.DownloadsRemove, (event, id: string) => {
     const profileId = profileFor(event as any)
     removeDownload(profileId, id)
     return publishDownloadsState(profileId)
   })
 
-  ipcMain.handle(IpcChannels.DownloadsCopyUrl, (event, id: string) => {
+  handleBrowser(IpcChannels.DownloadsCopyUrl, (event, id: string) => {
     void event
     const profileId = profileFor(event as any)
     const url = downloadUrl(profileId, id)
@@ -1169,7 +2674,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return url
   })
 
-  ipcMain.handle(IpcChannels.DownloadsOpenFolder, (event, id: string) => {
+  handleBrowser(IpcChannels.DownloadsOpenFolder, (event, id: string) => {
     void event
     return openDownloadFolder(profileFor(event as any), id)
   })
@@ -1181,9 +2686,9 @@ export function registerIpcHandlers(context: IpcContext): void {
     activeProfileId
   })
 
-  ipcMain.handle(IpcChannels.ProfilesGetState, (event) => profilesState(profileFor(event as any)))
+  handleBrowser(IpcChannels.ProfilesGetState, (event) => profilesState(profileFor(event as any)))
 
-  ipcMain.handle(IpcChannels.ProfilesCreate, (event, input: CreateProfileInput) => {
+  handleBrowser(IpcChannels.ProfilesCreate, (event, input: CreateProfileInput) => {
     if (!input || typeof input.name !== 'string') throw new Error('Profile name is required')
     const profile = createProfile({
       name: input.name,
@@ -1195,7 +2700,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return profile
   })
 
-  ipcMain.handle(IpcChannels.ProfilesUpdate, (event, input: RenameProfileInput) => {
+  handleBrowser(IpcChannels.ProfilesUpdate, (event, input: RenameProfileInput) => {
     if (!input || typeof input.id !== 'string' || typeof input.name !== 'string') {
       throw new Error('Invalid profile update')
     }
@@ -1209,7 +2714,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return profile
   })
 
-  ipcMain.handle(IpcChannels.ProfilesDelete, async (event, id: string) => {
+  handleBrowser(IpcChannels.ProfilesDelete, async (event, id: string) => {
     if (typeof id !== 'string' || id === DEFAULT_PROFILE_ID) {
       throw new Error('Profile cannot be deleted')
     }
@@ -1230,7 +2735,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return profilesState(DEFAULT_PROFILE_ID)
   })
 
-  ipcMain.handle(IpcChannels.ProfilesOpenWindow, (event, id: string) => {
+  handleBrowser(IpcChannels.ProfilesOpenWindow, (event, id: string) => {
     if (typeof id !== 'string') throw new Error('Invalid profile')
     createWindow({ profileId: id })
     setLastProfileId(id)
@@ -1241,13 +2746,24 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   // The chrome view is normally clipped to its strip height; while a dropdown,
   // palette or menu is open it expands over the page so overlays are not cut off.
-  ipcMain.handle(IpcChannels.UiOpenDownloads, (event) =>
+  handleBrowser(IpcChannels.UiOpenDownloads, (event) =>
     context.getWindow(event as any)?.sendToChrome(IpcChannels.UiOpenDownloads)
   )
-  ipcMain.handle(IpcChannels.UiSetOverlayOpen, (event, open: boolean) =>
+  handleBrowser(IpcChannels.UiSetOverlayOpen, (event, open: boolean) =>
     context.getWindow(event as any)?.setOverlayOpen(open)
   )
-  ipcMain.handle(IpcChannels.UiSetRailExpanded, (event, expanded: boolean) =>
+  handleBrowser(IpcChannels.UiSetRailExpanded, (event, expanded: boolean) =>
     context.getWindow(event as any)?.setRailExpanded(expanded)
   )
+
+  handleExtension(
+    IpcChannels.ExtensionApiCall,
+    async (event, call: ExtensionApiCall | undefined): Promise<unknown> => {
+      const extensionContext = extensionContextFor(event)
+      if (!extensionContext) throw new Error('The calling extension is unavailable.')
+      return invokeExtensionApi(extensionContext, call as ExtensionApiCall)
+    }
+  )
+
+  registerExtensionInvokeHandlers(extensionIpcHandlers)
 }

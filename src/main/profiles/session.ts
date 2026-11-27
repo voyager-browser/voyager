@@ -4,6 +4,8 @@ import type { ProfilesState } from '../../shared/profiles'
 import type { DownloadsState } from '../../shared/types'
 import { attachContentBlocking, primeContentBlocking } from '../contentBlocking/contentBlocking'
 import { attachDownloadsTracking } from '../downloads/downloads'
+import { attachExtensionCompatibility } from '../extensions/compatibility'
+import { attachExtensions } from '../extensions/extensions'
 import {
   attachPermissionHandlers,
   autoRemoveStalePermissions,
@@ -14,6 +16,7 @@ import { applyProxyForProfile } from '../proxy/proxy'
 import { applyUserAgentForProfile } from '../userAgent/userAgent'
 import { runTopSitesPreload } from '../preload/preloadTopSites'
 import { getSettings } from '../store'
+import { migrateInstalledThemeExtension } from '../theme/migrate'
 import {
   sendToSettingsWindow,
   sendToSettingsWindowAlways,
@@ -107,6 +110,9 @@ function attachSessionPolicies(
     { persist }
   )
   void runTopSitesPreload(ses, profileId)
+  attachExtensionCompatibility(ses, profileId)
+  migrateInstalledThemeExtension(profileId)
+  void attachExtensions(ses, profileId)
 }
 
 /**

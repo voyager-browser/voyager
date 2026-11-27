@@ -15,6 +15,7 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
     defaultBrowser: Object.keys(window.voyager.defaultBrowser),
     history: Object.keys(window.voyager.history),
     downloads: Object.keys(window.voyager.downloads),
+    extensions: Object.keys(window.voyager.extensions),
     permissions: Object.keys(window.voyager.permissions),
     profiles: Object.keys(window.voyager.profiles),
     ui: Object.keys(window.voyager.ui),
@@ -31,6 +32,7 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
     'contentBlocking',
     'defaultBrowser',
     'downloads',
+    'extensions',
     'history',
     'navigation',
     'permissions',
@@ -65,6 +67,30 @@ test('exposes the typed preload API to the chrome renderer', async ({ voyager })
     'onStateChanged'
   ])
   expect(api.defaultBrowser).toEqual(['isDefault', 'setDefault'])
+  expect(api.extensions).toEqual([
+    'getState',
+    'chooseDirectory',
+    'chooseCrx',
+    'install',
+    'installFromStore',
+    'onInstallRequest',
+    'respondInstall',
+    'uninstall',
+    'checkUpdates',
+    'openPopup',
+    'showActionMenu',
+    'showContextMenu',
+    'closePanel',
+    'setPinned',
+    'setSiteAccess',
+    'onMenuOpen',
+    'onStateChanged',
+    'onPermissionRequest',
+    'onPermissionRequestCancelled',
+    'respondPermission',
+    'getNativeHosts',
+    'setNativeHosts'
+  ])
   expect(api.tabs).toEqual(
     expect.arrayContaining(['getState', 'create', 'close', 'activate', 'reorder', 'pinToggle'])
   )

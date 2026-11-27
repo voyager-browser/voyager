@@ -7,6 +7,8 @@ import { MainMenu } from './components/MainMenu'
 import { FindBar } from './components/FindBar'
 import { HistoryPanel } from './components/HistoryPanel'
 import { NameWindowDialog } from './components/NameWindowDialog'
+import { ExtensionInstallPrompt } from './components/ExtensionInstallPrompt'
+import { ExtensionPermissionPrompt } from './components/ExtensionPermissionPrompt'
 import { PermissionPrompt } from './components/PermissionPrompt'
 import { PromptDialog } from './components/PromptDialog'
 import { QrCodeDialog } from './components/QrCodeDialog'
@@ -78,6 +80,20 @@ export default function App(): React.JSX.Element {
 
   // Chrome-focused keyboard shortcuts.
   useEffect(() => installChromeShortcuts(), [])
+
+  // Extension menus and popups live in their own in-window views. Clicking
+  // anywhere in the chrome dismisses them, just like Chrome's toolbar UI.
+  // Dialogs are exempt: answering one must not destroy the extension page that
+  // is waiting for the permission result.
+  useEffect(() => {
+    const dismiss = (event: MouseEvent): void => {
+      const target = event.target
+      if (target instanceof Element && target.closest('[role="dialog"]')) return
+      void window.voyager.extensions.closePanel()
+    }
+    document.addEventListener('mousedown', dismiss)
+    return () => document.removeEventListener('mousedown', dismiss)
+  }, [])
 
   // Keep the chrome in sync with persisted preferences and per-window state.
   useEffect(() => {
@@ -186,6 +202,8 @@ export default function App(): React.JSX.Element {
       <MainMenu anchor={mainMenuAnchor} onClose={() => setMainMenuAnchor(null)} />
       <FindBar open={findOpen} onClose={() => setFindOpen(false)} />
       <PermissionPrompt />
+      <ExtensionPermissionPrompt />
+      <ExtensionInstallPrompt />
       <PromptDialog />
       <QrCodeDialog />
       <NameWindowDialog open={nameWindowOpen} onClose={() => setNameWindowOpen(false)} />

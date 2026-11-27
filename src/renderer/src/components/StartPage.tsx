@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { Search, VenetianMask } from 'lucide-react'
 import voyagerIcon from '../assets/voyager-icon.svg'
 import {
@@ -7,13 +7,57 @@ import {
   buildSearchUrl,
   isSearchEngineId
 } from '../../../shared/search'
+import {
+  contrastRatio,
+  ensureContrast,
+  mixColors,
+  normalizeHexColor,
+  readableTextColor,
+  relativeLuminance,
+  sanitizeThemeAssetUrl
+} from '../../../shared/theme'
 
-function pageOptions(): { engine: keyof typeof SEARCH_ENGINES; incognito: boolean } {
+interface StartPageOptions {
+  engine: keyof typeof SEARCH_ENGINES
+  incognito: boolean
+  background: 'default' | 'color' | 'image'
+  backgroundColor: string
+  backgroundImage?: string
+  foreground: string
+  accent: string
+}
+
+/** The start page is unprivileged: appearance arrives entirely via the URL. */
+function pageOptions(): StartPageOptions {
   const params = new URLSearchParams(window.location.search)
   const requested = params.get('engine')
+  const requestedBackground = params.get('bg')
+  const color = normalizeHexColor(params.get('bgc'))
+  const base = normalizeHexColor(params.get('base'))
+  const image = sanitizeThemeAssetUrl(params.get('bgi'))
+  const background =
+    requestedBackground === 'color' && color
+      ? 'color'
+      : requestedBackground === 'image' && image
+        ? 'image'
+        : 'default'
+  const backgroundColor = color ?? base ?? '#f2f2f5'
+  const requestedForeground = normalizeHexColor(params.get('fg'))
+  const foreground =
+    background === 'image'
+      ? '#ffffff'
+      : requestedForeground && contrastRatio(requestedForeground, backgroundColor) >= 4.5
+        ? requestedForeground
+        : readableTextColor(backgroundColor)
+  const accent = normalizeHexColor(params.get('accent')) ?? '#3478f6'
   return {
     engine: isSearchEngineId(requested) ? requested : DEFAULT_SEARCH_ENGINE,
-    incognito: params.get('incognito') === '1'
+    incognito: params.get('incognito') === '1',
+    background,
+    backgroundColor,
+    ...(image ? { backgroundImage: image } : {}),
+    foreground,
+    accent
   }
 }
 
@@ -23,8 +67,39 @@ function pageOptions(): { engine: keyof typeof SEARCH_ENGINES; incognito: boolea
  * the same sandbox as any normal website.
  */
 export function StartPage(): React.JSX.Element {
-  const [{ engine, incognito }] = useState(pageOptions)
+  const [options] = useState(pageOptions)
+  const { engine, incognito, background, backgroundColor, backgroundImage, foreground, accent } =
+    options
   const [query, setQuery] = useState('')
+
+  const imageBackground = background === 'image'
+  const surface = imageBackground
+    ? 'rgba(12, 12, 18, 0.55)'
+    : relativeLuminance(backgroundColor) > 0.5
+      ? '#ffffff'
+      : mixColors(backgroundColor, '#000000', 0.22)
+  const resolvedAccent = imageBackground ? ensureContrast(accent, '#101018', 3, true) : accent
+  // Incognito exposes its palette through .incognito; inline values would win.
+  const chromeStyle = incognito
+    ? {}
+    : ({
+        '--voyager-fg': foreground,
+        '--voyager-muted': imageBackground
+          ? '#e2e2ea'
+          : ensureContrast(
+              mixColors(foreground, surface, 0.32),
+              surface,
+              3,
+              relativeLuminance(surface) < 0.5
+            ),
+        '--voyager-border': imageBackground
+          ? 'rgba(255, 255, 255, 0.32)'
+          : mixColors(surface, foreground, 0.18),
+        '--voyager-surface': surface,
+        '--voyager-accent': resolvedAccent,
+        '--voyager-accent-fg': readableTextColor(resolvedAccent)
+      } as CSSProperties)
+  const backgroundStyle: CSSProperties = incognito ? {} : { ...chromeStyle, backgroundColor }
 
   const submit = (event: React.FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
@@ -35,11 +110,24 @@ export function StartPage(): React.JSX.Element {
 
   return (
     <div
-      className={`flex h-full flex-col items-center justify-center overflow-auto bg-bg px-6 text-fg ${
+      data-start-background={background}
+      className={`relative flex h-full flex-col items-center justify-center overflow-auto bg-bg px-6 text-fg ${
         incognito ? 'incognito' : ''
       }`}
+      style={backgroundStyle}
     >
-      <main className="w-full max-w-[560px] pb-16">
+      {imageBackground && backgroundImage && (
+        <>
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-cover bg-center"
+            style={{ backgroundImage: `url("${backgroundImage}")` }}
+          />
+          {/* A consistent scrim keeps the search card legible over any image. */}
+          <div aria-hidden="true" className="absolute inset-0 bg-black/45" />
+        </>
+      )}
+      <main className="relative z-10 w-full max-w-[560px] pb-16">
         <header className="mb-8 flex flex-col items-center gap-3">
           <img
             src={voyagerIcon}
@@ -61,7 +149,11 @@ export function StartPage(): React.JSX.Element {
         </header>
 
         <form onSubmit={submit} role="search">
-          <div className="flex h-12 items-center gap-3 rounded-xl border border-border bg-surface px-4 shadow-sm transition-shadow focus-within:border-accent focus-within:ring-2 focus-within:ring-ring">
+          <div
+            className={`flex h-12 items-center gap-3 rounded-xl border border-border bg-surface px-4 shadow-lg transition-shadow focus-within:border-accent focus-within:ring-2 focus-within:ring-ring ${
+              imageBackground ? 'backdrop-blur-md' : ''
+            }`}
+          >
             <Search className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />
             <input
               id="start-search"

@@ -13,6 +13,7 @@ import {
   Pencil,
   Plus,
   Power,
+  Puzzle,
   Search,
   Shield,
   ShieldCheck,
@@ -39,12 +40,15 @@ import type {
   AutofillPaymentMethod,
   AutofillState,
   ContentBlockingStats,
+  ExtensionInfo,
+  NativeMessagingHost,
   ThemeMode,
   UserPreferences
 } from '../../../shared/types'
 import { BUILTIN_BLOCKED_DOMAINS } from '../../../shared/content-blocking'
 import { DEFAULT_PROFILE_ID, type ProfileInfo, type ProfilesState } from '../../../shared/profiles'
 import { SitePermissionsSettings } from './SitePermissionsSettings'
+import { ThemeSettings } from './ThemeSettings'
 
 function sitePermissionsRoute(): { open: boolean; origin?: string } {
   const hash = window.location.hash.replace(/^#/, '')
@@ -90,6 +94,7 @@ const SETTINGS_NAV_GROUPS: SettingsNavItem[][] = [
   ],
   [
     { id: 'developer', label: 'Developer', icon: Wrench },
+    { id: 'extensions', label: 'Extensions', icon: Puzzle },
     { id: 'about', label: 'About', icon: Info }
   ]
 ]
@@ -207,6 +212,16 @@ export function SettingsPage(): React.JSX.Element {
   const [contactDraft, setContactDraft] = useState<Partial<AutofillContact>>({})
   const [showPaymentForm, setShowPaymentForm] = useState(false)
   const [paymentDraft, setPaymentDraft] = useState<Partial<AutofillPaymentMethod>>({})
+  const [extensions, setExtensions] = useState<ExtensionInfo[]>([])
+  const [extensionError, setExtensionError] = useState<string | null>(null)
+  const [installingExtension, setInstallingExtension] = useState(false)
+  const [checkingExtensionUpdates, setCheckingExtensionUpdates] = useState(false)
+  const [extensionUpdateMessage, setExtensionUpdateMessage] = useState<string | null>(null)
+  const [storeUrl, setStoreUrl] = useState('')
+  const [nativeHosts, setNativeHosts] = useState<NativeMessagingHost[]>([])
+  const [nativeHostName, setNativeHostName] = useState('')
+  const [nativeHostPath, setNativeHostPath] = useState('')
+  const [nativeHostOrigins, setNativeHostOrigins] = useState('')
 
   useEffect(() => {
     const bookmarks = useBookmarksStore.getState()
@@ -224,6 +239,8 @@ export function SettingsPage(): React.JSX.Element {
     void window.voyager.defaultBrowser.isDefault().then(setIsDefaultBrowser)
     void window.voyager.profiles.getState().then(setProfiles)
     void window.voyager.autofill.getState().then(setAutofill)
+    void window.voyager.extensions.getState().then(setExtensions)
+    void window.voyager.extensions.getNativeHosts().then(setNativeHosts)
 
     const unsubscribes = [
       window.voyager.profiles.onStateChanged(setProfiles),
@@ -232,6 +249,7 @@ export function SettingsPage(): React.JSX.Element {
       window.voyager.history.onStateChanged(history.applyState),
       window.voyager.downloads.onStateChanged(downloads.applyState),
       window.voyager.autofill.onStateChanged(setAutofill),
+      window.voyager.extensions.onStateChanged(setExtensions),
       window.voyager.settings.onChanged(setPreferences)
     ]
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe())
@@ -268,6 +286,122 @@ export function SettingsPage(): React.JSX.Element {
     setPreferences((current) => ({ ...current, [key]: value }))
     const prefs = await window.voyager.settings.set(key, value)
     setPreferences(prefs)
+  }
+
+  const loadUnpackedExtension = async (): Promise<void> => {
+    setInstallingExtension(true)
+    setExtensionError(null)
+    try {
+      const path = await window.voyager.extensions.chooseDirectory()
+      if (!path) return
+      setExtensions(await window.voyager.extensions.install(path))
+    } catch (error) {
+      setExtensionError(error instanceof Error ? error.message : 'Could not load extension.')
+    } finally {
+      setInstallingExtension(false)
+    }
+  }
+
+  const installCrxExtension = async (): Promise<void> => {
+    setInstallingExtension(true)
+    setExtensionError(null)
+    try {
+      const path = await window.voyager.extensions.chooseCrx()
+      if (!path) return
+      setExtensions(await window.voyager.extensions.install(path))
+    } catch (error) {
+      setExtensionError(error instanceof Error ? error.message : 'Could not install CRX extension.')
+    } finally {
+      setInstallingExtension(false)
+    }
+  }
+
+  const installStoreExtension = async (): Promise<void> => {
+    setInstallingExtension(true)
+    setExtensionError(null)
+    try {
+      setExtensions(await window.voyager.extensions.installFromStore(storeUrl))
+      setStoreUrl('')
+    } catch (error) {
+      setExtensionError(
+        error instanceof Error ? error.message : 'Could not install from the Web Store.'
+      )
+    } finally {
+      setInstallingExtension(false)
+    }
+  }
+
+  const removeExtension = async (path: string): Promise<void> => {
+    setExtensionError(null)
+    try {
+      setExtensions(await window.voyager.extensions.uninstall(path))
+    } catch (error) {
+      setExtensionError(error instanceof Error ? error.message : 'Could not remove extension.')
+    }
+  }
+
+  const checkExtensionUpdates = async (): Promise<void> => {
+    setCheckingExtensionUpdates(true)
+    setExtensionError(null)
+    setExtensionUpdateMessage(null)
+    try {
+      const results = await window.voyager.extensions.checkUpdates()
+      const updated = results.filter((result) => result.status === 'updated').length
+      const failed = results.filter((result) => result.status === 'failed').length
+      setExtensions(await window.voyager.extensions.getState())
+      setExtensionUpdateMessage(
+        updated > 0
+          ? `Updated ${updated} extension${updated === 1 ? '' : 's'}.`
+          : failed > 0
+            ? `Update check finished with ${failed} error${failed === 1 ? '' : 's'}.`
+            : 'Extensions are up to date.'
+      )
+    } catch (error) {
+      setExtensionError(error instanceof Error ? error.message : 'Could not check for updates.')
+    } finally {
+      setCheckingExtensionUpdates(false)
+    }
+  }
+
+  const addNativeHost = async (): Promise<void> => {
+    const name = nativeHostName.trim()
+    const path = nativeHostPath.trim()
+    const allowedOrigins = nativeHostOrigins
+      .split(/[\s,]+/)
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+    if (!name || !path || allowedOrigins.length === 0) {
+      setExtensionError('Enter a host name, executable path, and at least one allowed origin.')
+      return
+    }
+    setExtensionError(null)
+    try {
+      const next = [
+        ...nativeHosts.filter((host) => host.name !== name),
+        { name, path, allowedOrigins }
+      ]
+      setNativeHosts(await window.voyager.extensions.setNativeHosts(next))
+      setNativeHostName('')
+      setNativeHostPath('')
+      setNativeHostOrigins('')
+    } catch (error) {
+      setExtensionError(error instanceof Error ? error.message : 'Could not save the native host.')
+    }
+  }
+
+  const removeNativeHost = async (name: string): Promise<void> => {
+    setExtensionError(null)
+    try {
+      setNativeHosts(
+        await window.voyager.extensions.setNativeHosts(
+          nativeHosts.filter((host) => host.name !== name)
+        )
+      )
+    } catch (error) {
+      setExtensionError(
+        error instanceof Error ? error.message : 'Could not remove the native host.'
+      )
+    }
   }
 
   const topHosts = blockingStats?.topHosts ?? []
@@ -504,6 +638,7 @@ export function SettingsPage(): React.JSX.Element {
               className={groupIndex > 0 ? 'mt-3 border-t border-border pt-3' : ''}
             >
               {group.map((item) => {
+                if (item.id === 'extensions' && !preferences.developerMode) return null
                 const Icon = item.icon
                 const active = activeSection === item.id
                 return (
@@ -803,6 +938,7 @@ export function SettingsPage(): React.JSX.Element {
                   </label>
                 ))}
               </div>
+              <ThemeSettings />
               <div className="mt-4 border-t border-border pt-4">
                 <label className="flex items-center gap-2 text-[13px] text-fg">
                   <input
@@ -1891,6 +2027,197 @@ export function SettingsPage(): React.JSX.Element {
                 </label>
               )}
             </section>
+
+            {preferences.developerMode && (
+              <section
+                data-settings-section="extensions"
+                className="rounded-lg border border-border bg-surface p-5"
+              >
+                <h2 className="mb-1 text-[15px] font-semibold text-fg">Extensions</h2>
+                <p className="mb-4 text-[12px] text-muted">
+                  Install Chrome extensions for this profile from an unpacked folder, a CRX file, or
+                  the Chrome Web Store. Password managers such as Bitwarden can then offer and fill
+                  saved logins.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void loadUnpackedExtension()}
+                    disabled={installingExtension}
+                    className="rounded-md bg-accent px-3 py-1.5 text-[13px] text-accent-foreground disabled:opacity-50"
+                  >
+                    Load unpacked...
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void installCrxExtension()}
+                    disabled={installingExtension}
+                    className="rounded-md border border-border px-3 py-1.5 text-[13px] text-fg hover:bg-hover disabled:opacity-50"
+                  >
+                    Install .crx...
+                  </button>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <input
+                    type="url"
+                    value={storeUrl}
+                    onChange={(event) => setStoreUrl(event.target.value)}
+                    placeholder="Chrome Web Store URL or extension id"
+                    aria-label="Chrome Web Store URL or extension id"
+                    className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-[12px] text-fg placeholder:text-muted"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void installStoreExtension()}
+                    disabled={installingExtension || storeUrl.trim() === ''}
+                    className="rounded-md border border-border px-3 py-1.5 text-[13px] text-fg hover:bg-hover disabled:opacity-50"
+                  >
+                    Install from Web Store
+                  </button>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void checkExtensionUpdates()}
+                    disabled={checkingExtensionUpdates}
+                    className="rounded-md border border-border px-3 py-1.5 text-[13px] text-fg hover:bg-hover disabled:opacity-50"
+                  >
+                    {checkingExtensionUpdates ? 'Checking…' : 'Check for updates'}
+                  </button>
+                  <span className="text-[11px] text-muted">
+                    Downloaded extensions also update automatically at startup and every 6 hours.
+                  </span>
+                </div>
+                {extensionUpdateMessage && (
+                  <p className="mt-2 text-[12px] text-muted" role="status">
+                    {extensionUpdateMessage}
+                  </p>
+                )}
+                {extensionError && (
+                  <p className="mt-2 text-[12px] text-danger" role="alert">
+                    {extensionError}
+                  </p>
+                )}
+                <div className="mt-4 space-y-2">
+                  {extensions.length === 0 ? (
+                    <p className="text-[12px] text-muted">No extensions loaded.</p>
+                  ) : (
+                    extensions.map((extension) => (
+                      <div
+                        key={extension.path}
+                        className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate text-[13px] text-fg">
+                            {extension.name}
+                            <span className="ml-2 text-[11px] text-muted">
+                              v{extension.version}
+                            </span>
+                          </div>
+                          <div className="truncate text-[11px] text-muted">
+                            {extension.loaded
+                              ? extension.path
+                              : `Could not be loaded from ${extension.path}`}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void removeExtension(extension.path)}
+                          className="shrink-0 rounded-md border border-border px-2 py-1 text-[12px] text-fg hover:bg-hover"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="mt-5 border-t border-border pt-4">
+                  <h3 className="mb-1 text-[13px] font-semibold text-fg">Native messaging hosts</h3>
+                  <p className="mb-3 text-[12px] text-muted">
+                    Register executables that extensions may exchange JSON messages with. Each host
+                    needs an absolute path and the extension origins allowed to contact it.
+                  </p>
+                  <div className="grid gap-2">
+                    <input
+                      value={nativeHostName}
+                      onChange={(event) => setNativeHostName(event.target.value)}
+                      placeholder="Host name, e.g. com.example.password_manager"
+                      aria-label="Native messaging host name"
+                      className="rounded-md border border-border bg-background px-3 py-1.5 text-[12px] text-fg placeholder:text-muted"
+                    />
+                    <input
+                      value={nativeHostPath}
+                      onChange={(event) => setNativeHostPath(event.target.value)}
+                      placeholder="Absolute path to the executable"
+                      aria-label="Native messaging host executable path"
+                      className="rounded-md border border-border bg-background px-3 py-1.5 text-[12px] text-fg placeholder:text-muted"
+                    />
+                    <input
+                      value={nativeHostOrigins}
+                      onChange={(event) => setNativeHostOrigins(event.target.value)}
+                      placeholder="chrome-extension://abcdefghijklmnop/"
+                      aria-label="Allowed extension origins"
+                      className="rounded-md border border-border bg-background px-3 py-1.5 text-[12px] text-fg placeholder:text-muted"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void addNativeHost()}
+                      className="w-fit rounded-md border border-border px-3 py-1.5 text-[13px] text-fg hover:bg-hover"
+                    >
+                      Add native host
+                    </button>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {nativeHosts.length === 0 ? (
+                      <p className="text-[12px] text-muted">
+                        No native messaging hosts registered.
+                      </p>
+                    ) : (
+                      nativeHosts.map((host) => (
+                        <div
+                          key={host.name}
+                          className="flex items-start justify-between gap-3 rounded-md border border-border px-3 py-2"
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate text-[13px] text-fg">{host.name}</div>
+                            <div className="truncate text-[11px] text-muted">{host.path}</div>
+                            <div className="truncate text-[11px] text-muted">
+                              {host.allowedOrigins.join(', ')}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void removeNativeHost(host.name)}
+                            className="shrink-0 rounded-md border border-border px-2 py-1 text-[12px] text-fg hover:bg-hover"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <p className="mt-4 text-[11px] text-muted">
+                  Extensions run in this profile only and are loaded again on startup. CRX packages
+                  are unpacked into Voyager's profile storage. Web Store downloads depend on Google
+                  continuing to serve the extension package. Electron does not implement every
+                  Chrome extension API. Voyager supplies native APIs including `action`,
+                  `permissions`, `privacy`, `runtime`, `scripting`, `tabs`, and `webNavigation`,
+                  plus native messaging. Native and emulated APIs are available through both
+                  `chrome` and `browser`; emulated APIs include
+                  `accessibilityFeatures.animationPolicy` (the only non-ChromeOS accessibility
+                  setting), `alarms`, `bookmarks`, `browsingData`, `cookies`, `i18n`, `commands`,
+                  `contextMenus`, `storage`, `downloads`, `notifications`, `tts`, `system.cpu`,
+                  `system.display`, `system.memory`, `topSites`, `proxy`, `search`, `idle`,
+                  `contentSettings`, `history`, `sessions`, `declarativeNetRequest`, `webRequest`,
+                  `extension`, `management`, `tabGroups`, and `windows`. Tab details are limited to
+                  sites the extension can access. Cross-window `tabs.move` recreates the tab with a
+                  new id, and `tabs.connect` is unavailable because Electron cannot bridge
+                  long-lived connections to content scripts. `tabs.sendMessage` and
+                  `tabs.executeScript` use Electron's native support where available.
+                </p>
+              </section>
+            )}
 
             <section
               data-settings-section="about"

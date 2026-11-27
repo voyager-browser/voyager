@@ -26,7 +26,9 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/preload/index.ts'),
-          tab: resolve(__dirname, 'src/preload/tab.ts')
+          tab: resolve(__dirname, 'src/preload/tab.ts'),
+          extensionCompat: resolve(__dirname, 'src/preload/extensionCompat.ts'),
+          extensionPanel: resolve(__dirname, 'src/preload/extensionPanel.ts')
         }
       }
     }
@@ -44,7 +46,8 @@ export default defineConfig({
         input: {
           main: resolve(__dirname, 'src/renderer/index.html'),
           settings: resolve(__dirname, 'src/renderer/settings.html'),
-          start: resolve(__dirname, 'src/renderer/start.html')
+          start: resolve(__dirname, 'src/renderer/start.html'),
+          extensionMenu: resolve(__dirname, 'src/renderer/extensionMenu.html')
         }
       }
     }

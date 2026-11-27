@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, BaseWindow, WebContentsView, session, type WebContents } from 'electron'
+import { app, BaseWindow, WebContentsView, session, type Session, type WebContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { IpcChannels } from '../../shared/ipc-channels'
 import type { BrowserState } from '../../shared/types'
@@ -15,6 +15,7 @@ import {
   ensureProfileSession
 } from '../profiles/session'
 import { profileById, profilePartition } from '../profiles/profiles'
+import { publishExtensionTabState } from '../extensions/tabEvents'
 
 import {
   currentBookmarksState,
@@ -61,6 +62,9 @@ export class WindowController {
   private overlayOpen = false
   private layout: WindowLayout
   private layoutSettleTimer: NodeJS.Timeout | null = null
+  private extensionPanel: WebContentsView | null = null
+  private extensionPanelBounds = { x: 0, y: 0, width: 0, height: 0 }
+  private readonly extensionPanelClosedListeners = new Set<(owner: WindowController) => void>()
   private disposed = false
   private incognito: boolean
   private incognitoPartition: string | null
@@ -106,6 +110,7 @@ export class WindowController {
     this.tabs = new TabManager(this, (state) => {
       this.sendToChrome(IpcChannels.TabsStateChanged, state)
       this.persistSession(state)
+      publishExtensionTabState(this.profileId, this, state)
     })
 
     this.window.contentView.addChildView(this.chrome)
@@ -300,12 +305,158 @@ export class WindowController {
     this.applyLayout()
   }
 
+  /**
+   * Show an extension menu or popup as a child view of this window, anchored
+   * just below the toolbar button. This keeps the chrome view at its normal
+   * height — expanding it was the cause of the blank tab-strip glitch — and
+   * keeps the panel visually inside the browser like Chrome's UI.
+   */
+  /**
+   * `x`/`y` are the bottom-right corner of the toolbar icon that opened the
+   * panel, in window coordinates. The panel is aligned under that icon.
+   */
+  showExtensionPanel(options: {
+    url: string
+    session?: Session
+    x: number
+    y: number
+    width: number
+    height: number
+    menuPayload?: unknown
+    /** Extension documents must not receive the browser-management bridge. */
+    restricted?: boolean
+    /** Allow same-origin navigation within an extension popup. */
+    allowedOrigin?: string
+    onNavigateAway?: (url: string) => void
+  }): void {
+    this.closeExtensionPanel()
+    if (this.disposed || this.window.isDestroyed()) return
+
+    const view = new WebContentsView({
+      webPreferences: {
+        preload: join(
+          __dirname,
+          options.restricted ? '../preload/extensionPanel.js' : '../preload/index.js'
+        ),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        ...(options.session ? { session: options.session } : {})
+      }
+    })
+    view.setBackgroundColor('#00000000')
+    this.extensionPanel = view
+    this.extensionPanelBounds = {
+      x: options.x,
+      y: options.y,
+      width: options.width,
+      height: options.height
+    }
+    this.window.contentView.addChildView(view)
+    this.applyExtensionPanelBounds()
+
+    view.webContents.on('before-input-event', (_event, input) => {
+      if (input.type === 'keyDown' && input.key === 'Escape') this.closeExtensionPanel()
+    })
+    const sendMenuPayload = (): void => {
+      if (this.extensionPanel === view && options.menuPayload !== undefined) {
+        view.webContents.send(IpcChannels.ExtensionsMenuOpen, options.menuPayload)
+      }
+    }
+    view.webContents.on('did-finish-load', sendMenuPayload)
+    if (options.menuPayload !== undefined) {
+      // The React listener mounts after the document finishes loading; resend
+      // once so the panel always receives its anchor even on a fast first load.
+      const retry = setTimeout(sendMenuPayload, 150)
+      retry.unref()
+    }
+    if (options.onNavigateAway) {
+      const onNavigateAway = options.onNavigateAway
+      const allowedPrefix = options.allowedOrigin ?? options.url.split(/[?#]/)[0]
+      view.webContents.on('will-navigate', (event, url) => {
+        if (url.startsWith(allowedPrefix)) return
+        event.preventDefault()
+        onNavigateAway(url)
+        this.closeExtensionPanel()
+      })
+    }
+    void view.webContents.loadURL(options.url).catch((error) => {
+      console.warn('[extensions] Could not open in-window panel:', error)
+      if (this.extensionPanel === view) this.closeExtensionPanel()
+    })
+  }
+
+  /** WebContents of the current extension menu or popup panel, if any. */
+  extensionPanelWebContents(): WebContents | null {
+    return this.extensionPanel?.webContents ?? null
+  }
+
+  /** Whether `webContents` belongs to this window (chrome, tab, or panel). */
+  ownsWebContents(webContents: WebContents | undefined | null): boolean {
+    if (!webContents) return false
+    if (this.chrome.webContents === webContents) return true
+    if (this.extensionPanel?.webContents === webContents) return true
+    return this.tabIdForWebContents(webContents) !== null
+  }
+
+  /** Whether `webContents` is the current extension menu or popup panel. */
+  isExtensionPanelWebContents(webContents: WebContents): boolean {
+    return this.extensionPanel?.webContents === webContents
+  }
+
+  /** Top-left of the panel in window coordinates, for anchoring native menus. */
+  extensionPanelOrigin(): { x: number; y: number } | null {
+    if (!this.extensionPanel) return null
+    const bounds = this.extensionPanel.getBounds()
+    return { x: bounds.x, y: bounds.y }
+  }
+
+  /** Observe every close path, including Escape, navigation and tab switches. */
+  onExtensionPanelClosed(listener: (owner: WindowController) => void): () => void {
+    this.extensionPanelClosedListeners.add(listener)
+    return () => this.extensionPanelClosedListeners.delete(listener)
+  }
+
+  /** Dismiss the current extension menu or popup, if one is open. */
+  closeExtensionPanel(): void {
+    const view = this.extensionPanel
+    if (!view) return
+    this.extensionPanel = null
+    this.window.contentView.removeChildView(view)
+    view.webContents.close()
+    for (const listener of [...this.extensionPanelClosedListeners]) listener(this)
+  }
+
+  private applyExtensionPanelBounds(): void {
+    if (!this.extensionPanel || this.window.isDestroyed()) return
+    const [windowWidth, windowHeight] = this.window.getContentSize()
+    const { x, y, width, height } = this.extensionPanelBounds
+    const panelWidth = Math.max(160, Math.min(width, windowWidth - 16))
+    const panelHeight = Math.max(120, Math.min(height, windowHeight - 16))
+    // Match Chrome: the panel's top-right corner sits just below the button.
+    const left = x - panelWidth
+    const top = y + 8
+    this.extensionPanel.setBounds({
+      x: Math.max(8, Math.min(Math.round(left), windowWidth - panelWidth - 8)),
+      y: Math.max(8, Math.min(Math.round(top), windowHeight - panelHeight - 8)),
+      width: panelWidth,
+      height: panelHeight
+    })
+  }
+
+  private raiseExtensionPanel(): void {
+    if (this.extensionPanel && !this.window.isDestroyed()) {
+      this.window.contentView.addChildView(this.extensionPanel)
+    }
+  }
+
   attachTabView(view: WebContentsView): void {
     this.tabViews.add(view)
     this.window.contentView.addChildView(view)
     // Keep chrome topmost so expanded overlays always render above the page.
     this.window.contentView.addChildView(this.chrome)
     this.applyLayout()
+    this.raiseExtensionPanel()
   }
 
   detachTabView(view: WebContentsView): void {
@@ -318,6 +469,7 @@ export class WindowController {
       this.splitSecondaryView = null
     }
     this.applyLayout()
+    this.raiseExtensionPanel()
   }
 
   hideTabView(view: WebContentsView): void {
@@ -326,12 +478,15 @@ export class WindowController {
   }
 
   showTabView(view: WebContentsView): void {
+    // A toolbar panel belongs to the tab that opened it; switch tabs dismisses it.
+    this.closeExtensionPanel()
     this.activeTabView = view
     for (const other of this.tabViews) {
       other.setVisible(other === view || other === this.splitSecondaryView)
     }
     view.webContents.focus()
     this.applyLayout()
+    this.raiseExtensionPanel()
   }
 
   /** Show `view` as the secondary split pane, or clear it with null. */
@@ -343,6 +498,7 @@ export class WindowController {
     }
     if (view) view.setVisible(true)
     this.applyLayout()
+    this.raiseExtensionPanel()
   }
 
   /** Give keyboard focus to the chrome UI (tab strip + toolbar) view. */
@@ -532,5 +688,8 @@ export class WindowController {
         height: this.layout.contentHeight
       })
     }
+
+    this.applyExtensionPanelBounds()
+    this.raiseExtensionPanel()
   }
 }
