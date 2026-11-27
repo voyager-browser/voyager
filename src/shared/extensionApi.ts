@@ -4,6 +4,8 @@ export interface ExtensionApiMethodDefinition {
   fallback?: unknown
   /** Return the fallback directly because callers expect a synchronous value. */
   synchronous?: boolean
+  /** Replace a native method even when the namespace is otherwise preserved. */
+  force?: boolean
 }
 
 export interface ExtensionApiNode {
@@ -575,11 +577,11 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
     constants: { DomainEncoding: { punycode: 'punycode', display: 'display' } }
   },
   runtime: {
-    // Electron owns messaging and ports; only fill lifecycle gaps so the
-    // worker can register listeners that it would otherwise crash on.
+    // Electron owns messaging and ports; only replace APIs whose native
+    // implementation cannot safely enumerate Voyager's extension views.
     preserveNative: true,
     methods: {
-      getContexts: { fallback: [] }
+      getContexts: { fallback: [], force: true }
     },
     events: ['onInstalled', 'onStartup', 'onSuspend', 'onSuspendCanceled']
   },

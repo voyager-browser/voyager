@@ -15,6 +15,7 @@ import { registerManagement } from './management'
 import { registerMv2Stubs } from './mv2Stubs'
 import { registerNotifications } from './notifications'
 import { registerProxy } from './proxy'
+import { registerRuntime } from './runtime'
 import { registerSearch } from './search'
 import { registerSessions } from './sessions'
 import { registerStorageApi } from './storageApi'
@@ -54,6 +55,7 @@ export function registerExtensionApis(): void {
   registerMv2Stubs()
   registerNotifications()
   registerProxy()
+  registerRuntime()
   registerSearch()
   registerSessions()
   registerTts()

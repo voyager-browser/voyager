@@ -386,6 +386,11 @@ export class WindowController {
     })
   }
 
+  /** WebContents of the current extension menu or popup panel, if any. */
+  extensionPanelWebContents(): WebContents | null {
+    return this.extensionPanel?.webContents ?? null
+  }
+
   /** Whether `webContents` belongs to this window (chrome, tab, or panel). */
   ownsWebContents(webContents: WebContents | undefined | null): boolean {
     if (!webContents) return false

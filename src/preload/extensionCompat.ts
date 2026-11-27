@@ -1123,7 +1123,9 @@ const installExtensionApi = function installExtensionApi(
     const preserve = node.preserveNative === true
     const fill = (key: string): boolean => !preserve || typeof current[key] === 'undefined'
     for (const [method, definition] of Object.entries(node.methods ?? {})) {
-      if (fill(method)) define(current, method, makeMethod(fullPath, method, definition))
+      if (definition.force || fill(method)) {
+        define(current, method, makeMethod(fullPath, method, definition))
+      }
     }
     for (const event of node.events ?? []) {
       if (fill(event)) define(current, event, makeEvent(eventKey(fullPath, event)))
