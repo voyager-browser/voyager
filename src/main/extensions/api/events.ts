@@ -7,6 +7,7 @@ import { hasApiPermission } from './permissions'
 type ExtensionTarget = WebContents | ServiceWorkerMain
 
 let shuttingDown = false
+const wakingScopes = new Set<string>()
 app.once('before-quit', () => {
   shuttingDown = true
 })
@@ -34,6 +35,23 @@ function extensionIdFromUrl(value: string): string | null {
   }
 }
 
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+}
+
+/** Chrome derives a service worker's scope from the directory of its script. */
+function serviceWorkerScope(extensionId: string, manifest: Record<string, unknown>): string | null {
+  const script = record(manifest.background).service_worker
+  if (typeof script !== 'string' || !script) return null
+  try {
+    return new URL('.', new URL(script, `chrome-extension://${extensionId}/`)).href
+  } catch {
+    return null
+  }
+}
+
 /**
  * Send an emulated API event to extension pages and workers in one profile.
  * Only extensions that declare or were granted the event's permission receive it.
@@ -54,18 +72,21 @@ export function broadcastExtensionApiEvent(
     // Most sessions have no extensions at all. Skip the webContents and
     // service-worker enumeration entirely when nobody can receive the event;
     // this also keeps shutdown from touching Electron objects being torn down.
-    if (ses.extensions.getAllExtensions().length === 0) return
-    const allowed = (target: ExtensionTarget): boolean => {
-      const id = extensionIdFromUrl(
-        'getURL' in target ? target.getURL() : (target as ServiceWorkerMain).scope
-      )
+    const extensions = ses.extensions.getAllExtensions()
+    if (extensions.length === 0) return
+    const allowedId = (id: string | null): boolean => {
       if (!id) return false
       if (payload.extensionId && id !== payload.extensionId) return false
-      const extension = ses.extensions.getAllExtensions().find((item) => item.id === id)
+      const extension = extensions.find((item) => item.id === id)
       if (!extension) return false
-      const manifest = (extension.manifest ?? {}) as Record<string, unknown>
-      return hasApiPermission(profileId, id, manifest, permission)
+      return hasApiPermission(profileId, id, record(extension.manifest), permission)
     }
+    const allowed = (target: ExtensionTarget): boolean =>
+      allowedId(
+        extensionIdFromUrl(
+          'getURL' in target ? target.getURL() : (target as ServiceWorkerMain).scope
+        )
+      )
     const send = (target: ExtensionTarget): void => {
       if (target.isDestroyed() || !allowed(target)) return
       try {
@@ -80,9 +101,26 @@ export function broadcastExtensionApiEvent(
     }
 
     const running = ses.serviceWorkers.getAllRunning()
+    const runningScopes = new Set(Object.values(running).map((info) => info.scope))
     for (const versionId of Object.keys(running)) {
       const worker = ses.serviceWorkers.getWorkerFromVersionID(Number(versionId))
       if (worker) send(worker)
+    }
+
+    // Chrome wakes a background service worker for extension events. Electron
+    // only exposes already-running workers, so emulated events would otherwise
+    // be lost while a worker is suspended (for example storage.onChanged during
+    // Bitwarden's login flow).
+    for (const extension of extensions) {
+      if (!allowedId(extension.id)) continue
+      const scope = serviceWorkerScope(extension.id, record(extension.manifest))
+      if (!scope || runningScopes.has(scope) || wakingScopes.has(scope)) continue
+      wakingScopes.add(scope)
+      void ses.serviceWorkers
+        .startWorkerForScope(scope)
+        .then((worker) => send(worker))
+        .catch(() => undefined)
+        .finally(() => wakingScopes.delete(scope))
     }
   } catch {
     // Event fan-out must never throw into an Electron lifecycle handler.
