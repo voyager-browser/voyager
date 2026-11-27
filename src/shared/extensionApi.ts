@@ -781,11 +781,14 @@ export const EXTENSION_API_SCHEMA: Record<string, ExtensionApiNode> = {
   sidePanel: {
     preserveNative: true,
     methods: {
-      open: {},
-      setOptions: {},
-      getOptions: { fallback: {} },
-      setPanelBehavior: {},
-      getPanelBehavior: { fallback: {} }
+      open: { force: true },
+      setOptions: { force: true },
+      getOptions: { fallback: {}, force: true },
+      setPanelBehavior: { force: true },
+      getPanelBehavior: {
+        fallback: { openPanelOnActionClick: false },
+        force: true
+      }
     },
     events: ['onPanelOptionsChanged']
   },

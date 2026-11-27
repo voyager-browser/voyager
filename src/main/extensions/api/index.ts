@@ -17,6 +17,7 @@ import { registerNotifications } from './notifications'
 import { registerProxy } from './proxy'
 import { registerRuntime } from './runtime'
 import { registerSearch } from './search'
+import { registerSidePanel } from './sidePanel'
 import { registerSessions } from './sessions'
 import { registerStorageApi } from './storageApi'
 import { registerSystemCpu } from './systemCpu'
@@ -57,6 +58,7 @@ export function registerExtensionApis(): void {
   registerProxy()
   registerRuntime()
   registerSearch()
+  registerSidePanel()
   registerSessions()
   registerTts()
   registerSystemCpu()
